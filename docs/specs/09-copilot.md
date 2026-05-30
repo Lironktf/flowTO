@@ -113,4 +113,7 @@ live wiring); `api/schemas.py` (tool schemas + confirm payload); `frontend/src/{
 - [~] T09.6 Streaming `/copilot/stream` SSE (backend done + mocked test + live-verified: 315ms first token,
       1.1s total) — frontend incremental render + latency HUD still TODO — *0.5d*
 - [x] T09.7 `optimize` intent in planner → P10 `optimizer.propose` → confirmable preview + test
-- [ ] T09.8 Tests (mocked plan/constraints/confirm/stream ✓) + live Spark 2-prompt rehearsal still TODO — *0.5d*
+- [x] T09.9 Bounded **read-only multi-tool agent loop** (`copilot/agent.py` + `POST /copilot/agent`): Nemotron
+      chains retrieve/simulate-on-scratch/optimize then proposes a confirmable plan; never mutates the store;
+      last step forced terminal so it always converges. Live-verified: investigate ×3 → propose in ~8s — *1d*
+- [ ] T09.8 Tests (mocked plan/constraints/confirm/stream/agent ✓) + live Spark 2-prompt rehearsal still TODO — *0.5d*

@@ -271,6 +271,22 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
+    @app.post("/copilot/agent")
+    def copilot_agent(payload: dict):
+        """Bounded, read-only multi-tool agent loop (investigate → propose).
+
+        Nemotron chains read-only tools (simulate-on-scratch, optimize, retrieve)
+        then proposes a plan for human confirmation — it never mutates the store.
+        """
+        try:
+            from ..copilot.agent import run_agent
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        before = len(store.scenarios)
+        result = run_agent(payload.get("prompt", ""), state)
+        assert len(store.scenarios) == before  # the loop must stay read-only
+        return result.model_dump()
+
     @app.post("/copilot/confirm", response_model=CopilotConfirmResult)
     def copilot_confirm(payload: CopilotConfirm):
         """Apply a previewed tool call → create scenario → run → compare → explain.

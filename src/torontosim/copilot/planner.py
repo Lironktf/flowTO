@@ -42,8 +42,8 @@ def _hero_call() -> ToolCall:
     )
 
 
-def _blocked_call(prompt: str) -> ToolCall:
-    violations = check_request(prompt)
+def _blocked_call(prompt: str, state=None) -> ToolCall:
+    violations = check_request(prompt, state=state)
     return ToolCall(
         tool="refuse",
         blocked=True,
@@ -88,8 +88,8 @@ def plan_intervention(prompt: str, state, *, use_live: bool = False) -> dict:
     text = (prompt or "").lower()
 
     # 1) Hard-constraint refusal (the "blocked" demo path).
-    if check_request(prompt):
-        call = _blocked_call(prompt)
+    if check_request(prompt, state=state):
+        call = _blocked_call(prompt, state)
     # 2) Hero mitigation intent (ease/mitigate gridlock / post-match egress).
     elif any(kw in text for kw in ("ease", "mitigat", "gridlock", "post-match", "egress")):
         call = _hero_call()

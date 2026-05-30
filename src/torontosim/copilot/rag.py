@@ -1,9 +1,18 @@
-"""Local RAG over a small curated bylaw corpus (P09).
+"""Local RAG over the curated + extracted bylaw corpus (P09).
 
-Default retriever is a dependency-free TF-style bag-of-words cosine — fully
-offline + deterministic, good enough for a tiny curated corpus. When the ``ai``
-extra is installed (Spark), ``sentence-transformers`` embeddings can be swapped
-in, but the keyword retriever is the demo-safe path.
+Two retrievers, same interface:
+
+* ``Retriever`` — dependency-free TF-IDF bag-of-words cosine. Fully offline,
+  deterministic. The fallback + the local/CI default.
+* ``EmbeddingRetriever`` — ``sentence-transformers`` (all-MiniLM-L6-v2) +
+  in-memory cosine. Activates on the Spark (``ai`` extra) where off-script
+  prompts benefit from semantic matching. The corpus is ~50 short section docs,
+  so an in-process embedding matrix beats standing up Chroma/FAISS — no external
+  store, no extra failure mode.
+
+``default_retriever()`` picks embeddings when available (``TS_RAG_BACKEND=auto``,
+the default) and degrades to TF-IDF otherwise. Override with ``TS_RAG_BACKEND``
+= ``embed`` | ``tfidf`` | ``auto``.
 """
 
 from __future__ import annotations
@@ -79,14 +88,63 @@ class Retriever:
         return scored[:k]
 
 
-_DEFAULT: Retriever | None = None
+_EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-def default_retriever() -> Retriever:
+class EmbeddingRetriever:
+    """Semantic retriever: sentence-transformers embeddings + in-memory cosine.
+
+    Raises ``ImportError`` at construction if the ``ai`` extra isn't installed,
+    so ``default_retriever()`` can fall back cleanly.
+    """
+
+    def __init__(self, docs: list[Doc], model_name: str = _EMBED_MODEL):
+        import numpy as np  # noqa: F401 — provided by the ai extra
+        from sentence_transformers import SentenceTransformer
+
+        self.docs = docs
+        self._np = np
+        self._model = SentenceTransformer(model_name)
+        mat = self._model.encode(
+            [f"{d.title}\n{d.text}" for d in docs], normalize_embeddings=True
+        )
+        self._mat = np.asarray(mat, dtype="float32")
+
+    def query(self, text: str, k: int = 4) -> list[tuple[Doc, float]]:
+        np = self._np
+        q = np.asarray(
+            self._model.encode([text], normalize_embeddings=True), dtype="float32"
+        )[0]
+        sims = self._mat @ q  # cosine (rows already L2-normalized)
+        order = np.argsort(-sims)[:k]
+        return [(self.docs[i], float(sims[i])) for i in order]
+
+
+_DEFAULT: object | None = None
+
+
+def _build_retriever():
+    backend = os.environ.get("TS_RAG_BACKEND", "auto").lower()
+    docs = load_corpus()
+    if backend in ("auto", "embed"):
+        try:
+            return EmbeddingRetriever(docs)
+        except Exception:  # noqa: BLE001 — ai extra absent or model unavailable
+            if backend == "embed":
+                raise
+    return Retriever(docs)
+
+
+def default_retriever():
     global _DEFAULT
     if _DEFAULT is None:
-        _DEFAULT = Retriever(load_corpus())
+        _DEFAULT = _build_retriever()
     return _DEFAULT
+
+
+def backend_name() -> str:
+    """Which retriever is live — ``embed`` or ``tfidf`` (for the HUD / debug)."""
+    return "embed" if isinstance(default_retriever(), EmbeddingRetriever) else "tfidf"
 
 
 def retrieve(query: str, k: int = 4) -> list[dict]:

@@ -72,7 +72,7 @@ def plan(
             continue
 
         # Hard-constraint check: refuse if breached.
-        violations = check_request(prompt, [iv.to_op() for iv in call.interventions])
+        violations = check_request(prompt, [iv.to_op() for iv in call.interventions], state)
         if violations:
             return ToolCall(
                 tool="refuse",

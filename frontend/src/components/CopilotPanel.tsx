@@ -10,7 +10,11 @@ export function CopilotRegion() {
   const agentMode = useAppStore((s) => s.agentMode);
   const toggleAgentMode = useAppStore((s) => s.toggleAgentMode);
   const latency = useAppStore((s) => s.copilotLatency);
+  const thinking = useAppStore((s) => s.copilotThinking);
   const [text, setText] = useState("");
+  // Show the thinking indicator only while no bot reply has started yet
+  // (a streaming reply appends its own bubble and supersedes it).
+  const showThinking = thinking && (log.length === 0 || log[log.length - 1].role === "user");
 
   const submit = (value: string) => {
     if (!value.trim()) return;
@@ -110,6 +114,17 @@ export function CopilotRegion() {
             </div>
           </div>
         ))}
+        {showThinking && (
+          <div className="msg bot">
+            <span className="who">Copilot</span>
+            <div className="bub copilot-thinking">
+              <span className="dot" />
+              <span className="dot" />
+              <span className="dot" />
+              <span className="think-label">{agentMode ? "investigating…" : "thinking…"}</span>
+            </div>
+          </div>
+        )}
       </div>
       <div className="copilot-chips">
         {COPILOT_CHIPS.map((c) => (

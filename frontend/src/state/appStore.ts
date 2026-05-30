@@ -113,6 +113,7 @@ interface AppState {
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
   agentMode: boolean;
+  copilotThinking: boolean;
   copilotLatency: CopilotLatency | null;
   scrubberMinute: number;
   playing: boolean;
@@ -233,6 +234,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   scenarioId: null,
   copilotLog: [],
   agentMode: false,
+  copilotThinking: false,
   copilotLatency: null,
   scrubberMinute: TIMELINE.startMin,
   playing: false,
@@ -357,7 +359,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleAgentMode: () => set((s) => ({ agentMode: !s.agentMode })),
 
   copilotAsk: async (text) => {
-    set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }] }));
+    set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }], copilotThinking: true }));
     const flashBlocked = () => {
       set({ status: { state: "blocked", label: "Action blocked · bylaw conflict" } });
       setTimeout(() => {
@@ -449,6 +451,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: `Copilot unavailable: ${msg}` }] }));
+    } finally {
+      set({ copilotThinking: false });
     }
   },
 

@@ -71,6 +71,7 @@ def enrich_graph(graph: nx.MultiDiGraph) -> nx.MultiDiGraph:
     """Add/normalise all node and edge fields the simulation engine expects."""
     _enrich_nodes(graph)
     _enrich_edges(graph)
+    _name_nodes_from_streets(graph)  # needs edge road_names, so run after edges
     build_edge_index(graph)
     return graph
 
@@ -86,6 +87,37 @@ def _enrich_nodes(graph: nx.MultiDiGraph) -> None:
         # 'name' is rarely present on OSM nodes; keep if available.
         data["name"] = first_value(data.get("name"))
         data["degree"] = graph.degree(node)
+
+
+def _name_nodes_from_streets(graph: nx.MultiDiGraph) -> None:
+    """Give each node a human-readable name from the streets that meet there.
+
+    OSM almost never names intersections, so we synthesise one from the
+    `road_name` of the incident edges (both directions):
+      * 2+ distinct streets -> "King Street West & Spadina Avenue"
+      * 1 street            -> "Lake Shore Boulevard East" (a midblock point)
+      * 0 named streets     -> left as-is (usually None)
+    Any real OSM node name already present is preserved.
+    """
+    for node, data in graph.nodes(data=True):
+        if data.get("name"):  # keep a genuine OSM name if one exists
+            continue
+        counts: dict = {}
+        for _, _, edata in graph.in_edges(node, data=True):
+            _tally(counts, edata.get("road_name"))
+        for _, _, edata in graph.out_edges(node, data=True):
+            _tally(counts, edata.get("road_name"))
+        if not counts:
+            continue
+        # Most common streets first, then alphabetical for determinism.
+        ordered = sorted(counts, key=lambda n: (-counts[n], n))
+        data["name"] = " & ".join(ordered[:2])
+
+
+def _tally(counts: dict, name) -> None:
+    name = first_value(name)
+    if name:
+        counts[name] = counts.get(name, 0) + 1
 
 
 def _enrich_edges(graph: nx.MultiDiGraph) -> None:

@@ -66,6 +66,12 @@ A `networkx.MultiDiGraph` (directed; parallel edges allowed). Nodes are
 intersections/endpoints; edges are directed road segments. OSMnx stores
 longitude as `x` and latitude as `y`; we mirror those into `lon`/`lat`.
 
+OSM almost never names intersections, so each node's `name` is synthesised from
+the streets that meet there: 2+ distinct street names become
+`"King Street West & Spadina Avenue"`, a single street stays as that street
+name (a midblock point), and a node where every incident road is unnamed keeps
+`name = null`. Any genuine OSM node name is preserved.
+
 Edges are addressed by a stable string `edge_id` (`"{u}-{v}-{key}"`). An
 `edge_id -> (u, v, key)` index is cached on the graph and rebuilt on load via
 `build_edge_index(graph)`.
@@ -75,7 +81,8 @@ Edges are addressed by a stable string `edge_id` (`"{u}-{v}-{key}"`). An
 ```json
 {
   "nodes": [
-    { "id": "...", "lat": 43.6, "lon": -79.4, "name": null, "degree": 4 }
+    { "id": "...", "lat": 43.6, "lon": -79.4,
+      "name": "King Street West & Spadina Avenue", "degree": 4 }
   ],
   "edges": [
     {

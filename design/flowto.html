@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-density="comfortable">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FlowTO — Live Digital Twin of Toronto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+<link rel="stylesheet" href="css/flowto.css" />
+</head>
+<body data-view="sim">
+
+<!-- ============================================================ SHELL -->
+<div id="shell">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header id="topbar">
+    <div class="brand">
+      <span class="mark">Flow<b>TO</b></span>
+      <span class="sub">Toronto · Digital Twin</span>
+    </div>
+    <div class="tb-div"></div>
+
+    <!-- VIEW SWITCH -->
+    <div class="viewseg" id="viewseg" role="tablist">
+      <button data-view="sim" class="on" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></svg>
+        Simulate
+      </button>
+      <button data-view="edit" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Edit
+      </button>
+    </div>
+
+    <div class="tb-div"></div>
+    <div class="scenario-tag">
+      <span class="k">Active scenario</span>
+      <span class="v" id="tb-scenario">FIFA WC26 — Post-match egress</span>
+    </div>
+
+    <div class="tb-right">
+      <div class="statuschip" id="statuschip" data-state="nominal">
+        <span class="dot"></span><span id="status-text">Baseline · nominal</span>
+      </div>
+      <div class="dock-toggles" id="dock-toggles">
+        <button class="iconbtn on" data-dock="left" title="Toggle left panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
+        <button class="iconbtn on" data-dock="bottom" title="Toggle timeline / bottom panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15h18"/></svg>
+        </button>
+        <button class="iconbtn on" data-dock="right" title="Toggle right panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+        </button>
+      </div>
+      <button class="iconbtn" id="btn-theme" title="Toggle light / dark ops">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+      <button class="btn ghost btn-sm" id="btn-reset">Reset</button>
+    </div>
+  </header>
+
+  <!-- ===================== TOOL RAIL (editor) ===================== -->
+  <nav id="rail" aria-label="Tools"></nav>
+
+  <!-- ===================== LEFT DOCK ===================== -->
+  <aside id="dock-left" class="dock">
+    <!-- SIM: scenarios -->
+    <section class="region grow v-sim" data-region="scenarios">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Scenarios</span>
+        <span class="spacer"></span>
+        <span class="meta" id="scn-count">4 saved</span>
+      </div>
+      <div class="region-body">
+        <div class="scn" id="scn-list"></div>
+      </div>
+    </section>
+
+    <!-- EDIT: toolbox + scene outliner -->
+    <section class="region v-edit" data-region="toolbox">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Interventions</span>
+      </div>
+      <div class="region-body">
+        <div class="tool-list" id="tool-list"></div>
+      </div>
+    </section>
+    <section class="region grow v-edit" data-region="outliner">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Scene</span>
+        <span class="spacer"></span>
+        <span class="meta" id="out-count">0 objects</span>
+      </div>
+      <div class="region-body">
+        <div class="outliner" id="outliner"></div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ===================== VIEWPORT ===================== -->
+  <main id="viewport">
+    <div id="map"></div>
+
+    <!-- mode banner -->
+    <div class="vp-hud tl">
+      <div class="mode-banner" id="mode-banner">
+        <span class="ico" id="mb-ico"></span>
+        <span class="tx"><span class="a" id="mb-title">Simulation</span><span class="b" id="mb-sub">3-D camera · replay</span></span>
+      </div>
+    </div>
+
+    <!-- camera controls -->
+    <div class="vp-hud tr">
+      <button class="iconbtn" id="btn-recenter" title="Recenter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      </button>
+      <button class="iconbtn" id="btn-tilt" title="Toggle 3-D tilt / top-down">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 8l9-5 9 5-9 5-9-5Z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+      </button>
+    </div>
+
+    <!-- legend -->
+    <div class="vp-hud bl">
+      <div class="vp-chip legend-inner">
+        <span class="lt">Edge pressure</span>
+        <span class="legend-ends">free</span>
+        <span class="legend-ramp"></span>
+        <span class="legend-ends">gridlock</span>
+      </div>
+    </div>
+
+    <!-- placement ghost (editor) -->
+    <div id="place-ghost"><div class="place-ghost-ring" id="place-ghost-ring"></div></div>
+
+    <!-- staged plan action bar (both views) -->
+    <div class="vp-hud bc" id="plan-hud" style="display:none">
+      <div class="plan-bar">
+        <span class="pb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 6"/></svg></span>
+        <div class="pb-tx"><div class="pb-t" id="preview-ttl">Recommended plan</div><div class="pb-s" id="preview-sub">3 bylaw-valid actions</div></div>
+        <button class="btn primary btn-sm" id="btn-apply">Apply &amp; recompute</button>
+        <button class="btn ghost btn-sm" id="btn-discard">Discard</button>
+      </div>
+    </div>
+
+    <!-- recompute overlay -->
+    <div id="recompute">
+      <div class="recompute-card">
+        <div class="rc-hd">
+          <span class="rc-spin"></span>
+          <span class="rc-t" id="rc-title">Recomputing assignment…</span>
+          <span class="rc-sub" id="rc-sub">0%</span>
+        </div>
+        <div class="rc-track"><div class="rc-bar" id="rc-bar"></div></div>
+        <div class="rc-steps" id="rc-steps"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===================== BOTTOM DOCK — TIMELINE ===================== -->
+  <section id="dock-bottom" class="dock">
+    <div class="timeline">
+      <div class="tl-bar">
+        <div class="tl-transport">
+          <button class="tbtn" id="tl-start" title="Jump to start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5 9 12l11 7z"/></svg></button>
+          <button class="tbtn" id="tl-back" title="Step back"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5 7 12l11 7zM7 5h-2v14h2z" /></svg></button>
+          <button class="tbtn play" id="tl-play" title="Play replay"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+          <button class="tbtn" id="tl-fwd" title="Step forward"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l11 7-11 7zM17 5h2v14h-2z"/></svg></button>
+          <button class="tbtn" id="tl-end" title="Jump to end"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7L4 19z"/></svg></button>
+        </div>
+        <div class="tl-clock">
+          <span class="t" id="tl-time">17:05</span>
+          <span class="frame" id="tl-frame">f 740</span>
+          <span class="dow" id="tl-dow">FRI · 12 JUN 2026</span>
+        </div>
+        <div class="tl-right">
+          <span class="meta mono" id="tl-event" style="font-size:9.5px;color:var(--ink-3)">FULL-TIME · egress release</span>
+          <div class="tl-speed" id="tl-speed">
+            <button data-spd="0.5">0.5×</button>
+            <button data-spd="1" class="on">1×</button>
+            <button data-spd="2">2×</button>
+            <button data-spd="4">4×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tl-stage">
+        <div class="tl-ruler" id="tl-ruler"></div>
+        <div class="tl-kfrow" id="tl-kfrow"></div>
+        <div class="tl-playzone" id="tl-playzone">
+          <div class="tl-scrub" id="tl-scrub"></div>
+          <div class="tl-tracks" id="tl-tracks"></div>
+          <div class="tl-playhead" id="tl-playhead">
+            <div class="ph-grip" id="tl-grip"></div>
+            <div class="ph-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== RIGHT DOCK ===================== -->
+  <aside id="dock-right" class="dock">
+    <!-- SIM: before/after -->
+    <section class="region v-sim" data-region="impact">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Before / After</span>
+        <span class="spacer"></span>
+        <div class="ba-toggle" id="ba-toggle">
+          <button data-ba="before">Before</button>
+          <button data-ba="after" class="on">After</button>
+        </div>
+      </div>
+      <div class="region-body" id="metrics-body"></div>
+    </section>
+
+    <!-- EDIT: inspector -->
+    <section class="region v-edit" data-region="inspector">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Inspector</span>
+      </div>
+      <div class="region-body" id="inspector-body"></div>
+    </section>
+
+    <!-- BOTH: copilot -->
+    <section class="region grow" id="copilot-region" data-region="copilot">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Copilot</span>
+        <span class="spacer"></span>
+        <span class="meta">Nemotron · on-device</span>
+      </div>
+      <div class="copilot-log" id="copilot-log"></div>
+      <div class="copilot-chips" id="copilot-chips"></div>
+      <div class="copilot-input">
+        <input id="copilot-input" type="text" placeholder="Ask in plain English…" autocomplete="off" />
+        <button class="btn primary copilot-send" id="copilot-send" aria-label="Send">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 12 16-7-7 16-2.5-6.5L4 12Z"/></svg>
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ===================== STATUS BAR ===================== -->
+  <footer id="statusbar">
+    <div class="sb-cell"><span class="k">Network</span><span class="v" id="sb-net">1,284 edges · 612 nodes</span></div>
+    <div class="sb-cell"><span class="k">Recompute</span><span class="v" id="sb-recompute">12 ms</span></div>
+    <div class="sb-cell"><span class="k">Subgraph</span><span class="v" id="sb-sub">0 edges</span></div>
+    <div class="sb-cell"><span class="k">LLM</span><span class="v cobalt" id="sb-llm">—</span></div>
+    <div class="sb-cell right"><span class="k">FPS</span><span class="v" id="sb-fps">60</span><span class="sb-spark" id="sb-spark"></span></div>
+    <div class="sb-cell device"><span class="k">Compute</span><span class="v good" id="sb-device">DGX Spark · GB10</span></div>
+  </footer>
+
+</div>
+
+<!-- ===================== FIRST RUN ===================== -->
+<div id="firstrun">
+  <div class="fr-card">
+    <div class="fr-eyebrow">Spark Hack Series · 100% on-device</div>
+    <h1 class="fr-title">A live digital twin of <b>Toronto</b>.</h1>
+    <p class="fr-lede"><b>Simulate</b> how traffic and transit flow across the city and scrub the matchday like a replay — then switch to <b>Edit</b> to drop closures, reroutes and signal changes top-down, and watch the impact recompute. Drive it in plain English; the optimizer proposes bylaw-valid plans.</p>
+    <div class="fr-meta">
+      <div class="m"><div class="k">Scenario</div><div class="v">FIFA WC26 egress</div></div>
+      <div class="m"><div class="k">Network</div><div class="v">1,284 edges</div></div>
+      <div class="m"><div class="k">Compute</div><div class="v">DGX Spark</div></div>
+    </div>
+    <button class="btn primary" id="btn-load" style="font-size:14px;padding:12px 20px">
+      Load the twin
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+    </button>
+    <div class="fr-loadline mono" id="fr-loadline"></div>
+  </div>
+</div>
+
+<!-- ===================== SCRIPTS ===================== -->
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="js/data.js"></script>
+<script src="js/map.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/app.js"></script>
+
+<!-- Tweaks panel (React island, bridges to FlowTO via window) -->
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<div id="tweaks-root"></div>
+<script type="text/babel" src="js/tweaks.jsx"></script>
+
+</body>
+</html>

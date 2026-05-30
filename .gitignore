@@ -3,7 +3,27 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+flowto-venv/
 .pytest_cache/
 
 # OSMnx cache
 cache/
+
+# macOS
+.DS_Store
+
+# Data feature store (fetched/baked by datapipeline, not committed)
+data/
+*.parquet
+*.feather
+
+# Large artifacts / trained models
+models/*.pkl
+*.graphml
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Logs
+*.log

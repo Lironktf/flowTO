@@ -1,0 +1,166 @@
+"""In-memory scenario store + shared app state (P06).
+
+``AppState`` holds the read-only baseline graph, the baseline OD, a stable
+edge-id index (string id -> u32 used by the binary frames), and the cached
+baseline simulation result. ``ScenarioStore`` is the per-scenario CRUD + run /
+preview / compare orchestration over the simulator and blast-radius.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import uuid
+from dataclasses import dataclass, field
+
+from ..simulation.simulate_traffic import (
+    compare_simulations,
+    simulate_scenario,
+    simulate_traffic,
+)
+
+
+@dataclass
+class AppState:
+    graph: object
+    od_matrix: list
+    weather: str = "clear"
+    time_context: dict = field(default_factory=dict)
+    edge_ids: list = field(default_factory=list)  # index -> edge_id (str)
+    edge_index: dict = field(default_factory=dict)  # edge_id -> index
+    _baseline: dict | None = None
+
+    @classmethod
+    def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None):
+        edge_ids = sorted(
+            {d.get("edge_id") for _u, _v, d in graph.edges(data=True) if d.get("edge_id")},
+            key=str,
+        )
+        edge_index = {eid: i for i, eid in enumerate(edge_ids)}
+        return cls(
+            graph=graph,
+            od_matrix=od_matrix,
+            weather=weather,
+            time_context=time_context or {},
+            edge_ids=edge_ids,
+            edge_index=edge_index,
+        )
+
+    def baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
+        """Cached baseline run (no interventions) — the compare reference."""
+        if self._baseline is None:
+            self._baseline = simulate_traffic(
+                self.graph,
+                self.od_matrix,
+                iterations=iterations,
+                weather=self.weather,
+                time_context=self.time_context,
+                auto_calibrate=False,
+                congestion_model=congestion_model,
+            )
+        return self._baseline
+
+
+def edge_records(state: AppState, graph) -> list:
+    """Build binary-frame records for a result graph (see api.encoding)."""
+    records = []
+    for _u, _v, d in graph.edges(data=True):
+        eid = d.get("edge_id")
+        idx = state.edge_index.get(eid)
+        if idx is None:
+            continue
+        closed = d.get("status") == "closed"
+        base = d.get("base_time_min") or 0.0
+        cur = d.get("current_time_min")
+        spd = d.get("speed_kmh") or 0.0
+        if cur and cur not in (0, float("inf")) and base:
+            eff_speed = spd * (base / cur)
+        else:
+            eff_speed = 0.0 if closed else spd
+        pressure = d.get("pressure")
+        pressure = 0.0 if pressure in (None, float("inf")) else float(pressure)
+        records.append((idx, d.get("load", 0.0) or 0.0, eff_speed, pressure, closed))
+    return records
+
+
+class ScenarioStore:
+    def __init__(self, state: AppState, *, snapshot_dir: str | None = None):
+        self.state = state
+        self.scenarios: dict[str, dict] = {}
+        self.snapshot_dir = snapshot_dir
+
+    # ---- CRUD ----------------------------------------------------------- #
+    def create(self, payload: dict) -> dict:
+        sid = uuid.uuid4().hex[:12]
+        scenario = {"id": sid, **payload}
+        self.scenarios[sid] = scenario
+        self._snapshot(sid)
+        return scenario
+
+    def get(self, sid: str) -> dict | None:
+        return self.scenarios.get(sid)
+
+    def patch(self, sid: str, patch: dict) -> dict | None:
+        sc = self.scenarios.get(sid)
+        if sc is None:
+            return None
+        sc.update({k: v for k, v in patch.items() if v is not None})
+        self._snapshot(sid)
+        return sc
+
+    def delete(self, sid: str) -> bool:
+        return self.scenarios.pop(sid, None) is not None
+
+    def list(self) -> list:
+        return list(self.scenarios.values())
+
+    def _snapshot(self, sid: str) -> None:
+        if not self.snapshot_dir:
+            return
+        os.makedirs(self.snapshot_dir, exist_ok=True)
+        with open(os.path.join(self.snapshot_dir, f"{sid}.json"), "w") as fh:
+            json.dump(self.scenarios[sid], fh, indent=2, default=str)
+
+    # ---- run / preview / compare --------------------------------------- #
+    def _ops(self, sid: str) -> list:
+        sc = self.scenarios[sid]
+        return [iv if isinstance(iv, dict) else iv for iv in sc.get("interventions", [])]
+
+    def run(self, sid: str, req: dict) -> dict:
+        sc = self.scenarios[sid]
+        result = simulate_scenario(
+            self.state.graph,
+            self.state.od_matrix,
+            sc.get("interventions", []),
+            iterations=req.get("iterations", 4),
+            weather=sc.get("weather", self.state.weather),
+            time_context=sc.get("time_context", self.state.time_context),
+            engine=req.get("engine", "kpath"),
+            congestion_model=req.get("congestion_model", "bpr"),
+            backend=req.get("backend", "cpu"),
+            recompute=req.get("recompute", "full"),
+        )
+        sc["_last_result"] = result
+        return result
+
+    def preview(self, sid: str, interventions: list, req: dict) -> dict:
+        """Run a hypothetical intervention set WITHOUT committing it."""
+        result = simulate_scenario(
+            self.state.graph,
+            self.state.od_matrix,
+            interventions,
+            iterations=req.get("iterations", 4),
+            weather=self.state.weather,
+            time_context=self.state.time_context,
+            engine=req.get("engine", "kpath"),
+            congestion_model=req.get("congestion_model", "bpr"),
+            recompute=req.get("recompute", "full"),
+        )
+        return result
+
+    def compare(self, sid: str) -> dict:
+        sc = self.scenarios[sid]
+        scenario_result = sc.get("_last_result")
+        if scenario_result is None:
+            scenario_result = self.run(sid, {})
+        return compare_simulations(self.state.baseline(), scenario_result)

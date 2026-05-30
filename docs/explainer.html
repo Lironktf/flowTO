@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>flowTO — How the city model works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     flowTO — system explainer
+     Aesthetic: civic blueprint / planning instrument.
+     Drafting-paper ground, ink + cobalt, mono labels,
+     green→amber→red congestion scale as the expressive color.
+     ============================================================ */
+
+  :root{
+    --paper:#F2EFE6;          /* drafting paper            */
+    --panel:#FBFAF5;          /* raised card               */
+    --ink:#15171C;            /* near-black text           */
+    --muted:#5A5D64;          /* secondary text            */
+    --faint:#8C8F96;          /* tertiary                  */
+    --line:rgba(21,23,28,.12);/* hairline                  */
+    --line-strong:rgba(21,23,28,.22);
+    --blue:#1B3FA0;           /* brand / the tool          */
+    --blue-bright:#2D5BE3;    /* interactive               */
+    --blue-wash:#E7ECF8;
+    --green:#1FA463;          /* free-flowing              */
+    --amber:#E6A23C;          /* slowing                   */
+    --red:#D6453A;            /* gridlock                  */
+    --closed:#23262E;
+    --shadow:0 1px 2px rgba(21,23,28,.04), 0 8px 30px rgba(21,23,28,.06);
+    --shadow-lg:0 2px 4px rgba(21,23,28,.05), 0 20px 50px rgba(21,23,28,.10);
+
+    --display:"Fraunces", Georgia, "Times New Roman", serif;
+    --body:"Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --maxw:1140px;
+  }
+
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0;
+    font-family:var(--body);
+    color:var(--ink);
+    background:var(--paper);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    /* fine blueprint grid */
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:34px 34px;
+    background-position:center top;
+  }
+  /* soften the grid except near edges */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:radial-gradient(120% 80% at 50% 0%, transparent 40%, var(--paper) 78%);
+  }
+
+  ::selection{background:var(--blue);color:#fff;}
+
+  a{color:var(--blue-bright);text-decoration:none;}
+  a:hover{text-decoration:underline;}
+
+  /* ---------- layout helpers ---------- */
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px;position:relative;z-index:1;}
+  section{padding:96px 0;position:relative;z-index:1;}
+  .lede{font-size:1.22rem;color:var(--muted);max-width:60ch;}
+
+  /* mono eyebrow / section index */
+  .kicker{
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.22em;
+    text-transform:uppercase;color:var(--blue);font-weight:500;
+    display:inline-flex;align-items:center;gap:.6em;
+  }
+  .kicker::before{content:"";width:26px;height:1px;background:var(--blue);display:inline-block;}
+
+  h1,h2,h3{font-family:var(--display);font-weight:500;letter-spacing:-.02em;line-height:1.06;}
+  h2{font-size:clamp(2rem,4.4vw,3.1rem);margin:.5rem 0 1rem;}
+  h3{font-size:1.4rem;letter-spacing:-.01em;}
+
+  .section-head{margin-bottom:54px;max-width:72ch;}
+  .section-head .num{
+    font-family:var(--mono);font-size:.78rem;color:var(--faint);
+    letter-spacing:.1em;display:block;margin-bottom:18px;
+  }
+
+  /* ---------- top nav ---------- */
+  nav{
+    position:sticky;top:0;z-index:50;
+    backdrop-filter:saturate(1.4) blur(10px);
+    background:rgba(242,239,230,.82);
+    border-bottom:1px solid var(--line);
+  }
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:60px;}
+  .brand{font-family:var(--display);font-weight:600;font-size:1.18rem;letter-spacing:-.01em;display:flex;align-items:center;gap:.55em;}
+  .brand .dot{width:10px;height:10px;border-radius:2px;background:var(--blue);box-shadow:0 0 0 4px var(--blue-wash);}
+  .brand b{color:var(--blue);}
+  .navlinks{display:flex;gap:26px;font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;}
+  .navlinks a{color:var(--muted);}
+  .navlinks a:hover{color:var(--ink);text-decoration:none;}
+  @media(max-width:820px){.navlinks{display:none;}}
+
+  /* ---------- hero ---------- */
+  .hero{padding:120px 0 70px;overflow:hidden;}
+  .hero .eyebrow{margin-bottom:26px;}
+  .hero h1{
+    font-size:clamp(2.7rem,7vw,5.3rem);
+    max-width:16ch;margin:0 0 28px;
+  }
+  .hero h1 .hl{color:var(--blue);font-style:italic;}
+  .hero p{font-size:1.3rem;color:var(--muted);max-width:54ch;margin:0 0 40px;}
+  .hero-tags{display:flex;flex-wrap:wrap;gap:10px;}
+  .tag{
+    font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;
+    padding:7px 13px;border:1px solid var(--line-strong);border-radius:100px;
+    color:var(--muted);background:var(--panel);
+  }
+  .tag .sw{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
+
+  /* staggered reveal on load */
+  .reveal-load{opacity:0;transform:translateY(16px);animation:rise .9s cubic-bezier(.2,.7,.2,1) forwards;}
+  @keyframes rise{to{opacity:1;transform:none;}}
+  .d1{animation-delay:.05s}.d2{animation-delay:.18s}.d3{animation-delay:.32s}.d4{animation-delay:.46s}.d5{animation-delay:.6s}
+
+  /* scroll reveal */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1);}
+  .reveal.in{opacity:1;transform:none;}
+
+  /* ---------- generic cards ---------- */
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:30px;box-shadow:var(--shadow);
+  }
+  .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+  @media(max-width:820px){.grid-3,.grid-2{grid-template-columns:1fr;}}
+
+  .ico{width:42px;height:42px;border-radius:10px;display:grid;place-items:center;background:var(--blue-wash);color:var(--blue);margin-bottom:18px;}
+  .ico svg{width:22px;height:22px;}
+
+  /* ---------- analogy callout ---------- */
+  .analogy{
+    border-left:3px solid var(--amber);
+    background:linear-gradient(90deg, rgba(230,162,60,.08), transparent 80%);
+    padding:20px 24px;border-radius:0 12px 12px 0;margin:28px 0;
+  }
+  .analogy .lbl{font-family:var(--mono);font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:#B07A1E;display:flex;align-items:center;gap:.5em;margin-bottom:8px;}
+  .analogy p{margin:0;font-family:var(--display);font-style:italic;font-size:1.18rem;color:var(--ink);line-height:1.45;}
+
+  /* ---------- two-way comparison ---------- */
+  .versus{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--panel);box-shadow:var(--shadow-lg);}
+  .versus .col{padding:34px;}
+  .versus .col.bad{background:repeating-linear-gradient(135deg,transparent,transparent 11px,rgba(214,69,58,.035) 11px,rgba(214,69,58,.035) 12px);}
+  .versus .col.good{border-left:1px solid var(--line);background:linear-gradient(180deg,rgba(31,164,99,.05),transparent);}
+  .versus h3{display:flex;align-items:center;gap:.6em;margin-top:0;}
+  .pill{font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;padding:4px 9px;border-radius:6px;font-weight:600;}
+  .pill.no{background:rgba(214,69,58,.12);color:var(--red);}
+  .pill.yes{background:rgba(31,164,99,.14);color:#157A48;}
+  .versus ul{list-style:none;padding:0;margin:18px 0 0;}
+  .versus li{padding:9px 0 9px 26px;position:relative;color:var(--muted);border-top:1px dashed var(--line);}
+  .versus li::before{position:absolute;left:0;top:9px;font-family:var(--mono);}
+  .versus .bad li::before{content:"×";color:var(--red);font-weight:700;}
+  .versus .good li::before{content:"✓";color:var(--green);font-weight:700;}
+  @media(max-width:820px){.versus{grid-template-columns:1fr;} .versus .col.good{border-left:none;border-top:1px solid var(--line);}}
+
+  /* ---------- four steps ---------- */
+  .step{display:grid;grid-template-columns:88px 1fr 230px;gap:30px;align-items:center;padding:34px 0;border-top:1px solid var(--line);}
+  .step:last-child{border-bottom:1px solid var(--line);}
+  .step .n{font-family:var(--display);font-size:3.4rem;color:var(--blue);line-height:1;font-weight:500;}
+  .step .q{font-family:var(--display);font-size:1.5rem;margin:0 0 8px;}
+  .step .body{color:var(--muted);margin:0;}
+  .step .body b{color:var(--ink);font-weight:600;}
+  .stepviz{height:108px;border:1px solid var(--line);border-radius:12px;background:var(--paper);display:grid;place-items:center;overflow:hidden;}
+  .stepviz svg{width:100%;height:100%;}
+  @media(max-width:820px){.step{grid-template-columns:56px 1fr;} .stepviz{grid-column:1/-1;}}
+
+  /* ---------- feedback loop ---------- */
+  .loopwrap{display:grid;grid-template-columns:1.1fr .9fr;gap:46px;align-items:center;}
+  @media(max-width:820px){.loopwrap{grid-template-columns:1fr;}}
+  .loopcircle{position:relative;aspect-ratio:1;max-width:420px;margin:0 auto;}
+
+  /* ---------- interactive control panel ---------- */
+  .console{
+    background:var(--closed);border-radius:18px;padding:26px;color:#E9E7DF;
+    box-shadow:var(--shadow-lg);position:relative;overflow:hidden;
+    background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+    background-size:22px 22px;
+  }
+  .console-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px;flex-wrap:wrap;gap:10px;}
+  .console-top .t{font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:#9DA2AC;}
+  .console-top .t b{color:#fff;}
+  .heatgrid{display:grid;gap:3px;width:100%;}
+  .cell{aspect-ratio:1.25;border-radius:3px;transition:background-color .8s cubic-bezier(.4,0,.2,1);}
+  .cell.closed{background:#3A3E47 !important;background-image:repeating-linear-gradient(45deg,#2b2e36 0 4px,#3a3e47 4px 8px) !important;}
+  .console-foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;gap:16px;flex-wrap:wrap;}
+  .metricbox{display:flex;gap:26px;}
+  .metric .v{font-family:var(--display);font-size:2.1rem;line-height:1;color:#fff;}
+  .metric .v.warn{color:var(--red);}
+  .metric .v.ok{color:#46d088;}
+  .metric .k{font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;text-transform:uppercase;color:#9DA2AC;margin-top:7px;}
+  .legend{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:.64rem;color:#9DA2AC;letter-spacing:.08em;}
+  .legend .bar{width:120px;height:7px;border-radius:4px;background:linear-gradient(90deg,var(--green),var(--amber),var(--red));}
+
+  .scenariobar{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px;}
+  @media(max-width:620px){.scenariobar{grid-template-columns:1fr 1fr;}}
+  .sbtn{
+    font-family:var(--mono);font-size:.74rem;text-align:left;cursor:pointer;
+    background:var(--panel);border:1px solid var(--line-strong);border-radius:11px;
+    padding:13px 14px;color:var(--ink);transition:.18s;line-height:1.3;
+  }
+  .sbtn .step-n{display:block;font-size:.6rem;letter-spacing:.14em;color:var(--faint);margin-bottom:6px;}
+  .sbtn:hover{border-color:var(--blue);transform:translateY(-2px);box-shadow:var(--shadow);}
+  .sbtn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
+  .sbtn.active .step-n{color:rgba(255,255,255,.7);}
+  .caption{font-family:var(--body);color:var(--muted);margin:16px 2px 0;min-height:2.8em;}
+  .caption b{color:var(--ink);}
+
+  /* ---------- levers ---------- */
+  .levers{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  @media(max-width:820px){.levers{grid-template-columns:1fr 1fr;}}
+  @media(max-width:520px){.levers{grid-template-columns:1fr;}}
+  .lever{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;gap:14px;align-items:flex-start;transition:.2s;}
+  .lever:hover{border-color:var(--blue);box-shadow:var(--shadow);}
+  .lever svg{width:22px;height:22px;color:var(--blue);flex:none;margin-top:2px;}
+  .lever .lt{font-weight:600;font-size:.97rem;}
+  .lever .ld{font-size:.85rem;color:var(--muted);margin-top:2px;}
+
+  /* ---------- ripple example ---------- */
+  .ripple{display:grid;grid-template-columns:repeat(4,1fr);gap:0;counter-reset:r;}
+  @media(max-width:820px){.ripple{grid-template-columns:1fr;}}
+  .rstep{padding:26px 22px;border-left:1px solid var(--line);position:relative;}
+  .rstep:first-child{border-left:none;}
+  @media(max-width:820px){.rstep{border-left:none;border-top:1px solid var(--line);} .rstep:first-child{border-top:none;}}
+  .rstep .rn{font-family:var(--mono);font-size:.74rem;color:var(--blue);letter-spacing:.1em;margin-bottom:12px;display:block;}
+  .rstep .rt{font-family:var(--display);font-size:1.15rem;margin:0 0 8px;}
+  .rstep p{margin:0;color:var(--muted);font-size:.93rem;}
+  .rstep .arrow{position:absolute;right:-9px;top:36px;width:18px;height:18px;color:var(--faint);z-index:2;}
+  @media(max-width:820px){.rstep .arrow{display:none;}}
+
+  /* ---------- big stat row ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  @media(max-width:820px){.stats{grid-template-columns:1fr 1fr;}}
+  .stat{padding:30px 22px;border-left:1px solid var(--line);}
+  .stat:first-child{border-left:none;}
+  .stat .sv{font-family:var(--display);font-size:2.4rem;color:var(--ink);line-height:1;}
+  .stat .sv .u{font-size:1.1rem;color:var(--blue);}
+  .stat .sk{font-family:var(--mono);font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:10px;}
+
+  /* ---------- AI helpers ---------- */
+  .chat{font-family:var(--mono);font-size:.9rem;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:18px;}
+  .chat .you{color:var(--ink);}
+  .chat .you::before{content:"› ";color:var(--blue);}
+  .chat .bot{color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);}
+  .chat .bot::before{content:"flowTO ";color:var(--green);font-weight:600;}
+
+  /* ---------- glossary ---------- */
+  .gloss{display:grid;grid-template-columns:1fr 1fr;gap:0 40px;}
+  @media(max-width:820px){.gloss{grid-template-columns:1fr;}}
+  .gloss dt{font-family:var(--mono);font-size:.82rem;color:var(--blue);font-weight:600;padding-top:18px;border-top:1px solid var(--line);}
+  .gloss dd{margin:6px 0 18px;color:var(--muted);font-size:.95rem;}
+
+  footer{padding:60px 0 50px;border-top:1px solid var(--line);color:var(--faint);font-family:var(--mono);font-size:.78rem;letter-spacing:.05em;}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;}
+
+  .divider{height:1px;background:var(--line);margin:0;}
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav>
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>flow<b>TO</b></div>
+    <div class="navlinks">
+      <a href="#idea">The idea</a>
+      <a href="#approach">Approach</a>
+      <a href="#thinking">How it thinks</a>
+      <a href="#panel">Try it</a>
+      <a href="#trust">Trust</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker eyebrow reveal-load d1">City-scale traffic simulation · plain-language guide</div>
+    <h1 class="reveal-load d2">A working model of how <span class="hl">Toronto moves.</span></h1>
+    <p class="reveal-load d3">flowTO is a living, 3-D copy of the city — a “digital twin.” Set the clock, change something (close a road, add a World Cup crowd), and watch how traffic and transit respond <em>before</em> anyone pours a single cone of concrete.</p>
+    <div class="hero-tags reveal-load d4">
+      <span class="tag"><span class="sw" style="background:var(--blue)"></span>Digital twin of Toronto</span>
+      <span class="tag"><span class="sw" style="background:var(--green)"></span>Simulates, doesn't guess</span>
+      <span class="tag"><span class="sw" style="background:var(--amber)"></span>Runs on one machine</span>
+      <span class="tag"><span class="sw" style="background:var(--red)"></span>Answers "what if?"</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 00 — THE GIST ============ -->
+<section id="idea">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">00 / THE GIST</span>
+      <span class="kicker">The whole thing in one breath</span>
+      <h2>It's SimCity — but it's the real Toronto, and it's a serious tool.</h2>
+      <p class="lede">A city planner's job is full of expensive, irreversible decisions: close this street, reroute that bus, add a bike lane. flowTO lets them <b>test those decisions on a virtual city first</b> and see the knock-on effects across every road and transit line.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card reveal">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 21h18M5 21V7l5-4 5 4v14M9 9h2m-2 4h2m4-4h0m-0 4h0"/><path d="M15 21V11l4 0v10"/></svg>
+        </div>
+        <h3>A copy of the city</h3>
+        <p style="color:var(--muted)">Every street, every TTC line, GO, and UP Express — laid out in 3-D with building outlines and a congestion heatmap on top.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </div>
+        <h3>Set the clock</h3>
+        <p style="color:var(--muted)">Pick a time of day and date. A weekday 5 p.m. looks nothing like a Sunday morning — the model knows the difference.</p>
+      </div>
+      <div class="card reveal">
+        <div class="ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="16" cy="6" r="2" fill="var(--paper)"/><circle cx="8" cy="12" r="2" fill="var(--paper)"/><circle cx="13" cy="18" r="2" fill="var(--paper)"/></svg>
+        </div>
+        <h3>Pull the levers</h3>
+        <p style="color:var(--muted)">Close a road, drop a lane, add a crowd, boost a streetcar. Each change ripples through the whole city, and you watch it happen.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 01 — APPROACH ============ -->
+<section id="approach">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">01 / THE BIG CHOICE</span>
+      <span class="kicker">Why we don't just use "an AI that predicts traffic"</span>
+      <h2>Two ways to predict a city. We picked the one that can handle surprises.</h2>
+      <p class="lede">This is the single most important idea in the whole project, so it's worth slowing down on.</p>
+    </div>
+
+    <div class="versus reveal">
+      <div class="col bad">
+        <h3><span class="pill no">The memory way</span></h3>
+        <p style="color:var(--muted);margin-top:14px">Show an AI millions of past traffic days. It learns the patterns and <em>recalls</em> what a typical Tuesday looks like.</p>
+        <ul class="bad">
+          <li>Great at repeating days it has seen before.</li>
+          <li>Ask it something brand-new — “close King St for the World Cup” — and it has nothing to remember. It can only echo the past.</li>
+          <li>A planner's whole job is the <em>new</em> question. So this fails exactly when it matters.</li>
+        </ul>
+      </div>
+      <div class="col good">
+        <h3><span class="pill yes">The simulation way</span> <span style="font-family:var(--mono);font-size:.66rem;color:var(--green);letter-spacing:.1em">← OURS</span></h3>
+        <p style="color:var(--muted);margin-top:14px">Model the actual rules — people need to get places, cars fill roads, roads have limits — and let the traffic <em>play itself out</em>, like a physics engine for a city.</p>
+        <ul class="good">
+          <li>Because it works from rules, it can answer questions that have <em>never happened.</em></li>
+          <li>Change one thing and the whole city re-figures itself from scratch.</li>
+          <li>This is how real transportation agencies actually do it.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="analogy reveal">
+      <div class="lbl">◆ Think of it like this</div>
+      <p>Predicting where a thrown ball lands. You could memorize ten thousand past throws — and be useless on a throw you've never seen. Or you could understand gravity, and nail <em>any</em> throw. flowTO chose gravity.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 02 — HOW IT THINKS (4 steps) ============ -->
+<section id="thinking">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">02 / THE ENGINE</span>
+      <span class="kicker">How the model figures out traffic</span>
+      <h2>It answers four simple questions, in order.</h2>
+      <p class="lede">Planners call this the “four-step model.” It's the same recipe agencies have used for decades — we just run it fast, on the whole city at once.</p>
+    </div>
+
+    <!-- step 1 -->
+    <div class="step reveal">
+      <div class="n">1</div>
+      <div>
+        <p class="q">“How many people are heading out right now?”</p>
+        <p class="body">Depends on the time and where homes, jobs, and big draws sit. At 5 p.m., offices empty out. On match day, <b>45,000 people</b> pour out of BMO Field at once.</p>
+      </div>
+      <div class="stepviz" aria-hidden="true">
+        <svg viewBox="0 0 230 108"><g fill="none" stroke="#1B3FA0" stroke-width="1.4">
+          <rect x="22" y="58" width="26" height="34"/><rect x="54" y="44" width="26" height="48"/><rect x="86" y="64" width="26" height="28"/>
+          </g>
+          <g fill="#D6453A"><circle cx="130" cy="40" r="3"/><circle cx="144" cy="52" r="3"/><circle cx="158" cy="34" r="3"/><circle cx="170" cy="48" r="3"/><circle cx="184" cy="38" r="3"/><circle cx="196" cy="56" r="3"/><circle cx="150" cy="68" r="3"/><circle cx="178" cy="66" r="3"/></g>
+          <path d="M116 50 h18" stroke="#8C8F96" stroke-width="1.2" stroke-dasharray="3 3"/>
+        </svg>
+      </div>
+    </div>
+
+    <!-- step 2 -->
+    <div class="step reveal">
+      <div class="n">2</div>
+      <div>
+        <p class="q">“Where is each of them going?”</p>
+        <p class="body">People tend to head to places that are <b>big and close</b>. A huge mall pulls more trips than a corner store; somewhere far pulls fewer than somewhere near. (Planners literally call this a <b>“gravity” model</b> — bigger places have more pull.)</p>
+      </div>
+      <div class="stepviz" aria-hidden="true">
+        <svg viewBox="0 0 230 108">
+          <circle cx="60" cy="54" r="7" fill="#1B3FA0"/>
+          <circle cx="175" cy="32" r="13" fill="#1B3FA0" opacity=".85"/>
+          <circle cx="160" cy="80" r="6" fill="#1B3FA0" opacity=".5"/>
+          <g stroke="#1B3FA0" fill="none" stroke-width="1.4">
+            <path d="M67 52 Q120 30 162 32" stroke-width="3"/>
+            <path d="M66 58 Q110 78 154 79" stroke-width="1.2" stroke-dasharray="3 3"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- step 3 -->
+    <div class="step reveal">
+      <div class="n">3</div>
+      <div>
+        <p class="q">“Car, transit, bike, or walk?”</p>
+        <p class="body">Each person picks whatever's fastest and easiest <b>for them</b>. Make driving miserable and some switch to the streetcar. Make transit faster and more pile on. This is why <b>shutting a subway line floods the buses nearby.</b></p>
+      </div>
+      <div class="stepviz" aria-hidden="true">
+        <svg viewBox="0 0 230 108"><g stroke-width="1.5" fill="none">
+          <g stroke="#15171C"><rect x="34" y="46" width="34" height="18" rx="3"/><circle cx="44" cy="66" r="4"/><circle cx="60" cy="66" r="4"/></g>
+          <g stroke="#1FA463"><rect x="96" y="42" width="46" height="22" rx="3"/><circle cx="106" cy="66" r="4"/><circle cx="132" cy="66" r="4"/><path d="M96 54h46"/></g>
+          <g stroke="#E6A23C"><circle cx="176" cy="56" r="9"/><circle cx="202" cy="56" r="9"/><path d="M176 56l8-14h8M184 42l10 14"/></g>
+        </g></svg>
+      </div>
+    </div>
+
+    <!-- step 4 -->
+    <div class="step reveal">
+      <div class="n">4</div>
+      <div>
+        <p class="q">“Which exact roads and lines do they fill?”</p>
+        <p class="body">Everyone takes the route they think is fastest. Pile enough cars onto a road and it <b>clogs</b> — so the next drivers spill onto side streets. The model tracks how full every single road gets. <b>That fullness is the heatmap.</b></p>
+      </div>
+      <div class="stepviz" aria-hidden="true">
+        <svg viewBox="0 0 230 108"><g fill="none" stroke-width="6" stroke-linecap="round">
+          <path d="M20 30h60" stroke="#1FA463"/>
+          <path d="M20 54h190" stroke="#D6453A"/>
+          <path d="M20 78h120" stroke="#E6A23C"/>
+          <path d="M150 30v48" stroke="#1FA463"/>
+          <path d="M190 30v48" stroke="#E6A23C"/>
+        </g></svg>
+      </div>
+    </div>
+
+    <p style="text-align:center;color:var(--muted);margin-top:40px;max-width:60ch;margin-left:auto;margin-right:auto" class="reveal">…and here's the twist that makes it real: the clog from question&nbsp;4 changes the answers to 2 and 3. So the model loops back and asks again.</p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 03 — THE BALANCING ACT ============ -->
+<section id="balance" style="background:linear-gradient(180deg,rgba(27,63,160,.04),transparent);">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">03 / THE KEY IDEA</span>
+      <span class="kicker">The part most people miss</span>
+      <h2>Traffic settles into a balance — and so does the model.</h2>
+    </div>
+    <div class="loopwrap">
+      <div class="reveal">
+        <p style="font-size:1.12rem;color:var(--ink)">Real drivers avoid jams. If everyone took the “best” road, it would instantly become the worst road — so people reshuffle until no single driver could get there faster by switching. That settled state is called <b>balance</b> (planners say “equilibrium”).</p>
+        <p style="color:var(--muted)">flowTO does the same dance: it runs the four questions, sees where it clogged, lets people re-route around the clog, and runs them again — over and over — until the picture stops moving. <b>That stable picture is the prediction.</b></p>
+        <div class="analogy">
+          <div class="lbl">◆ Think of it like this</div>
+          <p>Checkout lines at a grocery store. People drift to the shortest line until every line is about equally slow. Nobody planned it — it just balances out. A whole city of drivers does exactly that, and the model finds where it lands.</p>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <div class="loopcircle">
+          <svg viewBox="0 0 360 360" width="100%" height="100%">
+            <defs>
+              <marker id="ah" markerWidth="9" markerHeight="9" refX="5" refY="4.5" orient="auto"><path d="M1 1 L8 4.5 L1 8" fill="none" stroke="#1B3FA0" stroke-width="1.6"/></marker>
+            </defs>
+            <!-- ring -->
+            <circle cx="180" cy="180" r="120" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="2 6"/>
+            <!-- arrows around -->
+            <g stroke="#1B3FA0" stroke-width="2" fill="none" marker-end="url(#ah)">
+              <path d="M236 76 A120 120 0 0 1 300 180"/>
+              <path d="M300 200 A120 120 0 0 1 200 296"/>
+              <path d="M160 296 A120 120 0 0 1 60 200"/>
+              <path d="M60 160 A120 120 0 0 1 160 64"/>
+            </g>
+            <!-- nodes -->
+            <g font-family="IBM Plex Mono, monospace" font-size="11" fill="#15171C" text-anchor="middle">
+              <g><circle cx="180" cy="56" r="30" fill="var(--panel)" stroke="#1B3FA0" stroke-width="1.6"/><text x="180" y="53">how</text><text x="180" y="66">many</text></g>
+              <g><circle cx="304" cy="180" r="30" fill="var(--panel)" stroke="#1B3FA0" stroke-width="1.6"/><text x="304" y="184">where</text></g>
+              <g><circle cx="180" cy="304" r="30" fill="var(--panel)" stroke="#1B3FA0" stroke-width="1.6"/><text x="180" y="301">how</text><text x="180" y="314">(mode)</text></g>
+              <g><circle cx="56" cy="180" r="30" fill="var(--panel)" stroke="#1B3FA0" stroke-width="1.6"/><text x="56" y="184">roads</text></g>
+            </g>
+            <!-- center -->
+            <circle cx="180" cy="180" r="46" fill="#1B3FA0"/>
+            <text x="180" y="176" text-anchor="middle" font-family="Fraunces,serif" font-size="15" fill="#fff" font-style="italic">repeat</text>
+            <text x="180" y="194" text-anchor="middle" font-family="Fraunces,serif" font-size="15" fill="#fff" font-style="italic">until</text>
+            <text x="180" y="212" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9" fill="#cdd6f5" letter-spacing="1">SETTLED</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 04 — INTERACTIVE PANEL ============ -->
+<section id="panel">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">04 / SEE IT MOVE</span>
+      <span class="kicker">A toy version of the real thing</span>
+      <h2>Click through a World Cup evening.</h2>
+      <p class="lede">Each square is a patch of the city. Green is free-flowing, red is gridlock. Press the buttons in order and watch the same crowd play out four different ways. <span style="font-family:var(--mono);font-size:.8rem">(Illustration — the real model runs the whole street grid.)</span></p>
+    </div>
+
+    <div class="grid-2" style="align-items:start;gap:34px">
+      <div class="reveal">
+        <div class="console">
+          <div class="console-top">
+            <div class="t">TORONTO · <b id="clockLabel">Tue 17:00</b></div>
+            <div class="legend">FREE<span class="bar"></span>JAMMED</div>
+          </div>
+          <div class="heatgrid" id="heatgrid"></div>
+          <div class="console-foot">
+            <div class="metricbox">
+              <div class="metric"><div class="v" id="mTime">22<span style="font-size:1rem"> min</span></div><div class="k">Avg trip across core</div></div>
+              <div class="metric"><div class="v" id="mFlow">Good</div><div class="k">City flow</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="scenariobar" id="scenarioBar">
+          <button class="sbtn active" data-s="0"><span class="step-n">STEP 01</span>Normal evening</button>
+          <button class="sbtn" data-s="1"><span class="step-n">STEP 02</span>World Cup surge</button>
+          <button class="sbtn" data-s="2"><span class="step-n">STEP 03</span>Close King St</button>
+          <button class="sbtn" data-s="3"><span class="step-n">STEP 04</span>Apply the fix</button>
+        </div>
+      </div>
+
+      <div class="reveal">
+        <p class="caption" id="caption"><b>A normal Tuesday at 5 p.m.</b> Downtown glows a healthy amber — busy, but moving. This is the baseline the planner compares everything against.</p>
+
+        <h3 style="margin-top:30px">What the buttons are doing</h3>
+        <p style="color:var(--muted)">Nothing here is scripted scene-by-scene. You change <em>one input</em> — a crowd, a closed street, an extra streetcar — and the city re-balances itself using the four questions from the last section. The red you see in Step&nbsp;3 isn't placed by hand; it's where the cars that <em>used</em> to take King had to go instead.</p>
+        <div class="analogy" style="margin-top:24px">
+          <div class="lbl">◆ The takeaway</div>
+          <p>You never tell flowTO “make Queen Street red.” You close King Street, and the redness <em>shows up on its own.</em> That's the difference between a memory and a model.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ LEVERS ============ -->
+<section style="padding-top:70px">
+  <div class="wrap">
+    <div class="section-head reveal" style="margin-bottom:34px">
+      <span class="kicker">The full control set</span>
+      <h2 style="font-size:clamp(1.7rem,3.6vw,2.4rem)">Every lever is just “change one number, then let the city rebalance.”</h2>
+    </div>
+    <div class="levers reveal">
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg><div><div class="lt">Close a road</div><div class="ld">Capacity drops to zero; cars find another way.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h16M4 16h16M9 4v16"/></svg><div><div class="lt">Reduce lanes</div><div class="ld">Less room means it clogs at lower volume.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 18h18M6 18l3-9 3 5 3-8 3 12"/></svg><div><div class="lt">Add construction</div><div class="ld">A slow, narrowed zone that drags down a corridor.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.4"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5M15 19c0-2 1.5-3.5 3.5-3.5S21 17 21 19"/></svg><div><div class="lt">Add a crowd</div><div class="ld">An event injects thousands of trips at one spot.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="3" width="12" height="14" rx="2"/><path d="M6 9h12M9 21l3-4 3 4"/></svg><div><div class="lt">Boost a transit line</div><div class="ld">More frequent service; people switch off the roads.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12h10a4 4 0 004-4V5M14 12l-3-3M14 12l-3 3"/></svg><div><div class="lt">Reroute / contraflow</div><div class="ld">Send traffic a different way, or flip a lane's direction.</div></div></div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 05 — RIPPLE ============ -->
+<section id="ripple" style="background:var(--panel)">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">05 / WORKED EXAMPLE</span>
+      <span class="kicker">Why one small change matters everywhere</span>
+      <h2>Close King Street at 5 p.m. — follow the dominoes.</h2>
+    </div>
+    <div class="ripple reveal" style="border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--paper)">
+      <div class="rstep">
+        <span class="rn">DOMINO 01</span>
+        <p class="rt">The cars don't vanish.</p>
+        <p>King is closed, but those drivers still need to get home. They spill onto Queen and Front.</p>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rstep">
+        <span class="rn">DOMINO 02</span>
+        <p class="rt">Those streets go red.</p>
+        <p>Queen and Front were already busy. The extra cars tip them into gridlock — the heatmap lights up.</p>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rstep">
+        <span class="rn">DOMINO 03</span>
+        <p class="rt">Some drivers give up.</p>
+        <p>Seeing the mess, a chunk of them abandon the car and hop the 504 streetcar instead.</p>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rstep">
+        <span class="rn">DOMINO 04</span>
+        <p class="rt">A new balance — with a number.</p>
+        <p>The streetcar gets crowded, the roads settle, and flowTO reports it: <b style="color:var(--ink)">“average trip +6 min.”</b></p>
+      </div>
+    </div>
+    <p style="color:var(--muted);max-width:62ch;margin-top:26px" class="reveal">No human placed any of that. You changed <em>one</em> thing — King is closed — and the model worked out all four dominoes by itself. Do this for a whole World Cup, and a planner can see trouble coming weeks before it arrives.</p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 06+07 — TRUST ============ -->
+<section id="trust">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">06 / WHY YOU CAN TRUST IT</span>
+      <span class="kicker">Boring on purpose</span>
+      <h2>Same question in, same answer out. Every time.</h2>
+    </div>
+    <div class="grid-2" style="align-items:center">
+      <div class="reveal">
+        <p style="font-size:1.1rem">Run the exact same scenario twice and you get the <b>exact same result</b> — down to the last street. flowTO is a calculator, not a slot machine.</p>
+        <p style="color:var(--muted)">That matters for two reasons. A planner can stand in front of city council and defend a number that won't change on a re-run. And on a demo stage, nothing surprises us — what we rehearsed is what happens.</p>
+      </div>
+      <div class="analogy reveal" style="margin:0">
+        <div class="lbl">◆ Think of it like this</div>
+        <p>Press 7 × 8 on a calculator and you always get 56. You'd never trust a calculator that sometimes said 55. Planning decisions deserve the same.</p>
+      </div>
+    </div>
+
+    <div style="margin-top:80px" class="reveal">
+      <span class="num" style="font-family:var(--mono);font-size:.78rem;color:var(--faint);letter-spacing:.1em;display:block;margin-bottom:18px">07 / DOES IT ACTUALLY WORK?</span>
+      <span class="kicker">Proving it before we bet on it</span>
+      <h2 style="margin-top:.4rem">We test it against the past.</h2>
+      <p class="lede" style="margin-top:14px">There's a simple honesty check: rewind to something that <em>already happened</em> and see if the model would have called it.</p>
+    </div>
+
+    <div class="stats reveal" style="margin-top:36px">
+      <div class="stat"><div class="sv">1</div><div class="sk">Pick a real past event — a Gardiner closure, a big game letting out</div></div>
+      <div class="stat"><div class="sv">2</div><div class="sk">Feed the model that exact situation</div></div>
+      <div class="stat"><div class="sv">3</div><div class="sk">Compare its prediction to what really happened</div></div>
+      <div class="stat"><div class="sv">4</div><div class="sk">Nail the past → trust it on the future (hello, World Cup)</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 08 — HARDWARE ============ -->
+<section id="hardware" style="background:var(--closed);color:#E9E7DF;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:34px 34px;">
+  <div class="wrap">
+    <div class="section-head reveal" style="color:#E9E7DF">
+      <span class="num" style="color:#8b95b0">08 / WHERE IT RUNS</span>
+      <span class="kicker" style="color:#7fa0ff">No cloud. Nothing leaves the room.</span>
+      <h2 style="color:#fff">The entire city fits on one machine.</h2>
+      <p class="lede" style="color:#A7ABB4">The simulation, the AI assistant, and the optimizer all run locally on a single NVIDIA box — its graphics chip solving the whole city's traffic in a few seconds.</p>
+    </div>
+    <div class="stats reveal" style="border-color:rgba(255,255,255,.14)">
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">121<span class="u" style="color:#7fa0ff"> GB</span></div><div class="sk" style="color:#9DA2AC">Shared memory — the whole city loads at once</div></div>
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">~4<span class="u" style="color:#7fa0ff"> sec</span></div><div class="sk" style="color:#9DA2AC">To re-solve a full scenario</div></div>
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">0<span class="u" style="color:#7fa0ff"> cloud</span></div><div class="sk" style="color:#9DA2AC">Runs fully offline, on-device</div></div>
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">1<span class="u" style="color:#7fa0ff"> box</span></div><div class="sk" style="color:#9DA2AC">Sim + AI + optimizer, all together</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 09 — AI HELPERS ============ -->
+<section id="helpers">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">09 / THE TWO AI HELPERS</span>
+      <span class="kicker">On top of the simulation, not instead of it</span>
+      <h2>One to talk to. One to do the searching for you.</h2>
+    </div>
+    <div class="grid-2 reveal">
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.5 8.5 0 01-12 7.7L3 21l1.8-6A8.5 8.5 0 1121 11.5z"/></svg></div>
+        <h3>The copilot — talk to the city</h3>
+        <p style="color:var(--muted)">Type a plain-English wish. It sets up the scenario, runs the model, and explains the result back to you — no menus, no jargon.</p>
+        <div class="chat">
+          <div class="you">Ease the post-match gridlock around BMO Field without breaking any bylaws.</div>
+          <div class="bot">Tried 3 fixes. Best: contraflow on Lakeshore + 50% more 509 streetcars. Egress time −32%, $0 cost, no bylaws broken.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.4"/></svg></div>
+        <h3>The optimizer — find the best fix</h3>
+        <p style="color:var(--muted)">Instead of you guessing, it quietly tries thousands of combinations — reroutes, lane changes, transit boosts — and hands you the ones that work best, <em>within the rules and the budget.</em></p>
+        <p style="color:var(--muted);margin-top:14px">It can only do this because the simulation gives it a trustworthy score for every idea it tries. <b style="color:var(--ink)">The model is the judge; the optimizer is the contestant.</b></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ GLOSSARY ============ -->
+<section id="glossary" style="padding-top:70px">
+  <div class="wrap">
+    <div class="section-head reveal" style="margin-bottom:30px">
+      <span class="kicker">Plain-words dictionary</span>
+      <h2 style="font-size:clamp(1.7rem,3.6vw,2.4rem)">The jargon, decoded.</h2>
+    </div>
+    <dl class="gloss reveal">
+      <dt>Digital twin</dt><dd>A living virtual copy of the real city you can experiment on safely.</dd>
+      <dt>Simulation</dt><dd>Letting the rules play out to see what happens — vs. recalling what happened before.</dd>
+      <dt>Four-step model</dt><dd>The four questions: how many trips, going where, by what mode, on which roads.</dd>
+      <dt>Gravity model</dt><dd>The idea that bigger, closer places attract more trips — like gravitational pull.</dd>
+      <dt>Mode choice</dt><dd>Whether each person drives, takes transit, bikes, or walks.</dd>
+      <dt>Equilibrium / balance</dt><dd>The settled state where no driver could get there faster by switching routes.</dd>
+      <dt>Capacity</dt><dd>How many cars a road can carry before it clogs.</dd>
+      <dt>Deterministic</dt><dd>Same inputs always give the same answer — like a calculator.</dd>
+      <dt>Heatmap</dt><dd>The colour overlay: green = flowing, red = jammed.</dd>
+      <dt>Optimizer</dt><dd>The helper that auto-searches for the best fix under your rules and budget.</dd>
+    </dl>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>flowTO · a digital twin of Toronto · plain-language system guide</span>
+    <span>Simulates, doesn't guess.</span>
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+   Interactive control panel
+   A stylized heatmap of the city. Each "scenario" changes ONE
+   input; the heat is computed from a base field + that change,
+   so the redness "emerges" rather than being painted by hand.
+   Deterministic — no randomness.
+   ============================================================ */
+(function(){
+  const COLS = 16, ROWS = 9;
+  const grid = document.getElementById('heatgrid');
+  grid.style.gridTemplateColumns = `repeat(${COLS},1fr)`;
+
+  // build cells
+  const cells = [];
+  for(let i=0;i<COLS*ROWS;i++){
+    const d = document.createElement('div');
+    d.className = 'cell';
+    grid.appendChild(d);
+    cells.push(d);
+  }
+
+  // green -> amber -> red color ramp for v in [0,1]
+  function ramp(v){
+    v = Math.max(0, Math.min(1, v));
+    const g=[31,164,99], a=[230,162,60], r=[214,69,58];
+    let c1,c2,t;
+    if(v<0.5){ c1=g; c2=a; t=v/0.5; } else { c1=a; c2=r; t=(v-0.5)/0.5; }
+    const mix=(x,y)=>Math.round(x+(y-x)*t);
+    return `rgb(${mix(c1[0],c2[0])},${mix(c1[1],c2[1])},${mix(c1[2],c2[2])})`;
+  }
+
+  // The "downtown core" sits center; "Exhibition/BMO" bottom-left.
+  const core = {c:8, r:4};
+  const expo = {c:3, r:7};
+  function dist(c,r,p){ return Math.hypot((c-p.c)/COLS, (r-p.r)/ROWS); }
+
+  // base evening field: hot near core, cooler at edges
+  function baseField(c,r){
+    return 0.62 - dist(c,r,core)*1.15;
+  }
+
+  // each scenario returns {heat(c,r), closed(c,r), label, time, flow, flowClass, caption}
+  const KING_ROW = 4;                 // the "King St" band
+  const SPILL_ROWS = [3,5];           // Queen / Front spillover
+  const scenarios = [
+    {
+      label:"Tue 17:00", time:"22", flow:"Good", flowClass:"",
+      caption:"<b>A normal Tuesday at 5 p.m.</b> Downtown glows a healthy amber — busy, but moving. This is the baseline the planner compares everything against.",
+      closed:()=>false,
+      heat:(c,r)=>baseField(c,r)
+    },
+    {
+      label:"Sat 22:30 · +45k", time:"41", flow:"Severe", flowClass:"warn",
+      caption:"<b>World Cup final lets out.</b> 45,000 fans flood out of BMO Field at once. The whole southwest — Exhibition and the Gardiner corridor — goes deep red. Nobody's moving.",
+      closed:()=>false,
+      heat:(c,r)=> baseField(c,r) + 0.95*Math.max(0, 0.5 - dist(c,r,expo)) + (r>=6 ? 0.25 : 0)
+    },
+    {
+      label:"Sat 22:30 · King ✕", time:"44", flow:"Severe", flowClass:"warn",
+      caption:"<b>Planner closes King Street</b> to clear it for fans. The cars don't disappear — they jam onto Queen and Front (the bands above and below). Closing a road can make the streets <em>around</em> it worse.",
+      closed:(c,r)=> r===KING_ROW && c>=5 && c<=12,
+      heat:(c,r)=> baseField(c,r) + 0.9*Math.max(0,0.5-dist(c,r,expo)) + (r>=6?0.2:0)
+                   + (SPILL_ROWS.includes(r) && c>=5 && c<=12 ? 0.5 : 0)
+    },
+    {
+      label:"Sat 22:30 · FIXED", time:"28", flow:"Eased", flowClass:"ok",
+      caption:"<b>Apply the fix:</b> contraflow on Lakeshore + 50% more 509 streetcars. Fans pour onto transit instead of the road, and the corridor cools from red back toward green. <b>−32% egress time, $0 cost.</b>",
+      closed:(c,r)=> r===KING_ROW && c>=5 && c<=12,
+      heat:(c,r)=> baseField(c,r) + 0.32*Math.max(0,0.5-dist(c,r,expo))
+                   + (SPILL_ROWS.includes(r)&&c>=5&&c<=12?0.12:0)
+    }
+  ];
+
+  function paint(idx){
+    const s = scenarios[idx];
+    for(let r=0;r<ROWS;r++){
+      for(let c=0;c<COLS;c++){
+        const cell = cells[r*COLS+c];
+        if(s.closed(c,r)){
+          cell.classList.add('closed');
+          cell.style.background='';
+        } else {
+          cell.classList.remove('closed');
+          cell.style.background = ramp(s.heat(c,r));
+        }
+      }
+    }
+    document.getElementById('clockLabel').textContent = s.label;
+    document.getElementById('caption').innerHTML = s.caption;
+    const mt = document.getElementById('mTime');
+    mt.innerHTML = s.time + '<span style="font-size:1rem"> min</span>';
+    mt.className = 'v ' + (s.flowClass==='ok'?'ok':s.flowClass==='warn'?'warn':'');
+    const mf = document.getElementById('mFlow');
+    mf.textContent = s.flow;
+    mf.className = 'v ' + (s.flowClass==='ok'?'ok':s.flowClass==='warn'?'warn':'');
+  }
+
+  // wire buttons
+  document.querySelectorAll('.sbtn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.sbtn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      paint(parseInt(btn.dataset.s,10));
+    });
+  });
+
+  paint(0);
+
+  /* ---------- scroll reveal ---------- */
+  const io = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }});
+  },{threshold:.12, rootMargin:'0px 0px -40px 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+})();
+</script>
+</body>
+</html>

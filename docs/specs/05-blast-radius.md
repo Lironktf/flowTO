@@ -66,11 +66,11 @@ Input: changed edge set C, time slice, baseline path cache, OD bundles, current 
 **On Spark:** measure **full-city recompute latency vs blast-radius latency** side-by-side (the demo/perf evidence, feeds P11); target sub-100ms local closure (accept <250ms with visible progress).
 
 ## Tasks
-- [ ] T05.1 `pathcache.py` (top-k per OD + edge→paths reverse index) — *1d*
-- [ ] T05.2 `cones.py` upstream/downstream bounded Dijkstra/BFS + weighting — *1d*
-- [ ] T05.3 `recompute.py` subgraph build + boundary freeze + adaptive widening — *1.5d*
-- [ ] T05.4 speed vs accuracy modes; wire into `simulate_scenario` — *0.5d*
-- [ ] T05.5 Parity test vs full recompute + determinism + latency instrumentation — *1d*
+- [x] T05.1 `pathcache.py` (top-k per OD + edge→paths reverse index) — *1d*
+- [x] T05.2 `cones.py` upstream/downstream bounded Dijkstra/BFS + weighting — *1d*
+- [x] T05.3 `recompute.py` subgraph build + boundary freeze + adaptive widening — *1.5d*
+- [x] T05.4 speed vs accuracy modes; wire into `simulate_scenario` — *0.5d*
+- [x] T05.5 Parity test vs full recompute + determinism + latency instrumentation — *1d*
 
 ## Risks / fallbacks
 - **Blast-radius misses a non-local reroute** (highway/ravine detour) → the "always include expressway core" rule + accuracy-mode full-affected-OD recompute; parity test guards this.

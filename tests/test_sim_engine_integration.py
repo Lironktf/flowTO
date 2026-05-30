@@ -94,3 +94,18 @@ def test_kpath_default_still_runs():
     assert res["engine"] == "kpath"
     assert res["congestion_model"] == "legacy"
     assert len(res["frames"]) == 4
+
+
+def test_blast_scenario_runs_and_reports_stats():
+    from torontosim.simulation.simulate_traffic import simulate_scenario
+
+    g = _small_graph()
+    # Close one of the two parallel branches; traffic must use the other.
+    ops = [{"op": "close_edge", "edge_id": "e0"}]
+    res = simulate_scenario(g, OD, ops, iterations=4, congestion_model="bpr", recompute="blast")
+    assert res["recompute"] == "blast"
+    assert "blast_stats" in res
+    assert len(res["frames"]) == 4
+    # The closed branch carries no load; demand routed via the other branch.
+    loads = {d["edge_id"]: d.get("load", 0.0) for _u, _v, d in res["graph"].edges(data=True)}
+    assert loads["e0"] == 0.0

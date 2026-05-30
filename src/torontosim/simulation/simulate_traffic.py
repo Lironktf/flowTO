@@ -340,30 +340,120 @@ def simulate_scenario(
     weather: Optional[str] = None,
     time_context: Optional[dict] = None,
     capture_frames: bool = True,
+    engine: str = "kpath",
+    congestion_model: str = "legacy",
+    backend: str = "cpu",
+    recompute: str = "full",
 ) -> dict:
     """Apply `scenario` to a copy of `graph`, then simulate on the SAME trips.
 
     Calibration is OFF so the scenario uses identical demand to the baseline,
     making `compare_simulations` an apples-to-apples diff.
+
+    ``recompute`` (P05): ``full`` re-solves the whole network (default, always
+    correct); ``blast`` re-routes only the OD bundles affected by the change
+    over an adaptive subgraph (the headline performance feature).
     """
     G = graph.copy()
     from ..graph.routing import build_edge_index
 
     build_edge_index(G)
     apply_scenario(G, scenario)
-    result = simulate_traffic(
-        G,
-        od_matrix,
-        iterations=iterations,
-        k_paths=k_paths,
-        weather=weather,
-        time_context=time_context,
-        auto_calibrate=False,
-        capture_frames=capture_frames,
-        copy_graph=False,
-    )
+
+    if recompute == "blast":
+        result = _run_blast_scenario(
+            G, od_matrix, weather, time_context, congestion_model, iterations, capture_frames
+        )
+    else:
+        result = simulate_traffic(
+            G,
+            od_matrix,
+            iterations=iterations,
+            k_paths=k_paths,
+            weather=weather,
+            time_context=time_context,
+            auto_calibrate=False,
+            capture_frames=capture_frames,
+            copy_graph=False,
+            engine=engine,
+            congestion_model=congestion_model,
+            backend=backend,
+        )
     result["scenario"] = scenario
+    result["recompute"] = recompute
     return result
+
+
+def _run_blast_scenario(
+    G, od_matrix, weather, time_context, congestion_model, iterations, capture_frames
+):
+    """Blast-radius scenario: re-route only affected ODs over an adaptive subgraph.
+
+    Builds the link network from the (already-mutated) graph, detects which links
+    became closed, re-routes only the OD bundles that used them, and loads the
+    result back — recomputing congestion + the display frames. Reports the
+    affected-subgraph fraction as the performance evidence.
+    """
+    import numpy as np
+
+    from ..blastradius.pathcache import build_path_cache
+    from ..blastradius.recompute import blast_assign
+    from ..model.features import weather_speed_factor
+    from .equilibrium import network_from_graph
+
+    tc = time_context or {}
+    if weather is None:
+        weather = tc.get("weather", "clear")
+    wfac = weather_speed_factor(weather) or 1.0
+
+    net, node_index, edge_keys = network_from_graph(G, weather_factor=wfac)
+    od = [
+        (node_index[e["origin"]], node_index[e["destination"]], float(e.get("trips", 0.0)))
+        for e in od_matrix
+        if e["origin"] in node_index and e["destination"] in node_index and e.get("trips", 0) > 0
+    ]
+    # Free-flow baseline cache (before the closures take cost effect).
+    base_costs = net.t0.copy()
+    cache = build_path_cache(net, od, base_costs)
+
+    # Changed links = those now closed/zero-capacity in the mutated graph.
+    new_costs = base_costs.copy()
+    changed = []
+    for i, (u, v, k) in enumerate(edge_keys):
+        if net.cap[i] <= 0:  # closed/removed by the scenario op
+            new_costs[i] = np.inf
+            changed.append(i)
+
+    res = blast_assign(net, od, cache, changed, new_costs)
+    for i, (u, v, k) in enumerate(edge_keys):
+        if G.has_edge(u, v, k):
+            G[u][v][k]["load"] = float(res.flow[i])
+
+    eq_load = {(u, v, k): G[u][v][k]["load"] for (u, v, k) in edge_keys if G.has_edge(u, v, k)}
+    frames = []
+    steps = max(iterations, 1)
+    for step in range(steps):
+        frac = (step + 1) / steps
+        for key, load in eq_load.items():
+            u, v, k = key
+            G[u][v][k]["load"] = load * frac
+        update_edge_congestion(G, weather=weather, congestion_model=congestion_model)
+        if capture_frames:
+            frames.append(_frame(G, step, _label_for(step, iterations)))
+
+    return {
+        "time_context": tc,
+        "weather": weather,
+        "engine": "blast",
+        "congestion_model": congestion_model,
+        "backend": "cpu",
+        "iterations_run": iterations,
+        "summary": summarize(G, od_matrix),
+        "od_matrix": od_matrix,
+        "frames": frames,
+        "graph": G,
+        "blast_stats": res.stats,
+    }
 
 
 def compare_simulations(baseline_result: dict, scenario_result: dict) -> dict:

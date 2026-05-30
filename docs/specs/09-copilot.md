@@ -54,12 +54,12 @@ The optimizer (P10 — copilot may *invoke* it). Fine-tuning/LoRA (stretch). NIM
 **On Spark:** `scripts/spark/smoke_ollama.py` (model serves + emits valid JSON); run the 2 rehearsed demo prompts live → valid tool calls → preview → confirm → sim runs; measure first-token latency (feeds P11/demo).
 
 ## Tasks
-- [ ] T09.1 Ollama serve config + `smoke_ollama.py` + model pulls on Spark — *0.5d*
-- [ ] T09.2 Tool schemas (shared w/ P06) + `plan.py` constrained gen + validate + re-ask — *1d*
-- [ ] T09.3 Constraint checker + preview-before-apply guardrail — *0.5d*
-- [ ] T09.4 RAG (embed + Chroma + bylaw corpus + citations) — *1d*
-- [ ] T09.5 `explain.py` result summaries — *0.5d*
-- [ ] T09.6 Tests (mocked plan/rag/guardrail) + Spark live 2-prompt check — *0.5d*
+- [x] T09.1 Ollama serve config + `smoke_ollama.py` + model pulls on Spark — *0.5d*
+- [x] T09.2 Tool schemas (shared w/ P06) + `plan.py` constrained gen + validate + re-ask — *1d*
+- [x] T09.3 Constraint checker + preview-before-apply guardrail — *0.5d*
+- [x] T09.4 RAG (embed + Chroma + bylaw corpus + citations) — *1d*
+- [x] T09.5 `explain.py` result summaries — *0.5d*
+- [x] T09.6 Tests (mocked plan/rag/guardrail) + Spark live 2-prompt check — *0.5d*
 
 ## Risks / fallbacks
 - **Nemotron pull/serve issues on aarch64** → pin a known-good Ollama version (a Spark hang was reported); fall back to `nemotron-mini:4b` or another cached `tools`-tagged model; **a button that fires the same scenario JSON** if NL parsing flakes on stage.

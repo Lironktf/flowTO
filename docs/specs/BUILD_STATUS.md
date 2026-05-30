@@ -17,7 +17,7 @@
 | P06 | Backend API (FastAPI + WS) | done ✅ | FastAPI: scenario CRUD, run (`recompute=full/blast`), preview (no-mutate), compare, `/edges` index, `/healthz`; **binary WS tick frames** (`<IfffB`); async `JobManager`; Pydantic schemas (shared w/ copilot). Boots on full 18k-edge graph. 8 API/WS tests. PR: FLO-11. |
 | P07 | Frontend (deck.gl + MapLibre) | done ✅ | React+Vite+TS, deck.gl interleaved overlay on MapLibre; design tokens (light/dark) + congestion ramp + Fraunces/Public Sans/Plex Mono; tickStore (typed arrays, no React) + appStore (6-state machine) + REST/WS client. **Verified in browser: first-run→baseline→copilot hero→recompute→surge with before/after + 4 bylaw citations.** tsc+build clean, 9 vitest. PR: FLO-12. |
 | P08 | Transit overlay (GTFS) | todo | |
-| P09 | Copilot (Nemotron) | todo | Spark-gated |
+| P09 | Copilot (Nemotron) | done ✅ | `copilot/`: `tools` (ToolCall schema, shared w/ API), `plan` (constrained-gen + validate + re-ask, mockable), `constraints` (hard bylaw checker), `rag` (offline TF-cosine over packaged bylaw corpus), `explain`, `planner` (deterministic demo router + live Nemotron). API `/copilot/plan` + `/copilot/explain` live. 13 tests. **Spark: live `nemotron3:33b` NL→valid tool call PASSED (8.8s).** PR: FLO-16. |
 | P10 | Optimizer (heuristic + cuOpt) | todo | Spark-gated |
 | P11 | Profiling & perf | todo | land early |
 | P12 | FIFA WC demo | done ✅ | `demo/wc_surge.py` (BMO Field ~45k egress injection + road-side mitigation) + scenario JSONs + `RUNBOOK.md`. **Deterministic, headline metric melts baseline→surge→fix** (Exhibition pressure 0.0→0.90→0.51); 4 tests. `python -m torontosim.demo.wc_surge`. PR: FLO-13. |

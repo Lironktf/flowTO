@@ -161,6 +161,18 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             raise HTTPException(501, "copilot not available (P09 not installed)") from None
         return plan_intervention(payload.get("prompt", ""), state)
 
+    @app.post("/copilot/explain")
+    def copilot_explain(payload: dict):
+        try:
+            from ..copilot.explain import explain_compare
+        except ImportError:
+            raise HTTPException(501, "copilot not available") from None
+        return {
+            "explanation": explain_compare(
+                payload.get("summary_delta", {}), top_edges=payload.get("most_impacted_edges")
+            )
+        }
+
     @app.post("/optimize")
     def optimize(payload: dict):
         try:

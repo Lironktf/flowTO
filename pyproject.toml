@@ -41,6 +41,9 @@ package-dir = { "" = "src" }
 where = ["src"]
 include = ["torontosim*"]
 
+[tool.setuptools.package-data]
+"torontosim.copilot" = ["corpus/*.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [

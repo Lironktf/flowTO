@@ -111,6 +111,7 @@ network-/hardware-bound and each has a working fallback (see
 - [`docs/specs/ROADMAP.md`](docs/specs/ROADMAP.md) — phases, locked decisions, dependency graph
 - [`docs/specs/BUILD_STATUS.md`](docs/specs/BUILD_STATUS.md) — per-phase status dashboard
 - [`docs/specs/HANDOFF.md`](docs/specs/HANDOFF.md) — what's done/deferred + exact run commands
+- [`docs/specs/HANDOFF-realdata.md`](docs/specs/HANDOFF-realdata.md) — next: swap sample inputs for real City data (Centreline/TMC/GTFS)
 - [`docs/specs/TESTING.md`](docs/specs/TESTING.md) · [`docs/specs/VISUAL_TESTING.md`](docs/specs/VISUAL_TESTING.md) — how to test
 - [`infra/README-spark.md`](infra/README-spark.md) — the DGX Spark harness + gating verdicts
 - `docs/00-…05-…` — original planning briefs · `README_MODEL_SIMULATION.md` — Liron's prototype

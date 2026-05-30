@@ -57,12 +57,12 @@ The sim/optimizer/copilot internals (P04/P05/P09/P10 — this wraps them). Auth/
 **On Spark:** run the API on the Spark over SSH, tunnel the port via Tailscale, hit it from the dev box; confirm GPU sim path + Nemotron/cuOpt endpoints work end-to-end on-device.
 
 ## Tasks
-- [ ] T06.1 Pydantic schemas (shared with copilot) — *0.5d*
-- [ ] T06.2 Scenario store + JSON snapshots + startup graph load — *0.5d*
-- [ ] T06.3 REST routes (CRUD, run, preview, compare) — *1d*
-- [ ] T06.4 WS binary tick streaming + encoding + throttle — *1d*
-- [ ] T06.5 Async job runner + progress events — *0.5d*
-- [ ] T06.6 Tests (REST, WS, determinism, async) + `run_api.sh` — *0.5d*
+- [x] T06.1 Pydantic schemas (shared with copilot) — *0.5d*
+- [x] T06.2 Scenario store + JSON snapshots + startup graph load — *0.5d*
+- [x] T06.3 REST routes (CRUD, run, preview, compare) — *1d*
+- [x] T06.4 WS binary tick streaming + encoding + throttle — *1d*
+- [x] T06.5 Async job runner + progress events — *0.5d*
+- [x] T06.6 Tests (REST, WS, determinism, async) + `run_api.sh` — *0.5d*
 
 ## Risks / fallbacks
 - **GPU/LLM call blocks the loop** → async job pool + progress; mitigated by design.

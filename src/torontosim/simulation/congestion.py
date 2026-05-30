@@ -45,13 +45,21 @@ def congestion_multiplier(pressure: float) -> float:
     return 3.0
 
 
-def update_edge_congestion(graph, weather: str = "clear"):
+def update_edge_congestion(graph, weather: str = "clear", congestion_model: str = "legacy"):
     """Recompute pressure, risk, and current_time_min for every edge in place.
+
+    ``congestion_model``:
+      * ``legacy`` — Liron's piecewise lookup multiplier (the baseline).
+      * ``bpr``    — BPR ``t = t0·(1 + α·(v/c)^β)`` with per-road-class α/β.
 
     Closed edges get capacity 0, pressure inf, current_time_min inf, risk
     'severe'. Bad weather lengthens base time a little (lower effective speed).
     """
     wfac = weather_speed_factor(weather)  # <1 in rain/snow
+    use_bpr = congestion_model == "bpr"
+    if use_bpr:
+        from .bpr import bpr_params_for, bpr_time
+
     for _, _, data in graph.edges(data=True):
         base = data.get("base_time_min", 0.0) or 0.0
         # Weather stretches free-flow time (slower speeds), independent of load.
@@ -68,8 +76,12 @@ def update_edge_congestion(graph, weather: str = "clear"):
         cap = data.get("capacity", 0.0) or 0.0
         pressure = (load / cap) if cap > 0 else INF
         data["pressure"] = pressure
-        mult = congestion_multiplier(pressure)
-        data["current_time_min"] = INF if math.isinf(mult) else weather_base * mult
+        if use_bpr:
+            alpha, beta = bpr_params_for(data.get("road_class", "default"))
+            data["current_time_min"] = bpr_time(weather_base, load, cap, alpha=alpha, beta=beta)
+        else:
+            mult = congestion_multiplier(pressure)
+            data["current_time_min"] = INF if math.isinf(mult) else weather_base * mult
         data["risk"] = risk_for_pressure(pressure)
     return graph
 

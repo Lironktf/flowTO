@@ -125,8 +125,19 @@ def simulate_traffic(
     target_pressure: float = DEFAULT_TARGET_PRESSURE,
     capture_frames: bool = True,
     copy_graph: bool = True,
+    engine: str = "kpath",
+    congestion_model: str = "legacy",
+    backend: str = "cpu",
+    rgap_target: float = 1e-4,
+    max_equilibrium_iter: int = 100,
 ) -> dict:
-    """Run the propagation loop and return a simulation result dict.
+    """Run the assignment + propagation loop and return a simulation result dict.
+
+    Flags (P04 — all default to the demo-safe baseline per GOAL):
+      * ``engine``: ``kpath`` (Liron's all-or-nothing top-k loop, default/fast)
+        | ``equilibrium`` (BPR + Frank-Wolfe user equilibrium).
+      * ``congestion_model``: ``legacy`` (lookup table) | ``bpr``.
+      * ``backend``: ``cpu`` (NetworkX/Dijkstra) | ``gpu`` (cuGraph, Spark only).
 
     The input graph is copied by default so the caller's graph is untouched
     (set copy_graph=False to mutate in place). The returned `od_matrix` is the
@@ -147,17 +158,34 @@ def simulate_traffic(
     # Start from free-flow times.
     reset_loads(G)
 
-    frames = []
-    for step in range(iterations):
-        assign_demand_to_paths(G, od_used, k=k_paths, reset=True)
-        update_edge_congestion(G, weather=weather)
-        if capture_frames:
-            frames.append(_frame(G, step, _label_for(step, iterations)))
+    if engine == "equilibrium":
+        frames, eq = _run_equilibrium(
+            G,
+            od_used,
+            iterations=iterations,
+            weather=weather,
+            congestion_model=congestion_model,
+            backend=backend,
+            rgap_target=rgap_target,
+            max_iter=max_equilibrium_iter,
+            capture_frames=capture_frames,
+        )
+    else:
+        eq = None
+        frames = []
+        for step in range(iterations):
+            assign_demand_to_paths(G, od_used, k=k_paths, reset=True)
+            update_edge_congestion(G, weather=weather, congestion_model=congestion_model)
+            if capture_frames:
+                frames.append(_frame(G, step, _label_for(step, iterations)))
 
     summary = summarize(G, od_used)
-    return {
+    result = {
         "time_context": tc,
         "weather": weather,
+        "engine": engine,
+        "congestion_model": congestion_model,
+        "backend": backend,
         "iterations_run": iterations,
         "k_paths": k_paths,
         "calibration_scale": scale,
@@ -167,6 +195,55 @@ def simulate_traffic(
         "frames": frames,
         "graph": G,
     }
+    if eq is not None:
+        result["rgap"] = eq.rgap
+        result["equilibrium_iterations"] = eq.iterations
+        result["converged"] = eq.converged
+    return result
+
+
+def _run_equilibrium(
+    G,
+    od_used,
+    *,
+    iterations,
+    weather,
+    congestion_model,
+    backend,
+    rgap_target,
+    max_iter,
+    capture_frames,
+):
+    """Solve UE then build `iterations` display frames as a deterministic ramp.
+
+    Frank-Wolfe yields one converged flow; for the scrub animation we replay it
+    as a load ramp (step (s+1)/iterations of the equilibrium flow) so the demo
+    shows congestion building to the true equilibrium on the final frame.
+    """
+    from ..model.features import weather_speed_factor
+    from .equilibrium import assign_equilibrium
+
+    wfac = weather_speed_factor(weather) or 1.0
+    eq = assign_equilibrium(
+        G,
+        od_used,
+        weather_factor=wfac,
+        max_iter=max_iter,
+        rgap_target=rgap_target,
+        backend=backend,
+    )
+    # Equilibrium load now lives on each edge; capture the ramp frames.
+    eq_load = {(u, v, k): d.get("load", 0.0) for u, v, k, d in G.edges(keys=True, data=True)}
+    frames = []
+    steps = max(iterations, 1)
+    for step in range(steps):
+        frac = (step + 1) / steps
+        for u, v, k, d in G.edges(keys=True, data=True):
+            d["load"] = eq_load[(u, v, k)] * frac
+        update_edge_congestion(G, weather=weather, congestion_model=congestion_model)
+        if capture_frames:
+            frames.append(_frame(G, step, _label_for(step, iterations)))
+    return frames, eq
 
 
 def summarize(graph, od_matrix) -> dict:

@@ -45,6 +45,8 @@ include = ["torontosim*"]
 testpaths = ["tests"]
 markers = [
     "spark: GPU/LLM tests that run only on the DGX Spark over SSH (skipped in CI)",
+    "slow: longer-running tests (e.g. equilibrium oracle); run in full suite",
+    "network: tests that hit the network (skipped in CI; run manually/Spark)",
 ]
 
 [tool.ruff]

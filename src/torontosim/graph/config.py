@@ -60,6 +60,20 @@ DEFAULT_LANES = {
     "default": 1,
 }
 
+# BPR volume-delay (alpha, beta) per road class (P04). Global default is the
+# US BPR 1964 (0.15, 4). Freeways tolerate higher v/c before breakdown; signal-
+# controlled arterials degrade sooner (higher alpha). Tunable; the oracle test
+# pins the global default to the AequilibraE/TNTP reference.
+BPR_PARAMS = {
+    "motorway": (0.15, 4.0),
+    "trunk": (0.15, 4.0),
+    "primary": (0.20, 4.0),
+    "secondary": (0.20, 4.0),
+    "tertiary": (0.25, 4.0),
+    "residential": (0.25, 4.0),
+    "default": (0.15, 4.0),
+}
+
 # Default place used by build_graph when none is supplied.
 # Centred on downtown Toronto with a radius that comfortably covers both
 # Liberty Village and the Downtown Core (used by the test script).

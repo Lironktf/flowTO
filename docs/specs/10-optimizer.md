@@ -54,12 +54,12 @@ RL proposal layer (stretch S4) — exposed only as a ranking layer after it's va
 **On Spark:** cuOpt container up; `smoke_cuopt.py` green; the cuOpt sub-problem path runs on-device; time the search loop using blast-radius scoring (feeds P11).
 
 ## Tasks
-- [ ] T10.1 Problem spec + objective/constraints/budget model — *0.5d*
-- [ ] T10.2 Constraint checker / action masks (shared w/ copilot) — *0.5d*
-- [ ] T10.3 Heuristic candidate generator (greedy/bandit) — *1d*
-- [ ] T10.4 Sim-based scoring via blast-radius (the verifier) + ranking — *1d*
-- [ ] T10.5 cuOpt client + sub-problem mapping + `smoke_cuopt.py` — *1d*
-- [ ] T10.6 `POST /optimize` + tests — *0.5d*
+- [x] T10.1 Problem spec + objective/constraints/budget model — *0.5d*
+- [x] T10.2 Constraint checker / action masks (shared w/ copilot) — *0.5d*
+- [x] T10.3 Heuristic candidate generator (greedy/bandit) — *1d*
+- [x] T10.4 Sim-based scoring via blast-radius (the verifier) + ranking — *1d*
+- [x] T10.5 cuOpt client + sub-problem mapping + `smoke_cuopt.py` — *1d*
+- [x] T10.6 `POST /optimize` + tests — *0.5d*
 
 ## Risks / fallbacks
 - **cuOpt install/license/container issue on Spark** → heuristic baseline alone always returns improving plans; cuOpt is clearly separated as a validated add-on (don't put it on the critical path).

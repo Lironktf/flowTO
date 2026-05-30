@@ -39,3 +39,12 @@ def test_copilot_explain_summarizes_deltas():
     )
     assert r.status_code == 200
     assert "eased" in r.json()["explanation"]
+
+
+def test_optimize_endpoint_returns_ranked_plan():
+    r = _client().post("/optimize", json={"objective": "average_pressure", "max_actions": 2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["solver"] == "heuristic"
+    assert body["best_metric"] <= body["baseline_metric"] + 1e-9
+    assert "plan" in body

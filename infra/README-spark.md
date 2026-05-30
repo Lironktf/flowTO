@@ -47,6 +47,7 @@ scripts/spark/run.sh "python scripts/spark/smoke_ollama.py"
 | Spark reachable (Tailscale/SSH) | ✅ **REACHABLE** | 2026-05-30 | Key auth OK via both `gx10-4f5f` and `100.124.76.16`. |
 | RAPIDS (`smoke_rapids.py`) | ✅ **RAPIDS_OK** | 2026-05-30 | cuDF/cuGraph **26.04.000** import + SSSP verified on GB10. `backend=gpu` is available (still smoke-gated per phase). Installed via `pip install cudf-cu13 cugraph-cu13 --extra-index-url=https://pypi.nvidia.com` into `~/flowto-venv`. |
 | Ollama (`smoke_ollama.py`) | ✅ **OLLAMA_OK** | 2026-05-30 | `nemotron3:33b` returned parseable scenario JSON in ~1.07s (think=False+format=json). Models also present: `nemotron-3-super`, `qwen3:30b`, `qwen3.6:35b`, `gemma4:26b`. |
+| cuOpt (`smoke_cuopt.py`) | ⏭️ **CUOPT_UNAVAILABLE** | 2026-05-30 | No `cuopt` module / service on the Spark. **Deferred** — the P10 heuristic optimizer (sim-as-verifier) always returns an improving plan; cuOpt is a validated add-on, not on the critical path. |
 
 > **Build policy unchanged:** CPU remains the default demo path. GPU/LLM stays
 > behind flags (`backend=gpu`, live copilot) and is validated per phase via the

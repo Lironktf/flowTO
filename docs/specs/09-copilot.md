@@ -111,6 +111,6 @@ live wiring); `api/schemas.py` (tool schemas + confirm payload); `frontend/src/{
       explain) + frontend Confirm-&-run button. Also fixed a latent bug: `GET /scenarios` serialized
       `_last_result` (a graph) and broke after any run — now strips internal keys — *1d*
 - [ ] T09.6 Streaming `/copilot/stream` + frontend incremental render + latency HUD — *0.5d*
-- [ ] T09.7 `optimize` tool → P10 + multi-tool agent chaining — *0.5d*
+- [x] T09.7 `optimize` intent in planner → P10 `optimizer.propose` → confirmable preview + test
 - [ ] T09.8 Tests (mocked plan/constraints/confirm/stream) + live Spark 2-prompt rehearsal — *0.5d*
 </content>

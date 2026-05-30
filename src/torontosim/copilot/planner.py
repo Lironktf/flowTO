@@ -98,6 +98,33 @@ def _generic_preview() -> ToolCall:
     )
 
 
+def _optimize_call(state, prompt: str) -> ToolCall:
+    """Invoke the P10 optimizer and return its sim-verified plan as a preview."""
+    from ..optimizer.heuristic import propose
+
+    payload = {"objective": "average_pressure", "max_actions": 3}
+    result = propose(state, payload)
+    plan = result.get("plan", [])
+    if not plan:
+        return ToolCall(
+            tool="preview_intervention",
+            rationale="The optimizer found no action that improves on doing nothing here.",
+            requires_user_confirmation=False,
+        )
+    base, best = result.get("baseline_metric"), result.get("best_metric")
+    delta = f"{base:.3f} → {best:.3f}" if isinstance(base, (int, float)) else "improved"
+    return ToolCall(
+        tool="preview_intervention",
+        interventions=[Intervention.model_validate(iv) for iv in plan],
+        rationale=(
+            f"Optimizer scored candidate actions by simulating each; best sim-verified plan is "
+            f"{len(plan)} action(s), average network pressure {delta}. Confirm to apply and run."
+        ),
+        citations=[Citation(ref="Optimizer (P10)", note="each candidate scored by running the sim")],
+        requires_user_confirmation=True,
+    )
+
+
 def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> dict:
     """Return a validated, JSON-serializable copilot tool call for ``prompt``.
 
@@ -115,6 +142,12 @@ def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> di
     # 2) Hero mitigation intent (ease/mitigate gridlock / post-match egress).
     elif any(kw in text for kw in ("ease", "mitigat", "gridlock", "post-match", "egress")):
         call = _hero_call(state)
+    # 3) Optimizer intent — let cuOpt/heuristic search propose the plan.
+    elif any(kw in text for kw in ("optimize", "optimise", "optimal", "best plan", "recommend a plan")):
+        try:
+            call = _optimize_call(state, prompt)
+        except (ImportError, OSError, ValueError):
+            call = _generic_preview()
     elif live:
         from .plan import PlanError, plan
 

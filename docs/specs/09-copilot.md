@@ -37,7 +37,7 @@ The optimizer (P10 — copilot may *invoke* it). Fine-tuning/LoRA (stretch). NIM
 7. **API** (extends P06) — `POST /copilot/plan` (NL → validated tool call, preview), `POST /copilot/explain`, `POST /copilot/confirm` (apply a previewed call).
 
 ## Data / models / sources
-`research/05` (exact Nemotron tags, Ollama `format=`+Pydantic+re-ask pattern, RAG stack, NIM/TRT-LLM stretch verdict, cuOpt for P10). Bylaw doc set = small curated corpus (Toronto Municipal Code traffic/parking excerpts) under `data/bylaws/`.
+`research/05` (exact Nemotron tags, Ollama `format=`+Pydantic+re-ask pattern, RAG stack, NIM/TRT-LLM stretch verdict, cuOpt for P10). **`design/js/data.js`** has the rehearsed copilot scripts + exact bylaw citations to seed the corpus + the demo: `copilotHero` ("Ease post-match gridlock near BMO Field without breaking bylaws" → 3-step plan citing Toronto Municipal Code Ch. 950 / King St Transit Priority / Ch. 880 fire-route / AODA 2005) and `copilotBlocked` ("close Lake Shore both ways" → refuses, cites Ch. 880 + TTC streetcar-replacement, offers contraflow). Bylaw corpus = those citations curated under `data/bylaws/`.
 
 ## Files to create / modify
 **Create:** `src/torontosim/copilot/{__init__,plan,tools,constraints,rag,explain,serve}.py`; `data/bylaws/` (curated docs + sources); `api/routes/copilot.py` (if not from P06); `tests/test_copilot_plan.py`, `tests/test_copilot_rag.py`; `scripts/spark/smoke_ollama.py` (from P00, extended).

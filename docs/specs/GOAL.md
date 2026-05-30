@@ -21,6 +21,11 @@ to block the build. Done = the demo (P12) runs deterministically end-to-end.
 2. The **phase spec** you're about to execute (`00-*.md` … `12-*.md`) — it is your contract.
 3. The **research brief(s)** it references in `docs/specs/research/` — real dataset IDs, APIs, versions, gotchas.
 4. For the existing code: `README_MODEL_SIMULATION.md` + `src/graph/README.md` (after the merge in §3).
+5. For the frontend (P07) + demo (P12): the **design package in `design/`** — `design/README.md` is the
+   high-fidelity visual + 6-state-machine spec (tokens, typography, panel layout, exact before/after metrics);
+   `design/flowto.html` runs every state live; `design/js/data.js` holds the demo content (scenarios, copilot
+   scripts + bylaw citations, blast-radius lists). **Recreate it with deck.gl in React+Vite+TS — do NOT port the
+   prototype's 2-D canvas corridor renderer.**
 **Do not start a phase before reading its spec + research brief.** If a spec underspecifies something, use a
 research agent / context7 / WebFetch to fill the gap — don't guess.
 

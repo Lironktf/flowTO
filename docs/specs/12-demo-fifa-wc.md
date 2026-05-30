@@ -36,7 +36,7 @@ New engine features (this composes P00–P11). Anything not on the 90-second pat
 6. **Run-of-show** (`demo/RUNBOOK.md`) — exact click sequence, timings, who says what, the failure fallbacks.
 
 ## Data / models / sources
-`docs/05-demo-script.md` (beat-by-beat), `docs/04-scope-and-mvp.md` (must-haves), `research/03` (match-day demand framing), all engine phases. BMO Field capacity + Exhibition/Gardiner/509 geography.
+`docs/05-demo-script.md` (beat-by-beat), `docs/04-scope-and-mvp.md` (must-haves), `research/03` (match-day demand framing), all engine phases. **`design/js/data.js`** is the canonical demo content: exact before/after metrics (base/surge/mitigated: total delay 1,240→4,180→2,590 veh·h, mean TT 11.4→28.7→17.9 min, 95th 19.2→62.5→34.1, congested edges 14→41→22, local-road infiltration 6→34→10%), the **recommended 3-step plan** (contraflow on Lake Shore Blvd W, signal retiming Dufferin & Strachan, close Princes' Blvd + hold 509/511 priority), blast-radius corridor lists, and the timeline (kickoff 15:00, full-time 17:05, Fri 12 Jun 2026). `design/README.md` describes the 6-state demo flow. BMO Field / Exhibition / Gardiner / 509 geography.
 
 ## Files to create / modify
 **Create:** `src/torontosim/demo/{wc_surge.py}`, `demo/scenarios/{baseline,wc_surge,wc_fix}.json`, `demo/RUNBOOK.md`, `demo/fallback/` (recording + canned results); `tests/test_demo_scenarios.py`.

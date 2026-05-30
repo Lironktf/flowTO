@@ -6,7 +6,7 @@
 | **Depends on** | P06 |
 | **Owner hint** | Frontend owner |
 | **Status** | not started |
-| **Note** | **Visual design (tokens, fonts, component look, HTML) arrives as a separate Claude design drop.** This spec covers *integration architecture*; the design drop slots into the token/`components/ui` layer. |
+| **Note** | **The Claude design drop has LANDED at `design/`** (high-fidelity HTML/CSS/JS prototype + tokens + full layout/state spec in `design/README.md`). This spec covers *integration architecture*; recreate `design/` faithfully in React+Vite+TS. **Do NOT port the prototype's 2-D canvas corridor renderer — use deck.gl** (the prototype says so explicitly). |
 
 ## Goal
 A React + Vite + TypeScript app that renders 3-D Toronto with congestion on the road network, lets a planner pick
@@ -28,7 +28,17 @@ Map + layers, WS/REST client, tick→layer plumbing, scrubber, edge selection, i
 Final visual styling/tokens (design drop). Transit vehicle animation lands with P08 (TripsLayer). Backend logic (P06).
 
 ## Design / implementation plan
-(All specifics + snippets in **`research/06-frontend-deckgl-ux.md`**.)
+**Visual source of truth = `design/`** (read `design/README.md` first). It is high-fidelity and intentional:
+recreate it pixel-faithfully within the component system. It provides: **tokens** (light "drafting paper" +
+dark "ops" — `--paper/--surface/--ink/--cobalt/--hair`…), the **congestion ramp** (exact stops + intensity/dark
+remap), **typography** (Fraunces / Public Sans / IBM Plex Mono with role + size rules), spacing/radius/shadow +
+the blueprint-grid panel treatment, the full **floating-panel layout** (top bar, left interventions, right
+metrics, bottom-right copilot, centered scrubber, perf strip, legend, recompute overlay, first-run, tweaks), the
+**6-state machine** (first-run → baseline → recomputing(HERO) → surge → mitigated → constraint-blocked) with exact
+visual treatments, and inline SVG icons. `design/flowto.html` runs every state live; `design/js/{data,ui,map,app}.js`
+hold the content + behavior. **Use deck.gl, not the prototype's 2-D canvas corridor renderer** (the README says so).
+Map specifics + per-tick update technique still come from **`research/06-frontend-deckgl-ux.md`**.
+
 1. **Scaffold** — Vite + React + TS; `@deck.gl/{core,layers,geo-layers,mapbox,aggregation-layers}`, `maplibre-gl@5`, `react-map-gl/maplibre`, `pmtiles`, `zustand`, Radix + Tailwind (the design drop owns the theme).
 2. **Map shell** (`components/MapCanvas.tsx`) — `<Map mapLib={maplibregl}>` + interleaved `MapboxOverlay` via `useControl`; PMTiles protocol; `beforeId` z-order (roads/heatmap below labels, closures above).
 3. **Layers** (`layers/`) — `roads` (MVTLayer citywide / PathLayer working-set, per-tick `updateTriggers:{getColor:tickSeq}` or binary attributes), `massing` (extruded GeoJsonLayer, neutral grey), `closures` (PathLayer corridor + IconLayer), `hexPressure` (HexagonLayer aggregation toggle), `transit` (TripsLayer — wired in P08).
@@ -39,7 +49,7 @@ Final visual styling/tokens (design drop). Transit vehicle animation lands with 
 8. **API client** (`api/client.ts`) — typed REST (scenario CRUD/run/compare/preview) + WS connect/decode; reconnect keeps last snapshot.
 
 ## Data / models / sources
-`research/06` (interleaved MapboxOverlay, PMTiles, layer-by-layer props, tick-data-out-of-React pattern, UI/UX architecture, Radix/shadcn). P06 schemas (generate TS types from the OpenAPI). Design tokens = **Claude design drop** (drop into `styles/tokens.css` + `components/ui/`).
+`research/06` (interleaved MapboxOverlay, PMTiles, layer-by-layer props, tick-data-out-of-React pattern, Radix/shadcn). P06 schemas (generate TS types from the OpenAPI). **`design/`** is the visual source of truth — `design/README.md` (tokens, layout, 6 states, exact metrics), `design/flowto.html` (live reference), `design/js/data.js` (corridors, scenarios, copilot scripts + bylaw citations, before/after metrics, blast-radius corridor lists — shared with P12/P09).
 
 ## Files to create / modify
 **Create:** `frontend/` (Vite app) — `src/components/{MapCanvas,TimeScrubber,InterventionDrawer,BeforeAfterPanel,CopilotPanel,DebugPanel}.tsx`, `src/layers/*.ts`, `src/state/{tickStore,appStore}.ts`, `src/api/client.ts`, `src/styles/tokens.css` (design-drop target), `vite.config.ts`, `package.json`; `frontend/tests/*` (Vitest); `scripts/run_frontend.sh`.
@@ -61,10 +71,10 @@ Final visual styling/tokens (design drop). Transit vehicle animation lands with 
 - [ ] T07.4 `appStore` + selection + intervention create/preview/apply flow — *1.5d*
 - [ ] T07.5 Scrubber + BeforeAfter + Copilot/Debug panel shells (design-drop slots) — *1d*
 - [ ] T07.6 API client (typed REST + WS) + tests — *0.5d*
-- [ ] T07.7 Integrate Claude design drop (tokens + UI components) — *0.5d*
+- [ ] T07.7 Recreate `design/` faithfully: tokens (light+dark) → `styles/tokens.css`; Fraunces/Public Sans/IBM Plex Mono; the floating-panel layout + all 6 states from `design/README.md` + `design/flowto.html` — *1.5d*
 
 ## Risks / fallbacks
-- **Design drop late** → ship with the neutral placeholder visual direction from `research/06` (grayscale basemap, congestion = green→amber→red, accent for selection); swap tokens in when it lands.
+- **Design drop is in `design/`** (no longer a risk) → recreate it faithfully; if time-pressed, prioritize tokens + the panel layout + the recompute(HERO) + before/after states (the demo beats) over the tweaks panel/first-run polish.
 - **Citywide road density jank** → MVT binary tiles + server-side LOD (P06) + density caps; demo on the downtown extent.
 - **Re-render storms** → enforced typed-array/imperative pattern; DebugPanel surfaces regressions.
 - **3D massing too heavy** → tile/generalize by zoom, `visibleMinZoom`; edge pressure is the priority, buildings are context.

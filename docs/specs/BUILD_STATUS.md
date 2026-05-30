@@ -2,12 +2,13 @@
 
 > Overnight dashboard. The build agent updates this after every task and phase.
 > Status legend: `todo` · `doing` · `done ✅` · `blocked 🚫` · `deferred ⏭️` (with reason).
-> Started: _(agent fills in)_ · Branch: `build/mvp` · Last update: _(agent fills in)_
+> Started: 2026-05-30 · Branch: per-phase `build/flo-*` off `bentobranch` (+`liron/model` merged) · Last update: 2026-05-30
+> Baseline: `pytest -q` = **5 passed** (2 Liron + 3 packaging); ruff+black clean.
 
 ## Phase status
 | Phase | Title | Status | Notes |
 |---|---|---|---|
-| P00 | Repo restructure, env, Spark harness | todo | |
+| P00 | Repo restructure, env, Spark harness | done ✅ | `torontosim` pkg + shims; pyproject/Makefile/CI; Spark harness verified end-to-end. PR: FLO-6. |
 | P01 | Data pipeline → Parquet feature store | todo | |
 | P02 | Road graph (OSMnx + Centreline) | todo | |
 | P03 | Demand & OD (ML + IPF + TTS seed) | todo | |
@@ -23,15 +24,21 @@
 | S1–S6 | Stretch | todo | only after core stable |
 
 ## Gating verdicts (record once)
-- RAPIDS smoke (`smoke_rapids.py` on Spark): _pending_ → `RAPIDS_OK` | `RAPIDS_FALLBACK_CPU`
-- Ollama smoke (`smoke_ollama.py` on Spark): _pending_
-- cuOpt smoke (`smoke_cuopt.py` on Spark): _pending_
-- Spark reachable over Tailscale: _pending_
+- Spark reachable over Tailscale: ✅ **REACHABLE** (2026-05-30, key auth via `gx10-4f5f` and `100.124.76.16`).
+- RAPIDS smoke (`smoke_rapids.py` on Spark): ✅ **RAPIDS_OK** (2026-05-30, cuDF/cuGraph 26.04 + SSSP on GB10) → `backend=gpu` available.
+- Ollama smoke (`smoke_ollama.py` on Spark): ✅ **OLLAMA_OK** (2026-05-30, `nemotron3:33b`, ~1.07s JSON).
+- cuOpt smoke (`smoke_cuopt.py` on Spark): _pending_ (P10).
 
 ## Task log (append-only)
 | Time | Phase/Task | Status | Note |
 |---|---|---|---|
-| _(seed)_ | — | — | Build not started. |
+| 2026-05-30 | P00 T00.1 | done ✅ | Merged `liron/model` into build branch; kept both doc sets; resolved `.gitignore`. |
+| 2026-05-30 | P00 T00.2 | done ✅ | `src/*` → `src/torontosim/*`; shims at `src/{graph,model,simulation}`; tests on `torontosim.*`; +`test_packaging.py`. |
+| 2026-05-30 | P00 T00.3 | done ✅ | `pyproject.toml` (extras dev/sim/gpu/ai/api), `Makefile`, ruff/black/pre-commit; lint clean. |
+| 2026-05-30 | P00 T00.4 | done ✅ | De-committed graphml/raw/model/sim artifacts + `.DS_Store`; kept test-critical json+pkl; `data/README.md`. |
+| 2026-05-30 | P00 T00.5 | done ✅ | Spark harness (`scripts/spark/*`) + smokes; verified RAPIDS_OK + OLLAMA_OK on gx10-4f5f. |
+| 2026-05-30 | P00 T00.6 | done ✅ | GitHub Actions CI (py3.12, ruff+black+pytest, spark tests skipped). |
+| 2026-05-30 | P00 T00.7 | done ✅ | Local verify green (5 passed, lint clean); Spark round-trip + both smokes green. |
 
 ## Blocked / deferred (surface for the human)
 _(none yet)_

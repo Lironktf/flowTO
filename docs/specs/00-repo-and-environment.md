@@ -97,13 +97,13 @@ scripts/spark/run.sh "python scripts/spark/smoke_rapids.py"   # PASS/FAIL gate f
 `smoke_rapids.py` prints `RAPIDS_OK` if `cudf`+`cugraph` import and an SSSP runs on GB10; else `RAPIDS_FALLBACK_CPU` — recorded in `infra/README-spark.md` and consumed by P04/P05/P10.
 
 ## Tasks (subtickets)
-- [ ] T00.1 Merge `liron/model` into `bentobranch`, resolve conflicts, keep both doc sets — *0.5d*
-- [ ] T00.2 Move `src/*` → `src/torontosim/*`, add shims, fix imports in tests — *0.5d*
-- [ ] T00.3 `pyproject.toml` + extras + `Makefile` + lint/format config — *0.5d*
-- [ ] T00.4 Data hygiene: `.gitignore`, de-commit large artifacts, fix weather filenames, `data/README.md` — *0.5d*
-- [ ] T00.5 Spark SSH harness scripts + `smoke_rapids.py` + `smoke_ollama.py` — *0.5d*
-- [ ] T00.6 GitHub Actions CI (CPU tests, lint), `@pytest.mark.spark` skip — *0.5d*
-- [ ] T00.7 Verify: local green + Spark harness round-trip + RAPIDS smoke verdict recorded — *0.5d*
+- [x] T00.1 Merge `liron/model` into `bentobranch`, resolve conflicts, keep both doc sets — *0.5d*
+- [x] T00.2 Move `src/*` → `src/torontosim/*`, add shims, fix imports in tests — *0.5d*
+- [x] T00.3 `pyproject.toml` + extras + `Makefile` + lint/format config — *0.5d*
+- [x] T00.4 Data hygiene: `.gitignore`, de-commit large artifacts, fix weather filenames, `data/README.md` — *0.5d*
+- [x] T00.5 Spark SSH harness scripts + `smoke_rapids.py` + `smoke_ollama.py` — *0.5d*
+- [x] T00.6 GitHub Actions CI (CPU tests, lint), `@pytest.mark.spark` skip — *0.5d*
+- [x] T00.7 Verify: local green + Spark harness round-trip + RAPIDS smoke verdict recorded — *0.5d*
 
 ## Risks / fallbacks
 - **Large committed graph/data bloats the merge** → de-commit and refetch via `datapipeline` (P01); if time-pressed, keep `toronto_drive_graph.json` (small) committed, drop the 314k-line `.graphml`.

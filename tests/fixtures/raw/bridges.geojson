@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"STRUCT_ID": "BR-1", "STR_NAME": "King St Underpass", "VERT_CLEAR": 4.3, "STR_TYPE": "Rigid Frame", "WARD_NO": 10, "CENTRELINE_ID": 13466500},
+      "geometry": {"type": "Point", "coordinates": [-79.383, 43.6725]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"STRUCT_ID": "BR-2", "STR_NAME": "Bathurst Bridge", "VERT_CLEAR": 5.0, "STR_TYPE": "Girder", "WARD_NO": 11, "CENTRELINE_ID": 13466600},
+      "geometry": {"type": "Point", "coordinates": [-79.4035, 43.6428]}
+    }
+  ]
+}

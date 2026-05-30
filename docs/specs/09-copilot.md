@@ -104,7 +104,9 @@ live wiring); `api/schemas.py` (tool schemas + confirm payload); `frontend/src/{
 - [x] T09.1 `bake_bylaws` — Municipal Code PDFs → in-package §-section corpus (49 real sections, committed) — *1d*
 - [x] T09.2 Embeddings RAG (MiniLM + in-memory cosine) with TF-IDF fallback + `backend_name()` + parity test — *0.5d*
 - [x] T09.3 Data-backed `constraints.check_request` (graph road_class/name + protected corridors) + `advisories()` — *0.5d*
-- [ ] T09.4 `ollama_client` (host/model config + warmup + stream) + live `plan.py` agent loop + re-ask — *1d*
+- [x] T09.4 `ollama_client` (host/model config + warmup + stream) + live `plan.py` loop + re-ask + RAG-grounded
+      prompt + candidate edges. Live-verified on the Spark: NL → valid change_capacity/close_edge in ~1.5–2.6s
+      warm. Fixed the model self-refusing + hallucinating bylaws (refusal is now deterministic-only) — *1d*
 - [ ] T09.5 Real `Intervention` ops on plans + `POST /copilot/confirm` (apply → run → compare → explain) — *1d*
 - [ ] T09.6 Streaming `/copilot/stream` + frontend incremental render + latency HUD — *0.5d*
 - [ ] T09.7 `optimize` tool → P10 + multi-tool agent chaining — *0.5d*

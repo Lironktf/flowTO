@@ -8,7 +8,7 @@ generic preview otherwise. Always read-only / preview-first.
 
 from __future__ import annotations
 
-import json
+import os
 
 from . import rag
 from .constraints import check_request
@@ -56,36 +56,29 @@ def _blocked_call(prompt: str, state=None) -> ToolCall:
     )
 
 
-def _ollama_model_call(system: str, prompt: str, schema: dict) -> str:  # pragma: no cover - Spark
-    """Live Nemotron via Ollama (Spark only). think=False + format=schema."""
-    import urllib.request
+def _live_enabled() -> bool:
+    """Live Nemotron is on when TS_COPILOT_LIVE is truthy (default: on)."""
+    return os.environ.get("TS_COPILOT_LIVE", "1").lower() not in ("0", "false", "no", "")
 
-    body = {
-        "model": "nemotron3:33b",
-        "system": system,
-        "prompt": prompt,
-        "stream": False,
-        "think": False,
-        "format": schema,
-        "options": {"temperature": 0},
-        "keep_alive": "10m",
-    }
-    req = urllib.request.Request(
-        "http://localhost:11434/api/generate",
-        data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+
+def _generic_preview() -> ToolCall:
+    return ToolCall(
+        tool="preview_intervention",
+        rationale="Previewing the requested change — confirm to apply.",
+        requires_user_confirmation=True,
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return json.loads(r.read())["response"]
 
 
-def plan_intervention(prompt: str, state, *, use_live: bool = False) -> dict:
+def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> dict:
     """Return a validated, JSON-serializable copilot tool call for ``prompt``.
 
-    Deterministic for the rehearsed intents; cites the relevant bylaw corpus via
-    RAG. ``use_live=True`` routes unknown prompts to live Nemotron (Spark).
+    The two rehearsed intents (blocked closure, hero mitigation) resolve
+    deterministically as a stage safety net; everything else goes to live
+    Nemotron when enabled (``TS_COPILOT_LIVE``, default on), degrading to a safe
+    generic preview if the model is unreachable. Always cites the bylaw corpus.
     """
     text = (prompt or "").lower()
+    live = _live_enabled() if use_live is None else use_live
 
     # 1) Hard-constraint refusal (the "blocked" demo path).
     if check_request(prompt, state=state):
@@ -93,17 +86,15 @@ def plan_intervention(prompt: str, state, *, use_live: bool = False) -> dict:
     # 2) Hero mitigation intent (ease/mitigate gridlock / post-match egress).
     elif any(kw in text for kw in ("ease", "mitigat", "gridlock", "post-match", "egress")):
         call = _hero_call()
-    elif use_live:
-        from .plan import plan
+    elif live:
+        from .plan import PlanError, plan
 
-        call = plan(prompt, state, model_call=_ollama_model_call)
+        try:
+            call = plan(prompt, state)
+        except (PlanError, OSError, ValueError):
+            call = _generic_preview()  # model unreachable / no valid call → safe default
     else:
-        # Safe generic: preview-only, no committed change.
-        call = ToolCall(
-            tool="preview_intervention",
-            rationale="Previewing the requested change — confirm to apply.",
-            requires_user_confirmation=True,
-        )
+        call = _generic_preview()
 
     # Attach top RAG citations (grounding) if the call didn't carry its own.
     retrieved = rag.retrieve(prompt, k=3)

@@ -24,7 +24,6 @@ import argparse
 import json
 import os
 import re
-import sys
 import urllib.request
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

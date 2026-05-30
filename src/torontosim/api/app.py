@@ -51,6 +51,14 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                     _app.state.demo_cache.setdefault(sc, _compute_demo(sc))
                 except Exception:  # noqa: BLE001 — warmup is best-effort
                     pass
+            # Pre-load the copilot model so the first ask dodges the cold load.
+            try:
+                from ..copilot import ollama_client, planner
+
+                if planner._live_enabled() and ollama_client.available():
+                    ollama_client.warmup()
+            except Exception:  # noqa: BLE001 — warmup is best-effort
+                pass
 
         threading.Thread(target=warm, daemon=True).start()
         yield

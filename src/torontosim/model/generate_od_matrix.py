@@ -24,13 +24,36 @@ from __future__ import annotations
 import math
 from typing import Dict, List
 
+import networkx as nx
+
 from ..graph.config import haversine_m
 from .features import compute_static_node_features, normalize_time_context
 
+
+def _largest_scc(graph) -> set:
+    """Cached node set of the graph's largest strongly-connected component.
+
+    A trip is only guaranteed routable when *both* endpoints lie in this set —
+    inside it you can legally drive from any node to any other and back. Nodes
+    outside it are one-way pockets that would strand trips (you can enter but
+    not leave, or vice versa). Cached on the graph; rebuilt only if absent.
+    """
+    cached = graph.graph.get("_largest_scc")
+    if cached is None:
+        cached = (
+            max(nx.strongly_connected_components(graph), key=len)
+            if graph.number_of_nodes()
+            else set()
+        )
+        graph.graph["_largest_scc"] = cached
+    return cached
+
+
 # Candidate-set sizes: we only consider the top-N strongest origins and
-# destinations to keep the pair enumeration O(N^2) instead of O(nodes^2).
-TOP_ORIGINS = 500
-TOP_DESTS = 500
+# destinations to keep the pair enumeration O(N^2) instead of O(nodes^2). Wider
+# pools spread trips across more of the city so the map isn't a sparse backbone.
+TOP_ORIGINS = 1500
+TOP_DESTS = 1500
 
 # Geographic sanity bounds on a trip (km). Skip pairs outside this range.
 MIN_TRIP_KM = 0.4
@@ -101,6 +124,7 @@ def generate_od_matrix(
     nominal_total: float = NOMINAL_TOTAL_TRIPS,
     calibration: str = "none",
     tmc_records=None,
+    restrict_to_scc: bool = True,
 ) -> List[dict]:
     """Build the OD trip list. See module docstring for the model.
 
@@ -112,6 +136,10 @@ def generate_od_matrix(
     (``odme.odme_ipf_counts``) so the assigned link flows reconcile to the
     observed TMC peak counts (keyed on ``centreline_id``). Without
     ``tmc_records`` it degrades gracefully to plain ``ipf``.
+
+    ``restrict_to_scc`` (default True): only draw trip endpoints from the
+    largest strongly-connected component, so every (origin, destination) is
+    guaranteed a legal route — no trips stranded on one-way pocket nodes.
     """
     tc = normalize_time_context(time_context)
     static = compute_static_node_features(graph)
@@ -120,8 +148,18 @@ def generate_od_matrix(
     if not origin_strength or not dest_strength:
         return []
 
-    origins = sorted(origin_strength, key=lambda n: -origin_strength[n])[:TOP_ORIGINS]
-    dests = sorted(dest_strength, key=lambda n: -dest_strength[n])[:TOP_DESTS]
+    # Only draw trip endpoints from the largest strongly-connected component, so
+    # every (origin, destination) is guaranteed a legal route — no trips stranded
+    # on one-way pocket nodes at baseline.
+    scc = _largest_scc(graph) if restrict_to_scc else None
+    origins = sorted(
+        (n for n in origin_strength if scc is None or n in scc),
+        key=lambda n: -origin_strength[n],
+    )[:TOP_ORIGINS]
+    dests = sorted(
+        (n for n in dest_strength if scc is None or n in scc),
+        key=lambda n: -dest_strength[n],
+    )[:TOP_DESTS]
 
     pairs = []
     for i in origins:

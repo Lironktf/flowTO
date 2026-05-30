@@ -56,12 +56,12 @@ Routing/mutation logic (unchanged — already generic). GPU graph (P04). Citywid
 **On Spark:** build the citywide Centreline graph (more memory) over SSH; confirm it loads + a sample route solves.
 
 ## Tasks
-- [ ] T02.1 `schema.py` canonical fields + `validate_graph` + confidence enum — *0.5d*
-- [ ] T02.2 `centreline_loader.py` (TCL→edges, Intersection→nodes, oneway, filter) — *1.5d*
-- [ ] T02.3 Confidence labels across both loaders — *0.5d*
-- [ ] T02.4 `calibrate_capacity.py` TMC-match nudge — *0.5d*
-- [ ] T02.5 `build.py` CLI + bridges height attach — *0.5d*
-- [ ] T02.6 Tests (schema, centreline fixture, parity) + Liron regression — *0.5d*
+- [x] T02.1 `schema.py` canonical fields + `validate_graph` + confidence enum — *0.5d*
+- [x] T02.2 `centreline_loader.py` (TCL→edges, Intersection→nodes, oneway, filter) — *1.5d*
+- [x] T02.3 Confidence labels across both loaders — *0.5d*
+- [x] T02.4 `calibrate_capacity.py` TMC-match nudge — *0.5d*
+- [x] T02.5 `build.py` CLI + bridges height attach — *0.5d*
+- [x] T02.6 Tests (schema, centreline fixture, parity) + Liron regression — *0.5d*
 
 ## Risks / fallbacks
 - **Centreline topology messy** (segments not noded cleanly at intersections) → snap endpoints to nearest Intersection node within tolerance; fall back to OSMnx (baseline) for the demo if Centreline graph is unstable.

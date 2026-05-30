@@ -124,6 +124,10 @@ def _enrich_edges(graph: nx.MultiDiGraph) -> None:
     for u, v, k, data in graph.edges(keys=True, data=True):
         road_class = normalise_road_class(data.get("highway"))
 
+        # Per-field confidence: a value taken from OSM tags is `observed`, a
+        # class-default fill is `default`; capacity (derived) is `inferred`.
+        confidence: dict[str, str] = {}
+
         # ---- length (metres) -------------------------------------------
         length_m = to_float(data.get("length"))
         if length_m is None:
@@ -134,11 +138,17 @@ def _enrich_edges(graph: nx.MultiDiGraph) -> None:
         speed_kmh = to_float(data.get("maxspeed"))
         if speed_kmh is None or speed_kmh <= 0:
             speed_kmh = float(lookup(DEFAULT_SPEED_KMH, road_class))
+            confidence["speed_kmh"] = "default"
+        else:
+            confidence["speed_kmh"] = "observed"
 
         # ---- lanes -----------------------------------------------------
         lanes = to_float(data.get("lanes"))
         if lanes is None or lanes <= 0:
             lanes = float(lookup(DEFAULT_LANES, road_class))
+            confidence["lanes"] = "default"
+        else:
+            confidence["lanes"] = "observed"
 
         # ---- capacity (veh/hour) ---------------------------------------
         vphpl = lookup(VEHICLES_PER_HOUR_PER_LANE, road_class)
@@ -151,12 +161,16 @@ def _enrich_edges(graph: nx.MultiDiGraph) -> None:
         # ---- travel time -----------------------------------------------
         bt = base_time_min(length_m, speed_kmh)
 
+        # capacity is derived from (possibly default) lanes -> inferred.
+        confidence["capacity"] = "inferred"
+
         # ---- one-way ---------------------------------------------------
         one_way = data.get("oneway")
         if isinstance(one_way, (list, tuple)):
             one_way = bool(one_way[0]) if one_way else None
         elif one_way is not None:
             one_way = bool(one_way)
+        confidence["one_way"] = "observed" if data.get("oneway") is not None else "default"
 
         edge_id = make_edge_id(u, v, k)
 
@@ -178,6 +192,7 @@ def _enrich_edges(graph: nx.MultiDiGraph) -> None:
                 "load": 0,
                 "pressure": 0,
                 "geometry": _geometry_to_latlon(data.get("geometry")),
+                "confidence": confidence,
             }
         )
 

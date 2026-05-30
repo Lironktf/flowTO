@@ -64,11 +64,13 @@ def _build_graph(net: Network, eff_cost: np.ndarray):
         dst_i32 = net.head[finite].astype(np.int32)
         _TOPO_CACHE[net_id] = (fkey, src_i32, dst_i32)
 
-    edge_df = cudf.DataFrame({
-        "src": src_i32,
-        "dst": dst_i32,
-        "weight": eff_cost[finite].astype(np.float64),
-    })
+    edge_df = cudf.DataFrame(
+        {
+            "src": src_i32,
+            "dst": dst_i32,
+            "weight": eff_cost[finite].astype(np.float64),
+        }
+    )
     G = cugraph.Graph(directed=True)
     G.from_cudf_edgelist(edge_df, source="src", destination="dst", edge_attr="weight")
     return G
@@ -81,10 +83,13 @@ def _pred_dict(sssp_df) -> dict:
     guard against ``p < 0``, so the sentinel is preserved as a Python int.
     """
     arrow = sssp_df[["vertex", "predecessor"]].to_arrow()
-    return {int(v): int(p) for v, p in zip(
-        arrow.column("vertex").to_pylist(),
-        arrow.column("predecessor").to_pylist(),
-    )}
+    return {
+        int(v): int(p)
+        for v, p in zip(
+            arrow.column("vertex").to_pylist(),
+            arrow.column("predecessor").to_pylist(),
+        )
+    }
 
 
 def _edge_lookup(net: Network) -> dict:

@@ -146,9 +146,11 @@ def _assign_gpu(graph, od_matrix, k: int, reset: bool):
 
     costs = np.array(
         [
-            float(graph[u][v][ek].get("current_time_min") or INF)
-            if graph[u][v][ek].get("status") != "closed"
-            else INF
+            (
+                float(graph[u][v][ek].get("current_time_min") or INF)
+                if graph[u][v][ek].get("status") != "closed"
+                else INF
+            )
             for u, v, ek in edge_keys
         ],
         dtype=np.float64,
@@ -184,8 +186,7 @@ def _assign_gpu(graph, od_matrix, k: int, reset: bool):
 
             # Time weights from unpenalised routing costs.
             times = [
-                sum(costs[li] for li in lpath if math.isfinite(costs[li]))
-                for lpath in link_paths
+                sum(costs[li] for li in lpath if math.isfinite(costs[li])) for lpath in link_paths
             ]
             inv = [1.0 / t if t > 0 and math.isfinite(t) else 0.0 for t in times]
             s = sum(inv)
@@ -197,9 +198,7 @@ def _assign_gpu(graph, od_matrix, k: int, reset: bool):
                 for li in lpath:
                     u, v, ek = edge_keys[li]
                     if graph.has_edge(u, v, ek):
-                        graph[u][v][ek]["load"] = (
-                            graph[u][v][ek].get("load", 0.0) or 0.0
-                        ) + share
+                        graph[u][v][ek]["load"] = (graph[u][v][ek].get("load", 0.0) or 0.0) + share
 
     return graph
 

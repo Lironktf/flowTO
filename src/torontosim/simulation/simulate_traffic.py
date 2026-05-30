@@ -222,7 +222,15 @@ def simulate_traffic(
         frames = []
         with timer(f"assign_{engine}"):
             _kpath_loop(
-                G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames, backend
+                G,
+                od_used,
+                k_paths,
+                iterations,
+                weather,
+                congestion_model,
+                capture_frames,
+                frames,
+                backend,
             )
     summary = summarize(G, od_used)
     result = {
@@ -247,7 +255,17 @@ def simulate_traffic(
     return result
 
 
-def _kpath_loop(G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames, backend="cpu"):
+def _kpath_loop(
+    G,
+    od_used,
+    k_paths,
+    iterations,
+    weather,
+    congestion_model,
+    capture_frames,
+    frames,
+    backend="cpu",
+):
     """Liron's all-or-nothing top-k propagation loop (the baseline engine)."""
     for step in range(iterations):
         assign_demand_to_paths(G, od_used, k=k_paths, reset=True, backend=backend)
@@ -454,7 +472,14 @@ def simulate_scenario(
 
     if recompute == "blast":
         result = _run_blast_scenario(
-            G, od_matrix, weather, time_context, congestion_model, iterations, capture_frames, backend
+            G,
+            od_matrix,
+            weather,
+            time_context,
+            congestion_model,
+            iterations,
+            capture_frames,
+            backend,
         )
     else:
         result = simulate_traffic(

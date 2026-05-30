@@ -39,8 +39,10 @@ from torontosim.model.predict_node_demand import (  # noqa: E402
 )
 from torontosim.simulation.backends import (  # noqa: E402
     available_backends,
-    cpu as cpu_backend,
     scipy_backend,
+)
+from torontosim.simulation.backends import (
+    cpu as cpu_backend,
 )
 from torontosim.simulation.equilibrium import network_from_graph  # noqa: E402
 from torontosim.simulation.export_results import export_baseline_result  # noqa: E402
@@ -96,8 +98,10 @@ def _validate_scipy_backend(graph, od):
     # subset keeps this check fast while still exercising both backends.
     if len(od_by_origin) > 40:
         od_by_origin = {o: od_by_origin[o] for o in sorted(od_by_origin)[:40]}
-    print(f"  comparing on {len(od_by_origin)} origins "
-          f"({sum(len(v) for v in od_by_origin.values())} OD pairs)")
+    print(
+        f"  comparing on {len(od_by_origin)} origins "
+        f"({sum(len(v) for v in od_by_origin.values())} OD pairs)"
+    )
 
     def _time(fn):
         fn()  # warm-up
@@ -119,6 +123,7 @@ def _validate_scipy_backend(graph, od):
     print(f"  flow agreement: L1 diff {rel * 100:.3f}% of total flow (tie-break)")
     assert rel < 0.05, f"scipy flow diverges {rel:.2%} from cpu (>5%)"
     assert speedup > 1.0, "scipy backend should be faster than the heap backend"
+
 
 GRAPH_JSON = os.path.join(_REPO_ROOT, "data", "graph", "toronto_drive_graph.json")
 BASELINE_OUT = os.path.join(_REPO_ROOT, "data", "simulation", "baseline_result.json")
@@ -152,9 +157,18 @@ def test_simulation():
     # auto_calibrate OFF: the OD magnitude is already grounded in real counts via
     # ODME, so no invented scaling / target-pressure / correction factor.
     result = simulate_traffic(
-        graph, od, iterations=4, k_paths=3, time_context=TIME_CONTEXT, node_demands=demand,
-        engine="equilibrium", backend="scipy", congestion_model="bpr",
-        rgap_target=1e-2, max_equilibrium_iter=30, auto_calibrate=False,
+        graph,
+        od,
+        iterations=4,
+        k_paths=3,
+        time_context=TIME_CONTEXT,
+        node_demands=demand,
+        engine="equilibrium",
+        backend="scipy",
+        congestion_model="bpr",
+        rgap_target=1e-2,
+        max_equilibrium_iter=30,
+        auto_calibrate=False,
     )
     s = result["summary"]
 
@@ -171,19 +185,25 @@ def test_simulation():
     ps = _pressures(G)
     print(f"\n=== BASELINE SUMMARY (engine={result['engine']}, backend={result['backend']}) ===")
     if "rgap" in result:
-        print(f"  equilibrium: rgap={result['rgap']:.2e} "
-              f"iters={result.get('equilibrium_iterations')} converged={result.get('converged')}")
+        print(
+            f"  equilibrium: rgap={result['rgap']:.2e} "
+            f"iters={result.get('equilibrium_iterations')} converged={result.get('converged')}"
+        )
     print(f"  total assigned trips: {s['total_assigned_trips']:,.0f}")
     print(f"  active (loaded) edges: {s['active_edges']:,}")
     print(f"  average pressure:      {s['average_pressure']:.3f}")
-    print(f"  median / p95 / max P:  {_pct(ps, .5):.2f} / {_pct(ps, .95):.2f} / "
-          f"{(ps[-1] if ps else 0):.2f}")
+    print(
+        f"  median / p95 / max P:  {_pct(ps, .5):.2f} / {_pct(ps, .95):.2f} / "
+        f"{(ps[-1] if ps else 0):.2f}"
+    )
     print(f"  high-risk edges:       {s['high_risk_edges']:,}")
     print(f"  severe edges:          {s['severe_edges']:,}")
     print(f"  stranded trips:        {s.get('stranded_trips', 0):,.0f} (no route in the network)")
     if result["engine"] == "equilibrium" and ps and ps[-1] > 3.0:
-        print(f"  NOTE: max pressure {ps[-1]:.1f}× = genuine rush-hour oversaturation "
-              f"(v/c>1); more OD pairs + ODME calibration would spread it further.")
+        print(
+            f"  NOTE: max pressure {ps[-1]:.1f}× = genuine rush-hour oversaturation "
+            f"(v/c>1); more OD pairs + ODME calibration would spread it further."
+        )
 
     # ---- scipy backend wire-in check ----------------------------------
     _validate_scipy_backend(graph, od)
@@ -206,17 +226,26 @@ def test_simulation():
     print(f"\n=== SCENARIO: close busiest edge {worst_id} " f"({worst.get('road_name')}) ===")
     scenario = [{"op": "close_edge", "edge_id": worst_id}]
     scen = simulate_scenario(
-        graph, result["od_matrix"], scenario, iterations=4, k_paths=3,
-        engine="equilibrium", backend="scipy", congestion_model="bpr",
-        rgap_target=1e-2, max_equilibrium_iter=30,
+        graph,
+        result["od_matrix"],
+        scenario,
+        iterations=4,
+        k_paths=3,
+        engine="equilibrium",
+        backend="scipy",
+        congestion_model="bpr",
+        rgap_target=1e-2,
+        max_equilibrium_iter=30,
     )
     impact = compare_simulations(result, scen)
     sd = impact["summary_delta"]
     print(f"  avg pressure delta: {sd['average_pressure']:+.4f}")
     print(f"  high-risk delta:    {sd['high_risk_edges']:+d}")
     print(f"  severe delta:       {sd['severe_edges']:+d}")
-    print(f"  stranded trips:     {sd.get('stranded_trips', 0):+,.0f} "
-          f"(extra trips left with no route by this closure — a cost)")
+    print(
+        f"  stranded trips:     {sd.get('stranded_trips', 0):+,.0f} "
+        f"(extra trips left with no route by this closure — a cost)"
+    )
     print("  top rerouted edges (by load change):")
     for c in impact["most_impacted_edges"][:5]:
         print(

@@ -120,11 +120,7 @@ def calibrate_od_to_counts(
         max_iter=max_iter,
         damping=damping,
     )
-    return [
-        {"origin": o, "destination": d, "trips": t}
-        for (o, d), t in adjusted.items()
-        if t > 0
-    ]
+    return [{"origin": o, "destination": d, "trips": t} for (o, d), t in adjusted.items() if t > 0]
 
 
 def build_grounded_od(graph, node_demands, time_context, max_pairs: int = 1500) -> dict:

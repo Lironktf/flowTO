@@ -48,6 +48,7 @@ def _largest_scc(graph) -> set:
         graph.graph["_largest_scc"] = cached
     return cached
 
+
 # Candidate-set sizes: we only consider the top-N strongest origins and
 # destinations to keep the pair enumeration O(N^2) instead of O(nodes^2). Wider
 # pools spread trips across more of the city so the map isn't a sparse backbone.
@@ -122,16 +123,23 @@ def generate_od_matrix(
     max_pairs: int = 1000,
     nominal_total: float = NOMINAL_TOTAL_TRIPS,
     calibration: str = "none",
+    tmc_records=None,
     restrict_to_scc: bool = True,
 ) -> List[dict]:
     """Build the OD trip list. See module docstring for the model.
 
     ``calibration`` (P03): ``none`` keeps the demo-safe gravity baseline
-    (default — per GOAL's "prefer the safe column"); ``ipf``/``ipf_counts``
-    additionally balance the gravity matrix to production/attraction marginals
-    derived from the node-demand strengths (Furness Stage 1). Full ODME against
-    TMC counts (``ipf_counts`` with observed link flows) is applied downstream
-    in the assignment loop where an assignment is available.
+    (default — per GOAL's "prefer the safe column"); ``ipf`` additionally
+    balances the gravity matrix to production/attraction marginals derived from
+    the node-demand strengths (Furness Stage 1). ``ipf_counts`` does the Furness
+    balance **and**, when ``tmc_records`` are supplied, runs ODME
+    (``odme.odme_ipf_counts``) so the assigned link flows reconcile to the
+    observed TMC peak counts (keyed on ``centreline_id``). Without
+    ``tmc_records`` it degrades gracefully to plain ``ipf``.
+
+    ``restrict_to_scc`` (default True): only draw trip endpoints from the
+    largest strongly-connected component, so every (origin, destination) is
+    guaranteed a legal route — no trips stranded on one-way pocket nodes.
     """
     tc = normalize_time_context(time_context)
     static = compute_static_node_features(graph)
@@ -144,9 +152,14 @@ def generate_od_matrix(
     # every (origin, destination) is guaranteed a legal route — no trips stranded
     # on one-way pocket nodes at baseline.
     scc = _largest_scc(graph) if restrict_to_scc else None
-    ok = (lambda n: scc is None or n in scc)
-    origins = sorted((n for n in origin_strength if ok(n)), key=lambda n: -origin_strength[n])[:TOP_ORIGINS]
-    dests = sorted((n for n in dest_strength if ok(n)), key=lambda n: -dest_strength[n])[:TOP_DESTS]
+    origins = sorted(
+        (n for n in origin_strength if scc is None or n in scc),
+        key=lambda n: -origin_strength[n],
+    )[:TOP_ORIGINS]
+    dests = sorted(
+        (n for n in dest_strength if scc is None or n in scc),
+        key=lambda n: -dest_strength[n],
+    )[:TOP_DESTS]
 
     pairs = []
     for i in origins:
@@ -175,8 +188,82 @@ def generate_od_matrix(
 
     total_val = sum(v for _, _, v in pairs)
     scale = (nominal_total / total_val) if total_val > 0 else 0.0
+    pairs = [(i, j, v * scale) for (i, j, v) in pairs]
 
-    return [{"origin": i, "destination": j, "trips": v * scale} for (i, j, v) in pairs]
+    # Stage-2 ODME: reconcile assigned link flows to observed TMC peaks. Only
+    # when explicitly requested AND real counts are available (else the gravity
+    # + Furness baseline above stands — the demo-safe path).
+    if calibration == "ipf_counts" and tmc_records:
+        pairs = _calibrate_odme_counts(pairs, graph, tmc_records)
+
+    return [{"origin": i, "destination": j, "trips": v} for (i, j, v) in pairs]
+
+
+def centreline_path(graph, origin, destination) -> list:
+    """Centreline ids traversed by the shortest path ``origin -> destination``.
+
+    Used to assign OD trips onto real road segments (the link key TMC counts
+    use). Returns ``[]`` if unreachable or the path carries no centreline ids.
+    """
+    from ..graph.routing import find_shortest_path
+
+    res = find_shortest_path(graph, origin, destination)
+    if not res.get("found"):
+        return []
+    cids: list = []
+    nodes = res["nodes"]
+    for u, v in zip(nodes[:-1], nodes[1:]):
+        data = graph.get_edge_data(u, v) or {}
+        for _k, d in sorted(data.items()):
+            cid = d.get("centreline_id")
+            if cid is not None:
+                cids.append(cid)
+                break
+    return cids
+
+
+def assigned_counts_by_centreline(od_list: List[dict], graph) -> Dict[object, float]:
+    """All-or-nothing assignment of an OD list onto centreline ids -> link flow."""
+    from .odme import assign_to_links
+
+    od = {(o["origin"], o["destination"]): float(o["trips"]) for o in od_list}
+    cache: Dict[tuple, list] = {}
+
+    def path_of(o, d):
+        key = (o, d)
+        if key not in cache:
+            cache[key] = centreline_path(graph, o, d)
+        return cache[key]
+
+    return assign_to_links(od, path_of)
+
+
+def _calibrate_odme_counts(pairs, graph, tmc_records):
+    """Run ODME on the gravity OD so assigned flows track observed TMC peaks.
+
+    Paths are static (all-or-nothing on an unchanging graph), so each pair's
+    centreline path is computed once and reused across ODME iterations.
+    """
+    from ..graph.calibrate_capacity import observed_peak_by_centreline
+    from .odme import odme_ipf_counts
+
+    observed = observed_peak_by_centreline(tmc_records)
+    if not observed:
+        return pairs
+
+    path_cache = {
+        (i, j): [c for c in centreline_path(graph, i, j) if c in observed] for (i, j, _) in pairs
+    }
+    # No OD pair touches an observed segment -> nothing to reconcile.
+    if not any(path_cache.values()):
+        return pairs
+
+    def path_of(o, d):
+        return path_cache.get((o, d), [])
+
+    seed = {(i, j): v for (i, j, v) in pairs}
+    calibrated = odme_ipf_counts(seed, observed, path_of)
+    return [(i, j, calibrated[(i, j)]) for (i, j, _) in pairs]
 
 
 def _calibrate_ipf(pairs, origin_strength, dest_strength):

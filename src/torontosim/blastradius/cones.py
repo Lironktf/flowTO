@@ -109,11 +109,13 @@ def _bounded_cone_gpu(
     v_dst = np.array(sources, dtype=np.int32)
     v_w = np.zeros(len(sources), dtype=np.float64)
 
-    edge_df = cudf.DataFrame({
-        "src": np.concatenate([real_src, v_src]),
-        "dst": np.concatenate([real_dst, v_dst]),
-        "weight": np.concatenate([w_arr, v_w]),
-    })
+    edge_df = cudf.DataFrame(
+        {
+            "src": np.concatenate([real_src, v_src]),
+            "dst": np.concatenate([real_dst, v_dst]),
+            "weight": np.concatenate([w_arr, v_w]),
+        }
+    )
     G = cugraph.Graph(directed=True)
     G.from_cudf_edgelist(edge_df, source="src", destination="dst", edge_attr="weight")
 

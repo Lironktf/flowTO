@@ -2,8 +2,8 @@
 
 > Overnight dashboard. The build agent updates this after every task and phase.
 > Status legend: `todo` · `doing` · `done ✅` · `blocked 🚫` · `deferred ⏭️` (with reason).
-> Started: 2026-05-30 · Branch: per-phase `build/flo-*` off `bentobranch` (+`liron/model` merged) · Last update: 2026-05-30
-> **ALL 13 CORE PHASES ✅** · `pytest -q` = **100 passed, 2 skipped** (spark-gated GPU+LLM, both verified live on `gx10-4f5f`) · frontend build + 12 vitest green · demo deterministic. See `HANDOFF.md`.
+> Started: 2026-05-30 · Built across per-phase `build/flo-*` PRs (each `Closes FLO-NN`), merged in order into `bentobranch`. Last update: 2026-05-30.
+> **ALL 13 CORE PHASES ✅ + design v2 (two-view IDE)** · `pytest -q` = **104 passed, 2 skipped** (spark-gated GPU+LLM, both verified live on `gx10-4f5f`) · frontend build + 12 vitest green · demo deterministic. See `HANDOFF.md` + root `README.md`.
 
 ## Phase status
 | Phase | Title | Status | Notes |

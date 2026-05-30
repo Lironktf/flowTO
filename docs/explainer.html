@@ -269,6 +269,68 @@
   footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;}
 
   .divider{height:1px;background:var(--line);margin:0;}
+
+  /* ---------- developer reference ---------- */
+  .devintro{max-width:74ch;color:var(--muted);font-size:1.05rem;}
+
+  .callout{
+    border:1px solid var(--line-strong);border-left:3px solid var(--blue);
+    background:var(--blue-wash);border-radius:0 12px 12px 0;
+    padding:18px 22px;margin:26px 0;
+  }
+  .callout .lbl{font-family:var(--mono);font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--blue);margin-bottom:8px;display:flex;align-items:center;gap:.5em;}
+  .callout p{margin:0;color:var(--ink);line-height:1.55;}
+  .callout b{color:var(--blue);}
+
+  /* node/edge diagram */
+  .nedge{border:1px solid var(--line);border-radius:13px;background:var(--panel);padding:14px;margin:18px 0;box-shadow:var(--shadow);}
+  .nedge svg{width:100%;height:auto;display:block;}
+
+  /* data-flow pipeline strip */
+  .pipeflow{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:26px 0 8px;}
+  .pipeflow .pf{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;}
+  .pipeflow .pf .pfn{font-family:var(--mono);font-size:.6rem;letter-spacing:.12em;color:var(--blue);text-transform:uppercase;margin-bottom:6px;}
+  .pipeflow .pf .pft{font-weight:600;font-size:.9rem;letter-spacing:-.01em;}
+  .pipeflow .pf .pfd{font-size:.76rem;color:var(--muted);margin-top:3px;line-height:1.4;}
+  @media(max-width:820px){.pipeflow{flex-direction:column;}}
+
+  /* collapsible spec dropdowns */
+  details.spec{border:1px solid var(--line);border-radius:13px;background:var(--panel);margin:13px 0;overflow:hidden;box-shadow:var(--shadow);}
+  details.spec>summary{
+    cursor:pointer;list-style:none;padding:20px 24px;display:flex;align-items:baseline;gap:14px;
+    font-family:var(--display);font-size:1.18rem;font-weight:500;color:var(--ink);transition:background .2s;
+  }
+  details.spec>summary:hover{background:rgba(27,63,160,.035);}
+  details.spec>summary::-webkit-details-marker{display:none;}
+  details.spec>summary .sidx{font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;color:var(--blue);align-self:center;}
+  details.spec>summary::after{content:"+";margin-left:auto;font-family:var(--mono);font-size:1.5rem;color:var(--blue);font-weight:400;line-height:1;align-self:center;}
+  details.spec[open]>summary::after{content:"–";}
+  details.spec[open]>summary{border-bottom:1px solid var(--line);}
+  .spec-body{padding:20px 24px 26px;}
+  .spec-body>p{color:var(--muted);margin:0 0 14px;}
+  .spec-body h4{font-family:var(--body);font-weight:700;font-size:.92rem;margin:22px 0 8px;color:var(--ink);letter-spacing:.01em;}
+  .spec-body ul{margin:8px 0 14px;padding-left:20px;color:var(--muted);}
+  .spec-body li{margin:5px 0;}
+  .spec-body li b,.spec-body p b{color:var(--ink);}
+  .spec-body code{font-family:var(--mono);font-size:.85em;background:rgba(27,63,160,.08);color:var(--blue);padding:1px 6px;border-radius:5px;}
+
+  pre.code{
+    font-family:var(--mono);font-size:.81rem;line-height:1.65;
+    background:var(--closed);color:#E9E7DF;border-radius:11px;
+    padding:18px 20px;overflow-x:auto;margin:12px 0 16px;border:1px solid rgba(255,255,255,.08);
+  }
+  pre.code code{background:none;color:inherit;padding:0;font-size:inherit;}
+  pre.code .c{color:#8b95b0;}
+  pre.code .k{color:#7fa0ff;}
+  pre.code .s{color:#46d088;}
+  pre.code .t{color:#E6A23C;}
+
+  table.api{width:100%;border-collapse:collapse;font-size:.88rem;margin:10px 0 16px;}
+  table.api th,table.api td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;}
+  table.api th{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:500;}
+  table.api td{color:var(--muted);}
+  table.api td.m{font-family:var(--mono);font-size:.8rem;color:var(--blue);white-space:nowrap;}
+  table.api td b{color:var(--ink);}
 </style>
 </head>
 <body>
@@ -283,6 +345,8 @@
       <a href="#thinking">How it thinks</a>
       <a href="#panel">Try it</a>
       <a href="#trust">Trust</a>
+      <a href="#loop-closure">Feedback loop</a>
+      <a href="#dev">Dev reference</a>
     </div>
   </div>
 </nav>
@@ -478,6 +542,7 @@
       <div class="reveal">
         <p style="font-size:1.12rem;color:var(--ink)">Real drivers avoid jams. If everyone took the “best” road, it would instantly become the worst road — so people reshuffle until no single driver could get there faster by switching. That settled state is called <b>balance</b> (planners say “equilibrium”).</p>
         <p style="color:var(--muted)">flowTO does the same dance: it runs the four questions, sees where it clogged, lets people re-route around the clog, and runs them again — over and over — until the picture stops moving. <b>That stable picture is the prediction.</b></p>
+        <p style="font-family:var(--mono);font-size:.82rem;color:var(--faint);border-left:2px solid var(--line-strong);padding-left:14px;margin-top:6px">Under the hood this is a textbook method: a <b style="color:var(--muted)">BPR</b> road-speed curve (a road slows as it fills) driving a <b style="color:var(--muted)">Frank-Wolfe user-equilibrium</b> solver that stops when the “relative gap” closes. Same math the big transport agencies use.</p>
         <div class="analogy">
           <div class="lbl">◆ Think of it like this</div>
           <p>Checkout lines at a grocery store. People drift to the shortest line until every line is about equally slow. Nobody planned it — it just balances out. A whole city of drivers does exactly that, and the model finds where it lands.</p>
@@ -526,42 +591,42 @@
     <div class="section-head reveal">
       <span class="num">04 / SEE IT MOVE</span>
       <span class="kicker">A toy version of the real thing</span>
-      <h2>Click through a World Cup evening.</h2>
-      <p class="lede">Each square is a patch of the city. Green is free-flowing, red is gridlock. Press the buttons in order and watch the same crowd play out four different ways. <span style="font-family:var(--mono);font-size:.8rem">(Illustration — the real model runs the whole street grid.)</span></p>
+      <h2>Click through the World Cup final letting out.</h2>
+      <p class="lede">Each square is a patch around BMO Field and the Lake Shore corridor. Green is free-flowing, red is gridlock. Press the buttons in order and watch 45,000 fans pour out, jam the streets, rat-run the side roads, and then settle once the copilot's plan lands. <span style="font-family:var(--mono);font-size:.8rem">(Illustration — the real model runs Toronto's whole street grid.)</span></p>
     </div>
 
     <div class="grid-2" style="align-items:start;gap:34px">
       <div class="reveal">
         <div class="console">
           <div class="console-top">
-            <div class="t">TORONTO · <b id="clockLabel">Tue 17:00</b></div>
+            <div class="t">EXHIBITION PLACE · <b id="clockLabel">Fri 16:30 · pre-match</b></div>
             <div class="legend">FREE<span class="bar"></span>JAMMED</div>
           </div>
           <div class="heatgrid" id="heatgrid"></div>
           <div class="console-foot">
             <div class="metricbox">
-              <div class="metric"><div class="v" id="mTime">22<span style="font-size:1rem"> min</span></div><div class="k">Avg trip across core</div></div>
+              <div class="metric"><div class="v" id="mTime">11.4<span style="font-size:1rem"> min</span></div><div class="k">Mean travel time</div></div>
               <div class="metric"><div class="v" id="mFlow">Good</div><div class="k">City flow</div></div>
             </div>
           </div>
         </div>
 
         <div class="scenariobar" id="scenarioBar">
-          <button class="sbtn active" data-s="0"><span class="step-n">STEP 01</span>Normal evening</button>
-          <button class="sbtn" data-s="1"><span class="step-n">STEP 02</span>World Cup surge</button>
-          <button class="sbtn" data-s="2"><span class="step-n">STEP 03</span>Close King St</button>
-          <button class="sbtn" data-s="3"><span class="step-n">STEP 04</span>Apply the fix</button>
+          <button class="sbtn active" data-s="0"><span class="step-n">STEP 01</span>Pre-match calm</button>
+          <button class="sbtn" data-s="1"><span class="step-n">STEP 02</span>Full-time · +45k</button>
+          <button class="sbtn" data-s="2"><span class="step-n">STEP 03</span>Cut-through spills</button>
+          <button class="sbtn" data-s="3"><span class="step-n">STEP 04</span>Copilot's fix</button>
         </div>
       </div>
 
       <div class="reveal">
-        <p class="caption" id="caption"><b>A normal Tuesday at 5 p.m.</b> Downtown glows a healthy amber — busy, but moving. This is the baseline the planner compares everything against.</p>
+        <p class="caption" id="caption"><b>Friday, 12 June 2026, 4:30 p.m. — pre-match.</b> Exhibition Place and the Lake Shore corridor glow a healthy green-amber: busy, but moving. This is the baseline the planner compares everything against.</p>
 
         <h3 style="margin-top:30px">What the buttons are doing</h3>
-        <p style="color:var(--muted)">Nothing here is scripted scene-by-scene. You change <em>one input</em> — a crowd, a closed street, an extra streetcar — and the city re-balances itself using the four questions from the last section. The red you see in Step&nbsp;3 isn't placed by hand; it's where the cars that <em>used</em> to take King had to go instead.</p>
+        <p style="color:var(--muted)">Nothing here is scripted scene-by-scene. You change <em>one input</em> — release 45,000 fans, retime a signal, hold a streetcar — and the city re-balances itself using the four questions from the last section. The red you see in Step&nbsp;3 isn't placed by hand; it's where the cars that couldn't fit on Lake Shore and the Gardiner <em>spilled</em> — rat-running through Parkdale and Liberty Village.</p>
         <div class="analogy" style="margin-top:24px">
           <div class="lbl">◆ The takeaway</div>
-          <p>You never tell flowTO “make Queen Street red.” You close King Street, and the redness <em>shows up on its own.</em> That's the difference between a memory and a model.</p>
+          <p>You never tell flowTO “make Liberty Street red.” You release the crowd, and the redness <em>shows up on its own</em> — exactly where the model says the overflow has to go. That's the difference between a memory and a model.</p>
         </div>
       </div>
     </div>
@@ -580,10 +645,10 @@
     <div class="levers reveal">
       <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M6 6l12 12"/></svg><div><div class="lt">Close a road</div><div class="ld">Capacity drops to zero; cars find another way.</div></div></div>
       <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h16M4 16h16M9 4v16"/></svg><div><div class="lt">Reduce lanes</div><div class="ld">Less room means it clogs at lower volume.</div></div></div>
-      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 18h18M6 18l3-9 3 5 3-8 3 12"/></svg><div><div class="lt">Add construction</div><div class="ld">A slow, narrowed zone that drags down a corridor.</div></div></div>
-      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.4"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5M15 19c0-2 1.5-3.5 3.5-3.5S21 17 21 19"/></svg><div><div class="lt">Add a crowd</div><div class="ld">An event injects thousands of trips at one spot.</div></div></div>
-      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="3" width="12" height="14" rx="2"/><path d="M6 9h12M9 21l3-4 3 4"/></svg><div><div class="lt">Boost a transit line</div><div class="ld">More frequent service; people switch off the roads.</div></div></div>
-      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12h10a4 4 0 004-4V5M14 12l-3-3M14 12l-3 3"/></svg><div><div class="lt">Reroute / contraflow</div><div class="ld">Send traffic a different way, or flip a lane's direction.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M12 7v3M12 14h.01"/></svg><div><div class="lt">Retime a signal</div><div class="ld">Change the light cycle and splits to favour one direction.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="9" cy="8" r="3"/><circle cx="16" cy="9" r="2.4"/><path d="M3 19c0-3 3-5 6-5s6 2 6 5M15 19c0-2 1.5-3.5 3.5-3.5S21 17 21 19"/></svg><div><div class="lt">Inject a crowd</div><div class="ld">An event drops thousands of trips at one spot — a demand surge.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="3" width="12" height="14" rx="2"/><path d="M6 9h12M9 21l3-4 3 4"/></svg><div><div class="lt">Hold transit priority</div><div class="ld">Give a streetcar or bus green-light priority; riders switch off the roads.</div></div></div>
+      <div class="lever"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 12h10a4 4 0 004-4V5M14 12l-3-3M14 12l-3 3"/></svg><div><div class="lt">Temporary one-way / contraflow</div><div class="ld">Flip a lane's direction to push an egress surge one way.</div></div></div>
     </div>
   </div>
 </section>
@@ -596,34 +661,34 @@
     <div class="section-head reveal">
       <span class="num">05 / WORKED EXAMPLE</span>
       <span class="kicker">Why one small change matters everywhere</span>
-      <h2>Close King Street at 5 p.m. — follow the dominoes.</h2>
+      <h2>Full-time at BMO Field — follow the dominoes.</h2>
     </div>
     <div class="ripple reveal" style="border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--paper)">
       <div class="rstep">
         <span class="rn">DOMINO 01</span>
-        <p class="rt">The cars don't vanish.</p>
-        <p>King is closed, but those drivers still need to get home. They spill onto Queen and Front.</p>
+        <p class="rt">45,000 leave at once.</p>
+        <p>At the 17:05 final whistle the crowd pours out over ~25 minutes — all aiming for the same Lake&nbsp;Shore / Strachan / Dufferin spine.</p>
         <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </div>
       <div class="rstep">
         <span class="rn">DOMINO 02</span>
-        <p class="rt">Those streets go red.</p>
-        <p>Queen and Front were already busy. The extra cars tip them into gridlock — the heatmap lights up.</p>
+        <p class="rt">The spine goes red.</p>
+        <p>Lake Shore and the Gardiner were already full. The surge tips them into gridlock — mean travel time jumps <b style="color:var(--ink)">11.4 → 28.7 min.</b></p>
         <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </div>
       <div class="rstep">
         <span class="rn">DOMINO 03</span>
-        <p class="rt">Some drivers give up.</p>
-        <p>Seeing the mess, a chunk of them abandon the car and hop the 504 streetcar instead.</p>
+        <p class="rt">Drivers rat-run the side streets.</p>
+        <p>Stuck on the arterials, cars cut through Parkdale and Liberty Village. Local-road infiltration leaps <b style="color:var(--ink)">6% → 34%.</b></p>
         <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
       </div>
       <div class="rstep">
         <span class="rn">DOMINO 04</span>
         <p class="rt">A new balance — with a number.</p>
-        <p>The streetcar gets crowded, the roads settle, and flowTO reports it: <b style="color:var(--ink)">“average trip +6 min.”</b></p>
+        <p>flowTO settles the whole picture and reports it: <b style="color:var(--ink)">total network delay 1,240 → 4,180 veh·h.</b> Now the planner can go looking for a fix.</p>
       </div>
     </div>
-    <p style="color:var(--muted);max-width:62ch;margin-top:26px" class="reveal">No human placed any of that. You changed <em>one</em> thing — King is closed — and the model worked out all four dominoes by itself. Do this for a whole World Cup, and a planner can see trouble coming weeks before it arrives.</p>
+    <p style="color:var(--muted);max-width:62ch;margin-top:26px" class="reveal">No human placed any of that. You changed <em>one</em> thing — the crowd is released — and the model worked out all four dominoes by itself, right down to which side streets fill. Apply the copilot's plan and the same engine runs it backwards: delay settles to <b>2,590 veh·h</b> and egress drops <b>−32%</b>.</p>
   </div>
 </section>
 
@@ -650,47 +715,250 @@
 
     <div style="margin-top:80px" class="reveal">
       <span class="num" style="font-family:var(--mono);font-size:.78rem;color:var(--faint);letter-spacing:.1em;display:block;margin-bottom:18px">07 / DOES IT ACTUALLY WORK?</span>
-      <span class="kicker">Proving it before we bet on it</span>
-      <h2 style="margin-top:.4rem">We test it against the past.</h2>
-      <p class="lede" style="margin-top:14px">There's a simple honesty check: rewind to something that <em>already happened</em> and see if the model would have called it.</p>
+      <span class="kicker">Proving it against a known answer</span>
+      <h2 style="margin-top:.4rem">We check it against the reference solver.</h2>
+      <p class="lede" style="margin-top:14px">Traffic engineering has textbook road networks with published, agreed-upon answers. We run flowTO on those — and against <b>AequilibraE</b>, the open-source solver agencies already trust — and confirm we match.</p>
     </div>
 
     <div class="stats reveal" style="margin-top:36px">
-      <div class="stat"><div class="sv">1</div><div class="sk">Pick a real past event — a Gardiner closure, a big game letting out</div></div>
-      <div class="stat"><div class="sv">2</div><div class="sk">Feed the model that exact situation</div></div>
-      <div class="stat"><div class="sv">3</div><div class="sk">Compare its prediction to what really happened</div></div>
-      <div class="stat"><div class="sv">4</div><div class="sk">Nail the past → trust it on the future (hello, World Cup)</div></div>
+      <div class="stat"><div class="sv">1</div><div class="sk">Take a standard benchmark network (SiouxFalls, Anaheim) with a published equilibrium</div></div>
+      <div class="stat"><div class="sv">2</div><div class="sk">Run flowTO's engine and the trusted AequilibraE solver on the same network</div></div>
+      <div class="stat"><div class="sv">3</div><div class="sk">Confirm every road's traffic agrees to within <b style="color:var(--ink)">1%</b></div></div>
+      <div class="stat"><div class="sv">4</div><div class="sk">Match the known answer → trust it on the new question (hello, World Cup)</div></div>
     </div>
   </div>
 </section>
 
 <div class="divider"></div>
 
-<!-- ============ 08 — HARDWARE ============ -->
+<!-- ============ 08 — CLOSING THE LOOP ============ -->
+<section id="loop-closure" style="background:linear-gradient(180deg,transparent,rgba(31,164,99,.05));">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">08 / CLOSING THE LOOP</span>
+      <span class="kicker">From the whiteboard to a model that learns</span>
+      <h2>Predict a lane closure — then learn from what really happened.</h2>
+      <p class="lede">Section 07 proved the engine matches a textbook answer. This is the next move: point it at <em>real Toronto closures</em>, compare the prediction to what actually happened, and feed the gap back in until it's accurate. That loop is the whiteboard.</p>
+    </div>
+
+    <!-- ---- the whiteboard, decoded ---- -->
+    <h3 style="font-family:var(--display);font-size:1.6rem;margin:6px 0 6px;">The whiteboard, decoded</h3>
+    <p style="color:var(--muted);max-width:74ch;margin-bottom:18px;">A model learns how traffic flows on open roads, predicts what happens when a lane closes, compares that to reality, and uses the <b>delta</b> to correct itself. Repeat &#8594; it gets accurate.</p>
+    <div class="nedge reveal">
+      <svg viewBox="0 0 900 250" role="img" aria-label="Lane-closure feedback loop">
+        <defs>
+          <marker id="ahb" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M1 1 L8 4.5 L1 8" fill="none" stroke="#1B3FA0" stroke-width="1.6"/></marker>
+          <marker id="ahr" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M1 1 L8 4.5 L1 8" fill="none" stroke="#D6453A" stroke-width="1.6"/></marker>
+          <marker id="ahg" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto"><path d="M1 1 L8 4.5 L1 8" fill="none" stroke="#1FA463" stroke-width="1.6"/></marker>
+        </defs>
+        <g font-family="IBM Plex Mono, monospace" font-size="12">
+          <rect x="16" y="98" width="150" height="56" rx="9" fill="var(--blue-wash)" stroke="var(--blue)"/>
+          <text x="91" y="122" text-anchor="middle" fill="var(--blue)" font-weight="600">Open dataset</text>
+          <text x="91" y="138" text-anchor="middle" fill="var(--muted)" font-size="9.5">traffic on open roads</text>
+          <rect x="206" y="92" width="150" height="68" rx="9" fill="var(--blue)" stroke="var(--blue)"/>
+          <text x="281" y="120" text-anchor="middle" fill="#fff" font-family="Fraunces,serif" font-size="16">MODEL</text>
+          <text x="281" y="138" text-anchor="middle" fill="#cdd6f5" font-size="9.5">predict closure flow</text>
+          <rect x="430" y="46" width="160" height="52" rx="9" fill="var(--panel)" stroke="var(--blue)"/>
+          <text x="510" y="68" text-anchor="middle" fill="var(--ink)" font-weight="600">PREDICTED</text>
+          <text x="510" y="84" text-anchor="middle" fill="var(--muted)" font-size="9.5">flow when lane closes</text>
+          <rect x="430" y="152" width="160" height="52" rx="9" fill="var(--panel)" stroke="var(--amber)"/>
+          <text x="510" y="174" text-anchor="middle" fill="#B07A1E" font-weight="600">OBSERVED</text>
+          <text x="510" y="190" text-anchor="middle" fill="var(--muted)" font-size="9.5">what actually happened</text>
+          <rect x="648" y="98" width="92" height="56" rx="9" fill="rgba(214,69,58,.08)" stroke="var(--red)"/>
+          <text x="694" y="124" text-anchor="middle" fill="var(--red)" font-family="Fraunces,serif" font-size="19">&#916;</text>
+          <text x="694" y="142" text-anchor="middle" fill="var(--muted)" font-size="9">delta = error</text>
+          <path d="M166 126 h36" stroke="var(--blue)" stroke-width="1.6" fill="none" marker-end="url(#ahb)"/>
+          <path d="M356 116 C395 96 405 80 426 74" stroke="var(--blue)" stroke-width="1.6" fill="none" marker-end="url(#ahb)"/>
+          <path d="M356 138 C395 158 405 174 426 178" stroke="var(--green)" stroke-width="1.6" fill="none" marker-end="url(#ahg)"/>
+          <path d="M590 70 C625 80 632 92 650 104" stroke="var(--red)" stroke-width="1.6" fill="none" marker-end="url(#ahr)"/>
+          <path d="M590 182 C625 172 632 160 650 148" stroke="var(--red)" stroke-width="1.6" fill="none" marker-end="url(#ahr)"/>
+          <path d="M694 98 C694 18 281 14 281 88" stroke="var(--red)" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#ahr)"/>
+          <text x="490" y="26" text-anchor="middle" fill="var(--red)" font-size="11" font-weight="600">feedback &middot; tune capacity / &#945;,&#946; / OD until &#916; shrinks</text>
+          <text x="281" y="186" text-anchor="middle" fill="var(--faint)" font-size="10">&#8595; after the training arc</text>
+          <rect x="206" y="198" width="150" height="40" rx="9" fill="var(--panel)" stroke="var(--green)" stroke-dasharray="4 3"/>
+          <text x="281" y="223" text-anchor="middle" fill="#157A48" font-size="11" font-weight="600">accurate predictor</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="analogy reveal">
+      <div class="lbl">◆ Think of it like this</div>
+      <p>It's how weather models earn trust: forecast tomorrow, then check the forecast against what the sky actually did, and let every miss sharpen the next one. flowTO does that — but for closing a lane on King Street.</p>
+    </div>
+
+    <!-- ---- already built ---- -->
+    <h3 style="font-family:var(--display);font-size:1.6rem;margin:46px 0 6px;">You've already built ~80% of it</h3>
+    <p style="color:var(--muted);max-width:74ch;margin-bottom:16px;">The simulation engine <em>is</em> the model; the closure scenarios already exist. The one genuinely new piece — the part the whiteboard is really pointing at — is the calibration feedback loop. Mapping every box to code:</p>
+    <table class="api reveal">
+      <tr><th>Whiteboard box</th><th>Status</th><th>Where it lives</th></tr>
+      <tr><td><b>Open dataset</b></td><td><span style="color:#157A48;font-family:var(--mono);font-size:.78rem">&#10003; done</span></td><td>TMC counts + Centreline baked to Parquet (data pipeline, &sect;G)</td></tr>
+      <tr><td><b>The "model"</b></td><td><span style="color:#157A48;font-family:var(--mono);font-size:.78rem">&#10003; done</span></td><td>BPR + Frank-Wolfe equilibrium, verified vs SiouxFalls (&sect;C)</td></tr>
+      <tr><td><b>Scenario: close lanes</b></td><td><span style="color:#157A48;font-family:var(--mono);font-size:.78rem">&#10003; done</span></td><td><code>close</code> / <code>set_capacity</code> (lane drop) mutations (&sect;A)</td></tr>
+      <tr><td><b>Predict closure flow</b></td><td><span style="color:#157A48;font-family:var(--mono);font-size:.78rem">&#10003; done</span></td><td>re-solve on mutated graph; blast-radius ~84 ms (&sect;D)</td></tr>
+      <tr><td><b>"What actually happened"</b></td><td><span style="color:#B07A1E;font-family:var(--mono);font-size:.78rem">&#9680; partial</span></td><td>TMC gives observed counts; ODME calibrates the <em>open</em> case only (&sect;B)</td></tr>
+      <tr><td><b>Delta &#8594; feedback</b></td><td><span style="color:var(--red);font-family:var(--mono);font-size:.78rem">&#9675; the gap</span></td><td>no loop yet comparing predicted vs observed <em>closure</em> impact (&sect;I)</td></tr>
+      <tr><td><b>"Train the model"</b></td><td><span style="color:#B07A1E;font-family:var(--mono);font-size:.78rem">&#9680; partial</span></td><td>demand model trains on synthetic data, not real closures</td></tr>
+    </table>
+
+    <!-- ---- datasets ---- -->
+    <h3 style="font-family:var(--display);font-size:1.6rem;margin:46px 0 6px;">The data, and its shapes</h3>
+    <p style="color:var(--muted);max-width:74ch;margin-bottom:18px;">Pulled live from Toronto's open-data API (<a href="https://open.toronto.ca">open.toronto.ca</a>).</p>
+    <div class="grid-3 reveal">
+      <div class="card" style="border-left:3px solid var(--green)">
+        <h3 style="font-size:1.15rem;margin-top:0">TMC counts</h3>
+        <p style="font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;color:#157A48;text-transform:uppercase;margin:6px 0 10px">open-road truth</p>
+        <p style="color:var(--muted);font-size:.92rem;margin:0">Turning-movement counts since <b>1984</b>, in <b>15-min bins</b> — cars/trucks/buses, bikes, pedestrians by approach &times; movement. The 2020&ndash;29 file alone is ~<b>346k</b> rows. Updated daily.</p>
+        <p style="font-family:var(--mono);font-size:.72rem;color:var(--faint);margin:12px 0 0;word-break:break-all">traffic-volumes-at-intersections-for-all-modes</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--amber)">
+        <h3 style="font-size:1.15rem;margin-top:0">Road Restrictions</h3>
+        <p style="font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;color:#B07A1E;text-transform:uppercase;margin:6px 0 10px">closure source</p>
+        <p style="color:var(--muted);font-size:.92rem;margin:0">A <b>live feed</b> of current closures + RESCU incidents. CSV/JSON/REST. This is where "a lane closed" comes from — with one caveat (below).</p>
+        <p style="font-family:var(--mono);font-size:.72rem;color:var(--faint);margin:12px 0 0">road-restrictions</p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--blue)">
+        <h3 style="font-size:1.15rem;margin-top:0">Centreline + GTFS</h3>
+        <p style="font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;color:var(--blue);text-transform:uppercase;margin:6px 0 10px">graph &amp; context</p>
+        <p style="color:var(--muted);font-size:.92rem;margin:0">Official street network with <code>CENTRELINE_ID</code> — the join key between geometry and counts — plus signals, cameras and TTC/GO/UP transit feeds.</p>
+        <p style="font-family:var(--mono);font-size:.72rem;color:var(--faint);margin:12px 0 0">toronto-centreline-tcl</p>
+      </div>
+    </div>
+
+    <div class="callout reveal" style="border-left-color:var(--amber);background:rgba(230,162,60,.08)">
+      <div class="lbl" style="color:#B07A1E">&#9888; The one data problem to solve</div>
+      <p style="color:var(--ink)">Road Restrictions is a <b style="color:#B07A1E">live</b> feed, not a historical archive — so "the dataset of what actually happened when that lane closed" isn't a clean download. Three ways to get it: <b>(a)</b> snapshot the live feed forward on a cron; <b>(b)</b> join historical TMC to known construction windows &#8594; observed before/after deltas <em>(recommended headline)</em>; <b>(c)</b> use RESCU loop-detector volumes on the Gardiner/DVP for live incident validation.</p>
+    </div>
+
+    <!-- ---- which model ---- -->
+    <h3 style="font-family:var(--display);font-size:1.6rem;margin:46px 0 16px;">Which model — two paths</h3>
+    <div class="versus reveal">
+      <div class="col good">
+        <h3><span class="pill yes">Path A &middot; physics + calibration</span> <span style="font-family:var(--mono);font-size:.66rem;color:var(--green);letter-spacing:.1em">&#8592; RECOMMENDED SPINE</span></h3>
+        <p style="color:var(--muted);margin-top:14px">The predictor stays your <b>BPR + Frank-Wolfe equilibrium</b>. The "training arc" tunes its <em>physical</em> parameters — per-class &#945;/&#946;, edge capacities, OD demand — so predicted closure flows match observed TMC deltas. Mechanically this is the <b>same IPF/ODME machinery you already wrote</b>, extended from open-road counts to closures.</p>
+        <ul class="good">
+          <li>Interpretable, deterministic — great for demos and city council.</li>
+          <li>Already ~80% built; low risk in a hackathon window.</li>
+        </ul>
+      </div>
+      <div class="col" style="border-left:1px solid var(--line)">
+        <h3><span class="pill" style="background:var(--blue-wash);color:var(--blue)">Path B &middot; learned surrogate</span></h3>
+        <p style="color:var(--muted);margin-top:14px">A <b>graph neural net</b> (PyTorch Geometric / STGCN-style) maps <code>[graph state + closure mask] &#8594; link-flow field</code>, learning the residual the physics misses. Train on <b>sim-generated closures at scale</b> (cheap on GPU) plus real observed deltas. This is the literal "train the model" box.</p>
+        <ul class="good">
+          <li>The flashy "AI + feedback loop" story; justifies the GPU stack.</li>
+          <li>More risk to land in time.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout reveal" style="border-left-color:var(--green);background:rgba(31,164,99,.07)">
+      <div class="lbl" style="color:#157A48">&#8594; Recommendation</div>
+      <p style="color:var(--ink)">Lead with <b style="color:#157A48">Path A</b> as the reliable spine, then bolt on a <b>thin Path B layer</b> — a small model that predicts the <em>correction delta</em>, trained against observed closures. You get the trustworthy instrument <em>and</em> the "we train a model in a feedback loop" narrative. In A the loop tunes parameters; in B it's the loss signal.</p>
+    </div>
+
+    <!-- ---- the mechanism ---- -->
+    <h3 style="font-family:var(--display);font-size:1.6rem;margin:46px 0 14px;">How the loop actually runs</h3>
+    <div class="ripple reveal" style="border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--paper)">
+      <div class="rstep">
+        <span class="rn">STEP 01</span>
+        <p class="rt">Calibrate the baseline.</p>
+        <p>Fit OD to open-road TMC — exactly what the existing ODME pass does today.</p>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rstep">
+        <span class="rn">STEP 02</span>
+        <p class="rt">Apply the real closure &amp; predict.</p>
+        <p>Mutate the segment that actually closed, then re-solve to equilibrium (blast-radius for speed).</p>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rstep">
+        <span class="rn">STEP 03</span>
+        <p class="rt">Measure the delta.</p>
+        <p><code>&#916; = predicted_flow &minus; observed_TMC</code> on the segments near the closure.</p>
+        <svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </div>
+      <div class="rstep">
+        <span class="rn">STEP 04</span>
+        <p class="rt">Shrink it, repeat &#8594; trained.</p>
+        <p>Nudge capacity / &#945;,&#946; / OD until &#916; stops improving. Held-out closures are the test set.</p>
+      </div>
+    </div>
+    <div class="analogy reveal">
+      <div class="lbl">◎ Why this wins a bounty</div>
+      <p>"&#916; below threshold on held-out closures" is a clean, <em>verifiable reward</em> — the simulator is the verifier, the delta is the score. That maps straight onto the Prime Intellect Verifiers track (and extends the optimizer's existing verifier story, &sect;H).</p>
+    </div>
+
+    <!-- ---- nvidia bounties ---- -->
+    <h3 style="font-family:var(--display);font-size:1.6rem;margin:46px 0 6px;">Why it fits the NVIDIA track</h3>
+    <p style="color:var(--muted);max-width:74ch;margin-bottom:18px;">The Spark Hack Series is about <b>100% local AI on DGX Spark / GB10 (Arm)</b>. Three named bounties — and flowTO already hits all three.</p>
+    <div class="grid-3 reveal">
+      <div class="card" style="border-left:3px solid var(--green)">
+        <p style="font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;color:#157A48;text-transform:uppercase;margin:0 0 8px">Bounty</p>
+        <h3 style="font-size:1.12rem;margin:0 0 8px">Best use of Nemotron</h3>
+        <p style="color:var(--muted);font-size:.9rem;margin:0">"Close King St between X and Y" &#8594; Nemotron emits a validated <code>close</code> scenario &#8594; sim runs locally.</p>
+        <p style="font-size:.82rem;color:var(--faint);border-top:1px dashed var(--line);padding-top:9px;margin:11px 0 0">You have it: <b style="color:#157A48">the copilot (&sect;9, &sect;H)</b></p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--green)">
+        <p style="font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;color:#157A48;text-transform:uppercase;margin:0 0 8px">Bounty</p>
+        <h3 style="font-size:1.12rem;margin:0 0 8px">Arm architecture</h3>
+        <p style="color:var(--muted);font-size:.9rem;margin:0">GB10 is Arm. Run the whole stack natively; the blast-radius speedup is the perf headline.</p>
+        <p style="font-size:.82rem;color:var(--faint);border-top:1px dashed var(--line);padding-top:9px;margin:11px 0 0">You have it: <b style="color:#157A48">Arm-native sim + cuGraph</b></p>
+      </div>
+      <div class="card" style="border-left:3px solid var(--green)">
+        <p style="font-family:var(--mono);font-size:.64rem;letter-spacing:.12em;color:#157A48;text-transform:uppercase;margin:0 0 8px">Bounty</p>
+        <h3 style="font-size:1.12rem;margin:0 0 8px">Prime Intellect &middot; Verifiers</h3>
+        <p style="color:var(--muted);font-size:.9rem;margin:0">Wrap "predicted within &#949; of observed TMC" as a Verifiers environment — sim = verifier, &#916; = reward.</p>
+        <p style="font-size:.82rem;color:var(--faint);border-top:1px dashed var(--line);padding-top:9px;margin:11px 0 0">You build it: <b style="color:#157A48">the calibration loop (&sect;I)</b></p>
+      </div>
+    </div>
+
+    <div class="callout reveal" style="border-left-color:var(--blue);margin-top:34px">
+      <div class="lbl">◆ The pitch in one line</div>
+      <p>A <b>fully-local Toronto traffic digital twin on DGX Spark</b> — talk to it in natural language (Nemotron), it predicts lane-closure impact with a GPU equilibrium sim (cuGraph / Arm), and a verifier loop calibrates predictions against what really happened (Verifiers).</p>
+    </div>
+
+    <!-- ---- next steps ---- -->
+    <h3 style="font-family:var(--display);font-size:1.6rem;margin:46px 0 4px;">Where to push next</h3>
+    <p style="color:var(--muted);max-width:74ch;margin-bottom:22px;">In priority order — the first two are the literal centre of the whiteboard.</p>
+    <div class="stats reveal">
+      <div class="stat"><div class="sv">1</div><div class="sk">Build the closure ground-truth set: join historical TMC to known closure windows &#8594; observed deltas</div></div>
+      <div class="stat"><div class="sv">2</div><div class="sk">Write the calibration loop: generalize the open-road <b style="color:var(--ink)">ODME</b> to closure deltas</div></div>
+      <div class="stat"><div class="sv">3</div><div class="sk">Optional: add the GNN residual (Path B), trained on sim-generated + real closures</div></div>
+      <div class="stat"><div class="sv">4</div><div class="sk">Wrap step 2 as a Verifiers environment for the Prime Intellect bounty</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 09 — HARDWARE ============ -->
 <section id="hardware" style="background:var(--closed);color:#E9E7DF;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:34px 34px;">
   <div class="wrap">
     <div class="section-head reveal" style="color:#E9E7DF">
-      <span class="num" style="color:#8b95b0">08 / WHERE IT RUNS</span>
+      <span class="num" style="color:#8b95b0">09 / WHERE IT RUNS</span>
       <span class="kicker" style="color:#7fa0ff">No cloud. Nothing leaves the room.</span>
       <h2 style="color:#fff">The entire city fits on one machine.</h2>
-      <p class="lede" style="color:#A7ABB4">The simulation, the AI assistant, and the optimizer all run locally on a single NVIDIA box — its graphics chip solving the whole city's traffic in a few seconds.</p>
+      <p class="lede" style="color:#A7ABB4">The simulation, the Nemotron copilot, and the optimizer all run locally on a single NVIDIA <b style="color:#cdd6f5">DGX&nbsp;Spark</b> — its <b style="color:#cdd6f5">GB10</b> (Grace-Blackwell) chip and 20 Arm cores sharing one big pool of memory, solving the city's traffic on-device. No cloud, no data leaving the box.</p>
     </div>
     <div class="stats reveal" style="border-color:rgba(255,255,255,.14)">
-      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">121<span class="u" style="color:#7fa0ff"> GB</span></div><div class="sk" style="color:#9DA2AC">Shared memory — the whole city loads at once</div></div>
-      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">~4<span class="u" style="color:#7fa0ff"> sec</span></div><div class="sk" style="color:#9DA2AC">To re-solve a full scenario</div></div>
-      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">0<span class="u" style="color:#7fa0ff"> cloud</span></div><div class="sk" style="color:#9DA2AC">Runs fully offline, on-device</div></div>
-      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">1<span class="u" style="color:#7fa0ff"> box</span></div><div class="sk" style="color:#9DA2AC">Sim + AI + optimizer, all together</div></div>
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">121<span class="u" style="color:#7fa0ff"> GiB</span></div><div class="sk" style="color:#9DA2AC">Unified memory — the whole city loads at once</div></div>
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">20<span class="u" style="color:#7fa0ff"> cores</span></div><div class="sk" style="color:#9DA2AC">Arm CPU + GB10 GPU, CUDA 13, one box</div></div>
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">~84<span class="u" style="color:#7fa0ff"> ms</span></div><div class="sk" style="color:#9DA2AC">To re-solve a local change (blast-radius)</div></div>
+      <div class="stat" style="border-color:rgba(255,255,255,.14)"><div class="sv" style="color:#fff">0<span class="u" style="color:#7fa0ff"> cloud</span></div><div class="sk" style="color:#9DA2AC">Sim + copilot + optimizer, fully offline</div></div>
+    </div>
+
+    <div class="analogy reveal" style="margin-top:40px;border-left-color:#7fa0ff;background:linear-gradient(90deg,rgba(127,160,255,.10),transparent 80%)">
+      <div class="lbl" style="color:#9fb4ff">◆ Why it feels instant — the “blast radius”</div>
+      <p style="color:#E9E7DF">Close one street and flowTO doesn't re-solve all of Toronto. It recomputes only the affected neighbourhood — about <b>1,300 roads</b> around the change — and widens that zone automatically if the jam spreads. That's the ~84&nbsp;ms; a full city re-solve still finishes in a few seconds.</p>
     </div>
   </div>
 </section>
 
 <div class="divider"></div>
 
-<!-- ============ 09 — AI HELPERS ============ -->
+<!-- ============ 10 — AI HELPERS ============ -->
 <section id="helpers">
   <div class="wrap">
     <div class="section-head reveal">
-      <span class="num">09 / THE TWO AI HELPERS</span>
+      <span class="num">10 / THE TWO AI HELPERS</span>
       <span class="kicker">On top of the simulation, not instead of it</span>
       <h2>One to talk to. One to do the searching for you.</h2>
     </div>
@@ -698,19 +966,302 @@
       <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.5 8.5 0 01-12 7.7L3 21l1.8-6A8.5 8.5 0 1121 11.5z"/></svg></div>
         <h3>The copilot — talk to the city</h3>
-        <p style="color:var(--muted)">Type a plain-English wish. It sets up the scenario, runs the model, and explains the result back to you — no menus, no jargon.</p>
+        <p style="color:var(--muted)">A local <b style="color:var(--ink)">Nemotron</b> model (running on-device through Ollama) turns a plain-English wish into a concrete plan, runs the model, and explains the result — citing the exact bylaws it stayed inside. It <em>previews</em> every change first; nothing is applied until you confirm.</p>
         <div class="chat">
-          <div class="you">Ease the post-match gridlock around BMO Field without breaking any bylaws.</div>
-          <div class="bot">Tried 3 fixes. Best: contraflow on Lakeshore + 50% more 509 streetcars. Egress time −32%, $0 cost, no bylaws broken.</div>
+          <div class="you">Ease post-match gridlock near BMO Field without breaking bylaws.</div>
+          <div class="bot">Full-time releases ~45,000 over 25 min onto the Lake&nbsp;Shore / Strachan / Dufferin spine, spilling into Parkdale. A bylaw-valid plan: eastbound contraflow on Lake&nbsp;Shore (Strachan→Bathurst), 110s egress signals at Dufferin &amp; Strachan, Princes' Blvd pedestrian-only, hold 509/511 priority. Projected: total delay −38%, local cut-through −71%, zero hard-constraint conflicts. Preview on the map?</div>
         </div>
+        <p style="font-family:var(--mono);font-size:.78rem;color:var(--faint);margin-top:14px">Ask for something illegal — “just close Lake Shore both ways” — and it <b style="color:var(--muted)">refuses</b>, naming the fire-route and transit-replacement rules it would break, then offers a legal alternative.</p>
       </div>
       <div class="card">
         <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.4"/></svg></div>
         <h3>The optimizer — find the best fix</h3>
-        <p style="color:var(--muted)">Instead of you guessing, it quietly tries thousands of combinations — reroutes, lane changes, transit boosts — and hands you the ones that work best, <em>within the rules and the budget.</em></p>
-        <p style="color:var(--muted);margin-top:14px">It can only do this because the simulation gives it a trustworthy score for every idea it tries. <b style="color:var(--ink)">The model is the judge; the optimizer is the contestant.</b></p>
+        <p style="color:var(--muted)">Instead of you guessing, it searches the combinations — reroutes, lane changes, signal retimes, transit holds — and hands you the ones that work best, <em>within the rules and the budget.</em> A fast heuristic always returns an improving plan; NVIDIA <b style="color:var(--ink)">cuOpt</b> sharpens the constrained sub-problems on the GPU.</p>
+        <p style="color:var(--muted);margin-top:14px">It can only do this because every candidate is <b>scored by actually running the simulation</b> — no idea is trusted until the model has run it. <b style="color:var(--ink)">The simulation is the judge; the optimizer is the contestant.</b></p>
       </div>
     </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ============ 11 — DEVELOPER REFERENCE ============ -->
+<section id="dev">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="num">11 / UNDER THE HOOD</span>
+      <span class="kicker">Developer reference — the interfaces that make it real</span>
+      <h2>How it's actually built, end to end.</h2>
+      <p class="lede devintro">Everything above is the plain-language story. Below is the engineering: the data model, the simulation math, the API contracts, and how each piece hands off to the next. Open a panel to drop down into the details.</p>
+    </div>
+
+    <!-- THE one correction everything depends on -->
+    <div class="callout reveal">
+      <div class="lbl">◆ First, the data model — get this right</div>
+      <p>A road network is a <b>directed graph</b>. The <b>nodes (vertices) are intersections</b>; the <b>edges are the street segments between them</b> — one edge per direction. This is the opposite of a common first guess, and it matters: a street segment is the thing that <em>fills up</em>, so <b>capacity, lane count, length, speed limit and the congestion math all live on edges</b>. Nodes are just the junctions where edges meet (and where turn restrictions and signals apply). Everything downstream — routing, the BPR curve, the heatmap colour — is keyed by <code>edge_id</code>.</p>
+    </div>
+
+    <!-- node/edge diagram -->
+    <div class="nedge reveal" aria-hidden="true">
+      <svg viewBox="0 0 720 230">
+        <!-- street segments (edges) -->
+        <g stroke="#1B3FA0" stroke-width="7" fill="none" stroke-linecap="round" opacity=".28">
+          <path d="M110 60 H330"/><path d="M330 60 H550"/>
+          <path d="M110 170 H330"/><path d="M330 170 H550"/>
+          <path d="M110 60 V170"/><path d="M330 60 V170"/><path d="M550 60 V170"/>
+        </g>
+        <!-- one highlighted edge -->
+        <path d="M338 60 H542" stroke="#D6453A" stroke-width="7" fill="none" stroke-linecap="round"/>
+        <path d="M520 53 l12 7 l-12 7" stroke="#D6453A" stroke-width="2.4" fill="none"/>
+        <!-- nodes (intersections) -->
+        <g fill="#FBFAF5" stroke="#15171C" stroke-width="2">
+          <circle cx="110" cy="60" r="9"/><circle cx="330" cy="60" r="9"/><circle cx="550" cy="60" r="9"/>
+          <circle cx="110" cy="170" r="9"/><circle cx="330" cy="170" r="9"/><circle cx="550" cy="170" r="9"/>
+        </g>
+        <!-- labels -->
+        <g font-family="IBM Plex Mono, monospace" font-size="12">
+          <circle cx="330" cy="60" r="9" fill="none" stroke="#1B3FA0" stroke-width="2"/>
+          <text x="330" y="34" text-anchor="middle" fill="#1B3FA0">node · intersection</text>
+          <line x1="330" y1="40" x2="330" y2="49" stroke="#1B3FA0" stroke-width="1.4"/>
+          <text x="440" y="100" text-anchor="middle" fill="#D6453A">edge · one-way segment</text>
+          <text x="440" y="118" text-anchor="middle" fill="#8C8F96" font-size="10.5">lanes · capacity · length · speed · status</text>
+          <line x1="440" y1="74" x2="440" y2="88" stroke="#D6453A" stroke-width="1.4"/>
+        </g>
+        <text x="110" y="205" font-family="IBM Plex Mono, monospace" font-size="11" fill="#5A5D64">Directed MultiDiGraph · downtown extent ≈ 6,834 nodes / 18,190 edges</text>
+      </svg>
+    </div>
+
+    <!-- data flow strip -->
+    <div class="pipeflow reveal">
+      <div class="pf"><div class="pfn">01 · ingest</div><div class="pft">Data pipeline</div><div class="pfd">City open data + GTFS + weather → Parquet</div></div>
+      <div class="pf"><div class="pfn">02 · network</div><div class="pft">Road graph</div><div class="pfd">Nodes &amp; edges, capacity, one-way</div></div>
+      <div class="pf"><div class="pfn">03 · demand</div><div class="pft">OD matrix</div><div class="pfd">who → where, calibrated to counts</div></div>
+      <div class="pf"><div class="pfn">04 · solve</div><div class="pft">Equilibrium sim</div><div class="pfd">BPR + Frank-Wolfe → per-edge load</div></div>
+      <div class="pf"><div class="pfn">05 · edit</div><div class="pft">Blast-radius</div><div class="pfd">recompute only what changed</div></div>
+      <div class="pf"><div class="pfn">06 · serve</div><div class="pft">FastAPI</div><div class="pfd">REST + binary WebSocket ticks</div></div>
+      <div class="pf"><div class="pfn">07 · render</div><div class="pft">deck.gl</div><div class="pfd">colour edges by <code>edge_id</code></div></div>
+    </div>
+
+    <!-- A — THE GRAPH -->
+    <details class="spec reveal">
+      <summary><span class="sidx">A</span> The graph — what we expose</summary>
+      <div class="spec-body">
+        <p>Built with <b>OSMnx</b> from OpenStreetMap (the demo-safe baseline) or from the official <b>Toronto Centreline</b> behind a <code>graph_source</code> flag — both emit the <b>same canonical edge schema</b>, so routing, mutations and the simulator are source-agnostic. A bidirectional street becomes two directed edges; one-way is read from OSM tags or Centreline's <code>ONEWAY_DIR_CODE</code>.</p>
+        <h4>Canonical edge record</h4>
+        <pre class="code"><code><span class="c"># every edge carries the same fields, whatever the source</span>
+edge_id, from_node, to_node,        <span class="c"># topology (from_node/to_node are intersections)</span>
+road_name, road_class,              <span class="c"># "Lake Shore Blvd W", arterial|expressway|collector|local|transit</span>
+length_m, one_way, speed_kmh, lanes,
+capacity,                           <span class="c"># veh/hr = lanes × saturation-flow (HCM-ish defaults, TMC-calibrated)</span>
+base_time_min, current_time_min,    <span class="c"># free-flow vs congested travel time</span>
+status,                             <span class="c"># open | closed | restricted</span>
+load, pressure,                     <span class="c"># live volume and v/c (0=free … 1+=gridlock) — this drives the heatmap</span>
+geometry,                           <span class="c"># LineString [lng,lat] for the map</span>
+confidence                          <span class="c"># observed | inferred | default | manual, per inferred field</span></code></pre>
+        <p>Nodes hold <code>node_id</code>, position, and act as the junctions for turn restrictions/signals. Per-edge <b>confidence labels</b> tell a planner which numbers came from real data vs a class default — a credibility feature, surfaced in the UI.</p>
+        <h4>Mutations (how a scenario edits the network)</h4>
+        <p>Scenarios never edit the baseline in place — they <b>copy-on-mutate</b>. The mutation primitives mirror the intervention tools:</p>
+        <pre class="code"><code>close(edge_id)            <span class="c"># capacity → 0; cars must reroute</span>
+reopen(edge_id)
+set_lanes(edge_id, n)     <span class="c"># recompute capacity</span>
+set_capacity(edge_id, c)
+close_node(node_id)       <span class="c"># shut an intersection</span>
+add_edge(...)             <span class="c"># temporary one-way / contraflow</span></code></pre>
+      </div>
+    </details>
+
+    <!-- B — DEMAND & OD -->
+    <details class="spec reveal">
+      <summary><span class="sidx">B</span> Demand &amp; OD — who travels where</summary>
+      <div class="spec-body">
+        <p>The simulator needs an <b>origin–destination (OD) matrix</b>: how many trips flow from each zone to each zone in this time slice. We build it in stages and keep the output interface dead simple.</p>
+        <h4>Pipeline</h4>
+        <ul>
+          <li><b>Node demand</b> — a weather-aware ML model (gradient-boosted, 11 features incl. time, weather, downtown distance, road class) predicts how many trips each node generates/attracts; a heuristic fallback covers the model-less path.</li>
+          <li><b>Gravity</b> — distribute those trips: bigger, closer destinations pull more (the “gravity model”).</li>
+          <li><b>IPF / Furness</b> — balance the matrix to production/attraction marginals so totals are right.</li>
+          <li><b>ODME</b> — nudge it until the <em>assigned</em> link volumes match observed <b>turning-movement counts (TMC)</b>, so the OD reflects reality, not just a formula.</li>
+          <li><b>Seed</b> — the <b>Transportation Tomorrow Survey (TTS2016R)</b> provides the prior; Census × employment gravity is the fallback.</li>
+        </ul>
+        <p>Zones are the 158 City <b>neighbourhoods</b> (or 25 wards) as TAZ proxies; graph nodes map to zones by spatial join. An event like the World Cup is just an extra production spike injected at the stadium zone.</p>
+        <h4>Output interface (stable contract)</h4>
+        <pre class="code"><code>generate_od_matrix(time="Fri 17:00", calibration="ipf_counts")
+  <span class="c">→</span> [ {origin: node_id, destination: node_id, trips: float}, … ]</code></pre>
+      </div>
+    </details>
+
+    <!-- C — SIMULATION ENGINE -->
+    <details class="spec reveal">
+      <summary><span class="sidx">C</span> The simulation engine — BPR + Frank-Wolfe</summary>
+      <div class="spec-body">
+        <p>Given the graph and the OD matrix, the engine finds the <b>user equilibrium</b>: the flow on every edge where no driver could reach their destination faster by switching routes. Two ingredients.</p>
+        <h4>1 · BPR volume-delay (per edge)</h4>
+        <p>A road slows smoothly as it fills. <code>t0</code> is free-flow time, <code>v</code> is volume, <code>c</code> is capacity:</p>
+        <pre class="code"><code>t = t0 · (1 + α · (v/c)^β)        α = 0.15 ,  β = 4   <span class="c"># BPR, per road class</span>
+                                  c = 0  →  t = ∞      <span class="c"># a closed edge</span></code></pre>
+        <h4>2 · Frank-Wolfe assignment (whole network)</h4>
+        <pre class="code"><code>x ← 0 ;  t ← t0
+repeat:
+  for each origin zone:                <span class="c"># the hot, parallel loop</span>
+     SSSP tree under current t          <span class="c"># shortest paths (Dijkstra / cuGraph)</span>
+     load full OD onto them → aux flow y   <span class="c"># all-or-nothing</span>
+  λ ← line-search on the Beckmann objective    <span class="c"># λ in [0,1], deterministic</span>
+  x ← x + λ·(y − x) ;  t ← bpr(x)
+  rgap ← (Σ t·x − Σ t·y) / (Σ t·x)
+until  rgap ≤ 1e-4  or  iter ≥ 50      <span class="c"># bi-conjugate FW: ~3–5× fewer iters</span></code></pre>
+        <h4>Backends &amp; flags</h4>
+        <p>The shortest-path inner loop runs through one interface, <code>sssp_tree(graph, origin, weight)</code>, with two backends: <code>cpu</code> (NetworkX) and <code>gpu</code> (NVIDIA <b>cuGraph</b>, Spark-only, smoke-gated → auto-falls back to CPU). Behaviour is selected by flags, baseline always available:</p>
+        <table class="api">
+          <tr><th>flag</th><th>safe baseline</th><th>spec upgrade</th></tr>
+          <tr><td class="m">engine</td><td>kpath</td><td><b>equilibrium</b> (FW/BFW)</td></tr>
+          <tr><td class="m">congestion_model</td><td>legacy lookup</td><td><b>bpr</b></td></tr>
+          <tr><td class="m">backend</td><td>cpu (NetworkX)</td><td>gpu (cuGraph)</td></tr>
+          <tr><td class="m">calibration</td><td>none</td><td>ipf / ipf_counts</td></tr>
+          <tr><td class="m">recompute</td><td>full</td><td><b>blast</b> (blast-radius)</td></tr>
+        </table>
+        <h4>Determinism &amp; correctness</h4>
+        <p>Fixed iteration caps + rgap target (never stop on wall-clock), <code>float64</code>, ordered reductions, and an <code>edge_id</code> tie-break epsilon kill shortest-path-tie nondeterminism — same input → identical output. Correctness is anchored by an <b>AequilibraE</b> oracle: on TNTP benchmark networks (SiouxFalls, Anaheim) our link flows match the reference solver within relative L∞ ≤ 1%.</p>
+      </div>
+    </details>
+
+    <!-- D — BLAST RADIUS -->
+    <details class="spec reveal">
+      <summary><span class="sidx">D</span> Blast-radius recompute — why edits feel instant</summary>
+      <div class="spec-body">
+        <p>Re-solving all of Toronto for every tweak would be too slow to drag. Instead, when an edge changes, we recompute <b>only the affected subgraph</b> and widen it automatically if the jam spreads past a threshold.</p>
+        <h4>Algorithm sketch</h4>
+        <ul>
+          <li>Find OD paths touching the changed edge set (an <code>{edge_id → [path_id]}</code> reverse index makes this O(1)).</li>
+          <li>Grow upstream + downstream cones (bounded Dijkstra/BFS), weighted by road class, current pressure, and betweenness.</li>
+          <li>Add near-cost parallel alternatives; always include the expressway core; freeze boundary in/out-flows from the baseline.</li>
+          <li>Re-run equilibrium on just that subgraph; if boundary pressure shifts &gt; threshold, widen and repeat.</li>
+        </ul>
+        <h4>Defaults</h4>
+        <table class="api">
+          <tr><th>parameter</th><th>value</th></tr>
+          <tr><td>start radius</td><td class="m">8 min free-flow / 2 km</td></tr>
+          <tr><td>max radius</td><td class="m">20 min / 6 km</td></tr>
+          <tr><td>widen threshold</td><td class="m">8% boundary pressure change</td></tr>
+          <tr><td>target latency</td><td class="m">&lt; 100 ms (≈ 84 ms, ~1,300 edges)</td></tr>
+        </table>
+        <p><b>Speed mode</b> (cached alternatives) drives the live drag; <b>accuracy mode</b> (full affected-OD recompute) runs on release and for the final before/after compare. Same change + baseline → identical subgraph + result.</p>
+      </div>
+    </details>
+
+    <!-- E — BACKEND API -->
+    <details class="spec reveal">
+      <summary><span class="sidx">E</span> Backend API — REST + binary WebSocket</summary>
+      <div class="spec-body">
+        <p>One <b>FastAPI</b> process wraps the engine. <b>REST</b> handles human-cadence control (scenario CRUD, runs, preview/apply, compare, copilot, optimizer); a <b>WebSocket</b> streams compact binary tick frames so the map can animate without JSON overhead. State is in-memory + JSON snapshots — no database. Long GPU/LLM calls run as async jobs and never block the event loop. Pydantic schemas are shared verbatim with the copilot’s tool layer (single source of truth).</p>
+        <h4>REST surface</h4>
+        <table class="api">
+          <tr><th>method · path</th><th>does</th></tr>
+          <tr><td class="m">POST /scenarios</td><td>create; <b>GET/PATCH/DELETE</b> <code>/scenarios/{id}</code></td></tr>
+          <tr><td class="m">POST /scenarios/{id}/preview</td><td>preview an intervention — <b>nothing is committed</b></td></tr>
+          <tr><td class="m">POST /scenarios/{id}/run</td><td>solve; <code>recompute=full|blast</code> → summary + job id</td></tr>
+          <tr><td class="m">GET /scenarios/{id}/compare</td><td>before/after deltas <code>?against=baseline</code></td></tr>
+          <tr><td class="m">POST /copilot/plan</td><td>natural-language → validated plan</td></tr>
+          <tr><td class="m">POST /optimize</td><td>constrained search → ranked plans</td></tr>
+        </table>
+        <h4>WebSocket tick frame</h4>
+        <p><code>WS /scenarios/{id}/stream</code> — each frame is a packed array of fixed-width edge records (geometry was uploaded once; the client maps records to edges by a shared <code>edge_id</code> index):</p>
+        <pre class="code"><code>[ edge_id:u32, load:f32, speed:f32, pressure:f32, closure:u8 ]   <span class="c"># × N edges, throttled</span></code></pre>
+      </div>
+    </details>
+
+    <!-- F — FRONTEND -->
+    <details class="spec reveal">
+      <summary><span class="sidx">F</span> The frontend — deck.gl layers &amp; the tick store</summary>
+      <div class="spec-body">
+        <p>A <b>React + Vite + TypeScript</b> app draws 3-D Toronto with <b>deck.gl</b> interleaved over a <b>MapLibre</b> (PMTiles grayscale) basemap. The cardinal rule: <b>tick data never touches React state</b> — it lives in module-level typed arrays and is pushed to deck.gl imperatively, so the map holds 60 fps while streaming.</p>
+        <h4>Layers (keyed by <code>edge_id</code>)</h4>
+        <ul>
+          <li><code>roads</code> — MVTLayer citywide / PathLayer working-set; colour = pressure ramp (green→amber→red), recoloured per tick.</li>
+          <li><code>massing</code> — extruded GeoJsonLayer, neutral grey buildings for context.</li>
+          <li><code>closures</code> — PathLayer + IconLayer for active interventions.</li>
+          <li><code>hexPressure</code> — HexagonLayer aggregation toggle (crowd/congestion density).</li>
+          <li><code>transit</code> — TripsLayer vehicles driven by the scrubber’s <code>currentTime</code>, not a free-running clock.</li>
+        </ul>
+        <h4>Tick store (out of React)</h4>
+        <pre class="code"><code><span class="c">// module-level, keyed by edge index — written in place, no setState</span>
+pressure: Float32Array ;  load: Float32Array ;  speed: Float32Array
+closure:  Uint8Array
+ws.onmessage = buf =&gt; { decode(buf) into the arrays ; bump tickSeq }
+<span class="c">// one throttled rAF → overlay.setProps({updateTriggers:{getColor: tickSeq}})</span></code></pre>
+        <h4>Interaction loop</h4>
+        <p>select edges (click / lasso) → contextual popover (tool + params) → <code>POST /preview</code> → ghost/diff overlay marked “PREVIEW” → confirm → <code>POST /apply</code> → new WS stream. Zustand holds only human-cadence state (selection, scrubber time, before/after mode). The UI runs a <b>6-state machine</b>: first-run → baseline → recomputing (the 5-step HERO overlay) → surge → mitigated → constraint-blocked.</p>
+      </div>
+    </details>
+
+    <!-- G — DATA PIPELINE -->
+    <details class="spec reveal">
+      <summary><span class="sidx">G</span> Data pipeline — raw City data → Parquet</summary>
+      <div class="spec-body">
+        <p>One reproducible command turns live open data into a versioned feature store — <code>fetch</code> (download raw) → <code>bake</code> (normalize to GeoParquet + a DuckDB catalog) → <code>verify</code> (schema + row-count checks), with a <code>manifest.json</code> recording source URL, resource UUID, fetch time, sha256 and licence for every file.</p>
+        <h4>Sources</h4>
+        <ul>
+          <li><b>Roads</b> — Toronto Centreline + OpenStreetMap; Road Restrictions (live CART feed); One-Way; Bridges (clearance).</li>
+          <li><b>Counts</b> — Turning-Movement Counts (TMC), Traffic Signals — calibrate capacity + OD.</li>
+          <li><b>Transit</b> — GTFS for <b>TTC, GO Transit, UP Express</b> (schedule-driven vehicles).</li>
+          <li><b>Demand</b> — TTS2016R survey + Census/employment.</li>
+          <li><b>Context</b> — 3-D Massing (buildings), Neighbourhoods/Wards (zones), ECCC weather.</li>
+        </ul>
+        <p>Attribution shipped with the data: <em>Contains information licensed under the Open Government Licence – Toronto</em>, and OGL-Ontario (Metrolinx).</p>
+      </div>
+    </details>
+
+    <!-- H — AI HELPERS -->
+    <details class="spec reveal">
+      <summary><span class="sidx">H</span> The two AI helpers — interfaces</summary>
+      <div class="spec-body">
+        <h4>Copilot (Nemotron, local via Ollama)</h4>
+        <p>A reasoning LLM turns plain English into <b>tool calls</b> using the same Pydantic schemas the API exposes — so it can only emit valid scenarios. It is <b>preview-first</b>: every call routes through <code>/preview</code> and waits for confirmation before <code>/apply</code>. A shared constraint checker lets it refuse illegal requests and cite the bylaw.</p>
+        <pre class="code"><code><span class="c"># tools the copilot can call (mirror the REST schemas)</span>
+preview_intervention · create_scenario · run_simulation
+compare_scenarios · retrieve_policy · explain_edge
+
+<span class="c"># Ollama call — reasoning model → reliable JSON</span>
+{ model: <span class="s">"nemotron3:33b"</span>, think: <span class="k">false</span>, format: <span class="s">"json"</span>,
+  options: {temperature: <span class="t">0.2</span>}, keep_alive: <span class="s">"10m"</span> }   <span class="c"># think:false is required for JSON</span></code></pre>
+        <p>Policy citations come from a small local RAG corpus (sentence-transformers + Chroma/FAISS): e.g. Toronto Municipal Code Ch. 950 (event TMP), Ch. 880 (fire routes), AODA 2005 (accessible routes).</p>
+        <h4>Optimizer (heuristic + cuOpt, the “Verifiers” story)</h4>
+        <p>Searches the action space (reroutes, lane allocations, signal offsets, transit-frequency bumps, contraflow) under bylaw + budget constraints. A <b>constraint checker</b> masks illegal/unsafe actions first; a fast <b>heuristic</b> always returns an improving-or-neutral plan; NVIDIA <b>cuOpt</b> solves the constrained sub-problems on the GPU. The key move: <b>every candidate is scored by actually running the sim</b> (blast-radius for speed) — the simulation is the verifier.</p>
+        <pre class="code"><code>objective = −(total person-travel-time) − penalties(bylaw) − cost(budget)
+loop:  generate → mask(constraints) → score(simulate_scenario) → keep top-N</code></pre>
+      </div>
+    </details>
+
+    <!-- I — CLOSURE-CALIBRATION LOOP -->
+    <details class="spec reveal">
+      <summary><span class="sidx">I</span> Closure-calibration loop &mdash; learning from real closures <span style="font-family:var(--mono);font-size:.6rem;color:var(--green);border:1px solid var(--green);border-radius:5px;padding:2px 7px;align-self:center;letter-spacing:.08em;">TO BUILD</span></summary>
+      <div class="spec-body">
+        <p>The feedback loop from &sect;08, in code terms. It generalizes the existing open-road <b>ODME</b> (&sect;B) to closure scenarios: predict the flow under a closure that really happened, diff it against observed TMC, and correct the sim's parameters until the gap closes. The converged parameters <em>are</em> the trained model.</p>
+        <h4>What to extend</h4>
+        <ul>
+          <li><b>ODME pass</b> — generalize the count-matching step from open-road counts to closure-scenario deltas.</li>
+          <li><b>Mutations (&sect;A)</b> — already done: <code>close()</code> / <code>set_capacity()</code> apply the closure.</li>
+          <li><b>Blast-radius (&sect;D)</b> — the fast re-solve for the predict step.</li>
+          <li><b>Validation</b> — MAE / RMSE per iteration on a held-out set of closures.</li>
+          <li><b>Data pipeline (&sect;G)</b> — add a closure ground-truth normalizer (TMC &times; known closure windows).</li>
+        </ul>
+        <h4>Data joins</h4>
+        <ul>
+          <li>Join key: <code>CENTRELINE_ID</code> &harr; TMC location &harr; Road Restrictions segment.</li>
+          <li>Observed delta = TMC(during closure) &minus; TMC(typical same weekday / hour).</li>
+          <li>If logging forward: snapshot the live <code>road-restrictions</code> feed on a cron to build a closure history.</li>
+        </ul>
+        <h4>Loop shape</h4>
+        <pre class="code"><code><span class="c"># calibrate sim params against one observed closure</span>
+od   = <span class="t">odme</span>(seed_od, open_tmc, path_of)              <span class="c"># 1. baseline (existing)</span>
+g    = <span class="t">set_capacity</span>(graph, closed_edge, <span class="s">0.0</span>)         <span class="c"># 2. apply the real closure</span>
+<span class="k">for</span> it <span class="k">in</span> range(MAX_ITERS):
+    flow  = <span class="t">simulate</span>(g, od, recompute=<span class="s">"blast"</span>)        <span class="c"># 3. predict</span>
+    delta = flow.near(closed_edge) - observed_tmc       <span class="c"># 4. Δ</span>
+    od, g = <span class="t">correct</span>(od, g, delta)                       <span class="c"># 5. shrink Δ (geometric-mean ratio)</span>
+    <span class="k">if</span> rmse(delta) &lt; EPS: <span class="k">break</span>                     <span class="c"># 6. converged → trained</span></code></pre>
+        <p>This is also the cleanest fit for the <b>Prime Intellect Verifiers</b> bounty: the simulator is the verifier and <code>rmse(delta) &lt; EPS</code> is the verifiable reward.</p>
+      </div>
+    </details>
   </div>
 </section>
 
@@ -729,19 +1280,35 @@
       <dt>Four-step model</dt><dd>The four questions: how many trips, going where, by what mode, on which roads.</dd>
       <dt>Gravity model</dt><dd>The idea that bigger, closer places attract more trips — like gravitational pull.</dd>
       <dt>Mode choice</dt><dd>Whether each person drives, takes transit, bikes, or walks.</dd>
-      <dt>Equilibrium / balance</dt><dd>The settled state where no driver could get there faster by switching routes.</dd>
+      <dt>Equilibrium / balance</dt><dd>The settled state where no driver could get there faster by switching routes. flowTO reaches it with a <b>Frank-Wolfe</b> solver.</dd>
+      <dt>BPR curve</dt><dd>The road-speed rule (Bureau of Public Roads): a road slows down smoothly as it fills past its capacity.</dd>
       <dt>Capacity</dt><dd>How many cars a road can carry before it clogs.</dd>
+      <dt>Blast radius</dt><dd>The neighbourhood of roads flowTO recomputes after a change — so it reacts in milliseconds, not minutes.</dd>
       <dt>Deterministic</dt><dd>Same inputs always give the same answer — like a calculator.</dd>
+      <dt>AequilibraE</dt><dd>The trusted open-source traffic solver flowTO checks itself against on benchmark networks.</dd>
       <dt>Heatmap</dt><dd>The colour overlay: green = flowing, red = jammed.</dd>
+      <dt>Nemotron</dt><dd>NVIDIA's language model — here it runs locally as the plain-English copilot.</dd>
+      <dt>cuOpt</dt><dd>NVIDIA's GPU optimizer; sharpens the constrained “find the best plan” search.</dd>
+      <dt>GTFS</dt><dd>The standard transit-schedule format — feeds TTC, GO, and UP Express into the model.</dd>
       <dt>Optimizer</dt><dd>The helper that auto-searches for the best fix under your rules and budget.</dd>
+      <dt>ODME</dt><dd>Origin–Destination Matrix Estimation — nudging the trip table until the simulated road counts match the real observed counts (TMC).</dd>
+      <dt>TMC</dt><dd>Turning-Movement Counts — Toronto's intersection traffic counts in 15-minute bins; flowTO's "ground truth" for how many vehicles really moved.</dd>
+      <dt>Delta (Δ) / feedback loop</dt><dd>The gap between what the model predicted and what actually happened; feeding it back to correct the model is how it learns.</dd>
+      <dt>Verifiers</dt><dd>Prime Intellect's framework for scoring agents against a checkable reward — here, "did the prediction match reality within ε?"</dd>
+      <dt>DGX Spark / GB10</dt><dd>NVIDIA's local AI machine (Grace-Blackwell, Arm-based); flowTO runs entirely on one — the focus of the Spark Hack Series.</dd>
     </dl>
   </div>
 </section>
 
 <footer>
-  <div class="wrap">
-    <span>flowTO · a digital twin of Toronto · plain-language system guide</span>
-    <span>Simulates, doesn't guess.</span>
+  <div class="wrap" style="flex-direction:column;align-items:stretch;gap:18px">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px">
+      <span>flowTO · a digital twin of Toronto · plain-language system guide</span>
+      <span>Simulates, doesn't guess.</span>
+    </div>
+    <div style="border-top:1px solid var(--line);padding-top:16px;color:var(--faint);max-width:80ch;line-height:1.7">
+      Built on real open data — the Toronto Centreline road network and OpenStreetMap for streets, GTFS for TTC, GO Transit, and UP Express schedules, and the Transportation Tomorrow Survey for travel demand. Contains information licensed under the Open Government Licence – Toronto, and OGL-Ontario (Metrolinx). Runs entirely on an NVIDIA DGX Spark (GB10) — Spark Hack Series submission.
+    </div>
   </div>
 </footer>
 
@@ -777,45 +1344,49 @@
     return `rgb(${mix(c1[0],c2[0])},${mix(c1[1],c2[1])},${mix(c1[2],c2[2])})`;
   }
 
-  // The "downtown core" sits center; "Exhibition/BMO" bottom-left.
-  const core = {c:8, r:4};
-  const expo = {c:3, r:7};
+  // Geography of the toy grid (BMO Field demo):
+  //  - "core"  = downtown to the east (baseline warmth)
+  //  - "expo"  = BMO Field / Exhibition Place, bottom-left (where the crowd is)
+  //  - bottom rows (r>=6) = the Lake Shore / Gardiner egress spine
+  //  - mid rows  4–6, cols 4–9 = Parkdale / Liberty Village local streets (cut-through)
+  const core = {c:12, r:4};
+  const expo = {c:3,  r:7};
   function dist(c,r,p){ return Math.hypot((c-p.c)/COLS, (r-p.r)/ROWS); }
 
-  // base evening field: hot near core, cooler at edges
+  // base evening field: warm near the core, cool toward the lake
   function baseField(c,r){
-    return 0.62 - dist(c,r,core)*1.15;
+    return 0.46 - dist(c,r,core)*1.0;
   }
+  const isLocalCutThrough = (c,r)=> (r>=4 && r<=6 && c>=4 && c<=9);
 
   // each scenario returns {heat(c,r), closed(c,r), label, time, flow, flowClass, caption}
-  const KING_ROW = 4;                 // the "King St" band
-  const SPILL_ROWS = [3,5];           // Queen / Front spillover
+  const SPINE = (r)=> r>=6;                      // Lake Shore / Gardiner band
   const scenarios = [
     {
-      label:"Tue 17:00", time:"22", flow:"Good", flowClass:"",
-      caption:"<b>A normal Tuesday at 5 p.m.</b> Downtown glows a healthy amber — busy, but moving. This is the baseline the planner compares everything against.",
+      label:"Fri 16:30 · pre-match", time:"11.4", flow:"Good", flowClass:"",
+      caption:"<b>Friday, 12 June 2026, 4:30 p.m. — pre-match.</b> Exhibition Place and the Lake Shore corridor glow a healthy green-amber: busy, but moving. This is the baseline the planner compares everything against.",
       closed:()=>false,
       heat:(c,r)=>baseField(c,r)
     },
     {
-      label:"Sat 22:30 · +45k", time:"41", flow:"Severe", flowClass:"warn",
-      caption:"<b>World Cup final lets out.</b> 45,000 fans flood out of BMO Field at once. The whole southwest — Exhibition and the Gardiner corridor — goes deep red. Nobody's moving.",
+      label:"Fri 17:05 · +45k", time:"28.7", flow:"Severe", flowClass:"warn",
+      caption:"<b>Full-time — 45,000 fans leave at once.</b> The Lake Shore / Strachan / Dufferin egress spine and the Gardiner go deep red. Mean travel time jumps from 11.4 to 28.7 min; nobody's moving.",
       closed:()=>false,
-      heat:(c,r)=> baseField(c,r) + 0.95*Math.max(0, 0.5 - dist(c,r,expo)) + (r>=6 ? 0.25 : 0)
+      heat:(c,r)=> baseField(c,r) + 1.0*Math.max(0, 0.5 - dist(c,r,expo)) + (SPINE(r) ? 0.38 : 0)
     },
     {
-      label:"Sat 22:30 · King ✕", time:"44", flow:"Severe", flowClass:"warn",
-      caption:"<b>Planner closes King Street</b> to clear it for fans. The cars don't disappear — they jam onto Queen and Front (the bands above and below). Closing a road can make the streets <em>around</em> it worse.",
-      closed:(c,r)=> r===KING_ROW && c>=5 && c<=12,
-      heat:(c,r)=> baseField(c,r) + 0.9*Math.max(0,0.5-dist(c,r,expo)) + (r>=6?0.2:0)
-                   + (SPILL_ROWS.includes(r) && c>=5 && c<=12 ? 0.5 : 0)
+      label:"Fri 17:20 · cut-through", time:"28.7", flow:"Severe", flowClass:"warn",
+      caption:"<b>Drivers give up on the spine and rat-run the side streets.</b> Liberty, Atlantic, Springhurst and Dunn light up as cut-through traffic floods Parkdale and Liberty Village — local-road infiltration leaps from 6% to 34%. <em>No one placed this red; the model worked out where the overflow had to go.</em>",
+      closed:()=>false,
+      heat:(c,r)=> baseField(c,r) + 1.0*Math.max(0,0.5-dist(c,r,expo)) + (SPINE(r)?0.38:0)
+                   + (isLocalCutThrough(c,r) ? 0.42 : 0)
     },
     {
-      label:"Sat 22:30 · FIXED", time:"28", flow:"Eased", flowClass:"ok",
-      caption:"<b>Apply the fix:</b> contraflow on Lakeshore + 50% more 509 streetcars. Fans pour onto transit instead of the road, and the corridor cools from red back toward green. <b>−32% egress time, $0 cost.</b>",
-      closed:(c,r)=> r===KING_ROW && c>=5 && c<=12,
-      heat:(c,r)=> baseField(c,r) + 0.32*Math.max(0,0.5-dist(c,r,expo))
-                   + (SPILL_ROWS.includes(r)&&c>=5&&c<=12?0.12:0)
+      label:"Fri 17:20 · MITIGATED", time:"17.9", flow:"Eased", flowClass:"ok",
+      caption:"<b>The copilot's bylaw-valid plan lands:</b> eastbound contraflow on Lake Shore (Strachan→Bathurst), 110-second egress-biased signals at Dufferin and Strachan, Princes' Blvd closed for pedestrian egress, and a 509/511 transit-priority hold. The spine drains and the side streets clear. <b>Mean trip 17.9 min · egress −32% · $0 capital cost.</b>",
+      closed:(c,r)=> r===7 && c>=2 && c<=6,        // Princes' Blvd → pedestrian-only
+      heat:(c,r)=> baseField(c,r) + 0.30*Math.max(0,0.5-dist(c,r,expo)) + (SPINE(r)?0.10:0)
+                   + (isLocalCutThrough(c,r) ? 0.06 : 0)
     }
   ];
 

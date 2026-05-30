@@ -47,6 +47,33 @@ to a separate `thinking` field). `think:False + format:json` fixes it. For compl
 reasoning you can set `think:True` and extract the `{...}` block from `response` instead.
 See `scripts/llm_debug.py` for the full A/B.
 
+## Training stack (VERIFIED 2026-05-30) — torch + PyG GNN on GB10
+
+The "real GNN training on the Spark" path was verified end-to-end in `~/flowto-venv`.
+The one risk was aarch64 + CUDA 13 + Blackwell (sm_121) wheel availability; it's resolved.
+
+| Component | Status | Notes |
+|---|---|---|
+| **PyTorch 2.12.0+cu130** | ✅ installs on aarch64 | `pip install torch --index-url https://download.pytorch.org/whl/cu130` (cu130 aarch64 wheels live on that index, NOT PyPI) |
+| Sees GB10 + **bf16 matmul** | ✅ | `torch.cuda.is_available()` True, device `NVIDIA GB10`; bf16 2048² matmul OK. The "sm_121 not supported" warning is **harmless** — sm_120/121 are binary compatible. |
+| **PyG 2.7.0 (pure-Python)** | ✅ | `pip install torch_geometric` — **no `torch-scatter`/`torch-sparse` compile needed**. SAGEConv forward+backward runs on GPU at ~18k-edge scale. No Docker, no community wheels, no sudo. |
+| **XGBoost 3.2.0** | ✅ present | the always-works fallback learned model |
+| Warp 1.13 | ✅ (see above) | GPU scenario generation / batched sim |
+
+```bash
+# reproduce the training-stack install:
+~/flowto-venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cu130
+~/flowto-venv/bin/pip install torch_geometric
+# smoke test: torch sees GB10 + a SAGEConv forward/backward on cuda — both pass.
+```
+
+**Caveat (shared box):** at probe time only **~26.8 / 121.6 GiB** GPU memory was free — ~95 GiB
+was held (likely a cached Nemotron model in Ollama). Fine for the ~18k-edge graph, but coordinate
+before launching big jobs. Tailscale SSH also needs periodic interactive re-auth (a login URL pops
+up); plain key auth alone is not always enough.
+
+See `docs/07-training-feedback-loop.md` for the model/training plan this unblocks.
+
 ## Smoke tests (re-run anytime)
 ```bash
 ~/flowto-venv/bin/python ~/spark-hack-toronto/scripts/gpu_smoke.py      # GPU kernel

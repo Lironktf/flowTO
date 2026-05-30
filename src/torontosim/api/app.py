@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,7 +25,23 @@ from .store import AppState, ScenarioStore, edge_records
 
 
 def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
-    app = FastAPI(title="TorontoSim API", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Pre-run the three demo scenarios in a background thread so the first
+        # click is instant (a full-graph kpath run is ~tens of seconds).
+        import threading
+
+        def warm():
+            for sc in ("baseline", "wc_surge", "wc_fix"):
+                try:
+                    _app.state.demo_cache.setdefault(sc, _compute_demo(sc))
+                except Exception:  # noqa: BLE001 — warmup is best-effort
+                    pass
+
+        threading.Thread(target=warm, daemon=True).start()
+        yield
+
+    app = FastAPI(title="TorontoSim API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],  # Vite dev server; auth is explicitly out of scope.
@@ -198,6 +216,37 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             "date": date,
             "trajectories": [t for t in demo_trajectories() if t["agency"] in wanted],
         }
+
+    # ---- FIFA WC demo: real engine runs on the real graph (P12) --------- #
+    app.state.demo_cache = {}
+
+    def _compute_demo(scenario: str) -> dict:
+        from ..demo import wc_surge
+
+        res = wc_surge.run_scenario(
+            scenario, graph=state.graph, baseline_od=state.od_matrix, engine="kpath"
+        )
+        return {
+            "scenario": scenario,
+            "summary": res["summary"],
+            "headline_metric": res["headline_metric"],
+            "exhibition_pressure": res["exhibition_pressure"],
+            "records": edge_records(state, res["graph"]),
+        }
+
+    @app.get("/demo/run")
+    def demo_run(scenario: str = "baseline"):
+        """Run baseline | wc_surge | wc_fix on the real graph; return per-edge records.
+
+        Deterministic → cached. Records are ``[edge_idx, load, speed, pressure,
+        closure]`` aligned to the ``/edges`` index, so the frontend recolors the
+        real road network with live engine pressures.
+        """
+        if scenario not in ("baseline", "wc_surge", "wc_fix"):
+            raise HTTPException(422, f"unknown demo scenario: {scenario!r}")
+        if scenario not in app.state.demo_cache:
+            app.state.demo_cache[scenario] = _compute_demo(scenario)
+        return app.state.demo_cache[scenario]
 
     # ---- jobs ----------------------------------------------------------- #
     @app.get("/jobs/{job_id}")

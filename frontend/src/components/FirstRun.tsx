@@ -10,6 +10,8 @@ const BOOT_LINES = [
 
 export function FirstRun() {
   const loadTwin = useAppStore((s) => s.loadTwin);
+  const loading = useAppStore((s) => s.loading);
+  const error = useAppStore((s) => s.error);
   const [line, setLine] = useState(0);
 
   useEffect(() => {
@@ -43,10 +45,16 @@ export function FirstRun() {
           <div className="k">blast-radius recompute</div>
         </div>
       </div>
-      <button className="btn primary" onClick={loadTwin}>
-        Load the twin
+      <button className="btn primary" onClick={() => void loadTwin()} disabled={loading}>
+        {loading ? "Loading the real graph…" : "Load the twin"}
       </button>
-      <div className="boot">{BOOT_LINES.slice(0, line).join("  ")}</div>
+      {error ? (
+        <div className="boot" style={{ color: "var(--bad)" }}>
+          {error}
+        </div>
+      ) : (
+        <div className="boot">{BOOT_LINES.slice(0, line).join("  ")}</div>
+      )}
     </div>
   );
 }

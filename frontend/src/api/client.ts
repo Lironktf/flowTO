@@ -1,7 +1,9 @@
 /**
- * Typed REST + WS client for the P06 backend. In demo mode the app runs off the
- * embedded corridor data; in live mode it talks to this client. The WS handler
- * decodes binary frames straight into the tick store (no React).
+ * Typed REST client for the live P06/P07/P12 backend. All traffic data is real
+ * engine output — the frontend renders the actual Toronto graph (`/edges`)
+ * colored by pressures from `/demo/run`, with before/after from the run
+ * summaries and copilot answers from `/copilot/plan`. The binary WS tick stream
+ * (`connectStream`) feeds the tick store for live-tick scenarios.
  */
 import { ingestFrame } from "../state/tickStore";
 
@@ -10,9 +12,29 @@ const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 export interface EdgeMeta {
   idx: number;
   edge_id: string;
-  geometry: [number, number][] | null;
+  geometry: [number, number][] | null; // [[lat, lng], ...] (Liron's stored form)
   road_name?: string;
   road_class?: string;
+}
+
+// A tick record: [edge_idx, load, speed, pressure, closure].
+export type Record5 = [number, number, number, number, number];
+
+export interface DemoRun {
+  scenario: string;
+  summary: Record<string, number>;
+  headline_metric: number;
+  exhibition_pressure: number;
+  records: Record5[];
+}
+
+export interface CopilotResponse {
+  tool: string;
+  rationale: string;
+  citations: { ref: string; note: string }[];
+  requires_user_confirmation: boolean;
+  blocked: boolean;
+  retrieved_policy?: { doc_id: string; title: string; source: string }[];
 }
 
 async function jget<T>(path: string): Promise<T> {
@@ -34,13 +56,19 @@ async function jpost<T>(path: string, body: unknown): Promise<T> {
 export const api = {
   health: () => jget<{ status: string; edges: number }>("/healthz"),
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
-  createScenario: (payload: unknown) => jpost<{ id: string }>("/scenarios", payload),
-  run: (id: string, req: unknown) => jpost<unknown>(`/scenarios/${id}/run`, req),
-  preview: (id: string, req: unknown) => jpost<unknown>(`/scenarios/${id}/preview`, req),
-  compare: (id: string) => jget<unknown>(`/scenarios/${id}/compare?against=baseline`),
+  demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
+  copilotPlan: (prompt: string) => jpost<CopilotResponse>("/copilot/plan", { prompt }),
+  transitRoutes: (agencies = "ttc") =>
+    jget<{ routes: { route_id: string; mode: string; path: [number, number][] }[] }>(
+      `/transit/routes?agencies=${agencies}`,
+    ),
+  transitTrajectories: (agencies = "ttc") =>
+    jget<{ trajectories: { trip_id: string; route_type: number; path: [number, number][]; timestamps: number[] }[] }>(
+      `/transit/trajectories?agencies=${agencies}`,
+    ),
 };
 
-/** Connect the tick WebSocket; decodes binary frames into the tick store. */
+/** Connect the binary tick WebSocket (live-tick scenarios → tick store). */
 export function connectStream(scenarioId: string): WebSocket {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const url = `${proto}://${location.host}${BASE}/scenarios/${scenarioId}/stream`;

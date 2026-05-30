@@ -1,4 +1,4 @@
-import { timeline } from "../data/demo";
+import { TIMELINE as timeline } from "../config";
 import { useAppStore } from "../state/appStore";
 
 function fmt(min: number): string {

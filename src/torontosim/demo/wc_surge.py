@@ -212,6 +212,9 @@ def run_scenario(
         # that melts red→green). Calm at baseline, gridlock at surge, eased at fix.
         "headline_metric": exhib,
         "extra": extra,
+        # The simulated result graph — consumed by the API to emit per-edge tick
+        # records (kept out of the JSON-serialized fields above).
+        "graph": rg,
     }
 
 

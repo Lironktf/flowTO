@@ -15,7 +15,7 @@
 | **P04** Sim engine | **BPR + Frank-Wolfe/CFW equilibrium, oracle-validated vs published SiouxFalls UE (~0.1%)**; CPU+cuGraph backends (GPU verified on Spark); determinism | FLO-10 (#5) |
 | **P05** Blast-radius | pathcache + cones + recompute; **blast == full recompute exactly at the AON layer**; `recompute=blast` | FLO-14 (#6) |
 | **P06** Backend API | FastAPI scenario CRUD/run/preview/compare, **binary WS tick frames**, async jobs; boots on 18k-edge graph | FLO-11 (#7) |
-| **P07** Frontend | React+Vite+TS deck.gl+MapLibre, 6-state machine, tickStore typed-arrays, design tokens; browser-verified hero flow | FLO-12 (#8) |
+| **P07** Frontend | React+Vite+TS deck.gl+MapLibre, 6-state machine, tickStore typed-arrays, design tokens. **Wired to the live backend** — renders the real 18,190-edge graph (`/edges`) recolored by real engine pressures (`/demo/run`); before/after from real summaries; copilot from `/copilot/plan`. No hardcoded sim data. | FLO-12 (#8) |
 | **P12** FIFA WC demo | `wc_surge` egress injection + 3 deterministic scenarios + RUNBOOK; headline metric melts baseline→surge→fix | FLO-13 (#9) |
 | **P09** Copilot | Nemotron NL→validated tool calls (mockable + re-ask), constraint checker, offline RAG, cited; **live `nemotron3:33b` verified on Spark** | FLO-16 (#10) |
 | **P10** Optimizer | heuristic + **sim-as-verifier**, action masks + budget, `/optimize`; cuOpt client (deferred) | FLO-17 (#11) |
@@ -61,6 +61,8 @@ scripts/spark/run.sh "python scripts/spark/smoke_ollama.py"    # OLLAMA_OK
 **Stage run-of-show:** `demo/RUNBOOK.md` (90-second click sequence, fallbacks, rubric close).
 
 ## 5. Known issues / notes
+- **Frontend requires the API running** (real-data wiring). Use `scripts/run_api.sh` + `npm run dev`; `npm run preview` (no proxy) shows a "Could not reach the API" message. The server **warms the demo cache at startup** so surge/fix clicks are fast after ~a minute.
+- **First full-graph surge run is slow (~tens of seconds)** on the kpath engine before it's cached — that's why the cache is warmed at startup. Blast-radius (766 ms) is the fast interactive path for closures.
 - Frontend bundle is large (deck.gl + maplibre, ~1.9 MB) — fine for a local demo; code-split later if needed.
 - The full-city `recompute=full` on a congested closure is ~11.6 s (kpath rerouting); **blast-radius (766 ms) is the interactive path** — use `recompute=blast` for live interaction.
 - Engine defaults are **baseline-safe** (`engine=kpath`, `congestion_model=legacy`/`bpr`, `backend=cpu`) per GOAL; equilibrium/GPU are opt-in flags, both verified.

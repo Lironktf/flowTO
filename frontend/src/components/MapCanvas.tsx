@@ -1,38 +1,22 @@
 /**
  * Map canvas: MapLibre basemap + interleaved deck.gl overlay (research/06).
- * Corridors are a PathLayer colored by the congestion ramp for the current
- * network state; a cobalt blast-radius halo underlays affected corridors when
- * the event has fired. Offline-safe: the basemap is a flat paper background
- * (PMTiles can slot in via VITE_PMTILES later).
+ * Renders the **real Toronto road graph** (`/edges` geometry) colored by live
+ * engine pressures from the tick store (written by /demo/run, indexed by edge
+ * idx). Recolor is driven imperatively by a bumped `pressureSeq` in
+ * updateTriggers — geometry is uploaded once. Transit comes from the API.
  */
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
+import { PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Map, useControl } from "react-map-gl/maplibre";
-import { actions, blastRadius, center, corridors, stadium } from "../data/demo";
+import { api } from "../api/client";
+import { MAP_CENTER, MAP_ZOOM, STADIUM } from "../config";
 import { buildTransitLayers, type RouteGeom, type Trajectory } from "../layers/transit";
-import { pressureRamp, type RGB } from "../lib/pressureRamp";
+import { pressureRamp } from "../lib/pressureRamp";
+import { getArrays } from "../state/tickStore";
 import { useAppStore } from "../state/appStore";
-
-// Demo transit: routes + synthesized trajectories from the transit corridors.
-const TRANSIT_ROUTES: RouteGeom[] = corridors
-  .filter((c) => c.cls === "transit")
-  .map((c) => ({ route_id: c.id, mode: "streetcar", path: c.path }));
-
-function makeTrajectories(): Trajectory[] {
-  const trajs: Trajectory[] = [];
-  for (const r of TRANSIT_ROUTES) {
-    const run = 600; // 10 min end-to-end
-    for (let depart = 14 * 3600; depart <= 20 * 3600; depart += 360) {
-      const ts = r.path.map((_p, i) => depart + (i / Math.max(1, r.path.length - 1)) * run);
-      trajs.push({ trip_id: `${r.route_id}_${depart}`, route_type: 0, path: r.path, timestamps: ts });
-    }
-  }
-  return trajs;
-}
-const TRANSIT_TRAJECTORIES = makeTrajectories();
 
 function DeckOverlay(props: { layers: unknown[] }) {
   const overlay = useControl(() => new MapboxOverlay({ interleaved: true, layers: [] }));
@@ -42,23 +26,28 @@ function DeckOverlay(props: { layers: unknown[] }) {
 }
 
 const WIDTH_BY_CLASS: Record<string, number> = {
-  expressway: 7,
-  arterial: 5,
-  collector: 3.5,
-  local: 2.5,
-  transit: 3,
+  motorway: 6,
+  trunk: 5,
+  primary: 4.5,
+  secondary: 3.5,
+  tertiary: 3,
+  residential: 2,
+  service: 1.5,
 };
+
+interface EdgePath {
+  edge_id: string;
+  idx: number;
+  road_class: string;
+  path: [number, number][];
+}
 
 function basemapStyle(dark: boolean): maplibregl.StyleSpecification {
   return {
     version: 8,
     sources: {},
     layers: [
-      {
-        id: "bg",
-        type: "background",
-        paint: { "background-color": dark ? "#0b0e13" : "#e9e3d4" },
-      },
+      { id: "bg", type: "background", paint: { "background-color": dark ? "#0b0e13" : "#e9e3d4" } },
     ],
   };
 }
@@ -67,68 +56,87 @@ export function MapCanvas() {
   const theme = useAppStore((s) => s.theme);
   const intensity = useAppStore((s) => s.intensity);
   const tilt = useAppStore((s) => s.tilt);
-  const networkState = useAppStore((s) => s.networkState);
-  const eventFired = useAppStore((s) => s.eventFired);
-  const appliedActions = useAppStore((s) => s.appliedActions);
+  const edges = useAppStore((s) => s.edges);
+  const pressureSeq = useAppStore((s) => s.pressureSeq);
   const selectedEdges = useAppStore((s) => s.selectedEdges);
   const selectEdge = useAppStore((s) => s.selectEdge);
   const showTransit = useAppStore((s) => s.showTransit);
   const scrubberMinute = useAppStore((s) => s.scrubberMinute);
   const dark = theme === "dark";
 
+  // Real graph geometry → deck paths ([lat,lng] stored → [lng,lat] for deck).
+  const edgePaths: EdgePath[] = useMemo(() => {
+    const out: EdgePath[] = [];
+    for (const e of edges) {
+      if (!e.geometry || e.geometry.length < 2) continue;
+      out.push({
+        edge_id: e.edge_id,
+        idx: e.idx,
+        road_class: e.road_class ?? "residential",
+        path: e.geometry.map(([lat, lng]) => [lng, lat] as [number, number]),
+      });
+    }
+    return out;
+  }, [edges]);
+
+  // Transit (routes + trajectories) fetched from the API.
+  const [routes, setRoutes] = useState<RouteGeom[]>([]);
+  const [trajectories, setTrajectories] = useState<Trajectory[]>([]);
+  useEffect(() => {
+    let alive = true;
+    Promise.all([api.transitRoutes("ttc"), api.transitTrajectories("ttc")])
+      .then(([r, t]) => {
+        if (!alive) return;
+        setRoutes(r.routes.map((x) => ({ route_id: x.route_id, mode: x.mode, path: x.path })));
+        setTrajectories(
+          t.trajectories.map((x) => ({
+            trip_id: x.trip_id,
+            route_type: x.route_type,
+            path: x.path,
+            timestamps: x.timestamps,
+          })),
+        );
+      })
+      .catch(() => void 0);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const layers = useMemo(() => {
     const out: unknown[] = [];
+    const pressure = getArrays().pressure;
 
-    // Blast-radius cobalt halo beneath affected corridors (event active only).
-    if (eventFired) {
-      const cobalt: RGB = dark ? [111, 155, 255] : [36, 85, 214];
-      out.push(
-        new PathLayer({
-          id: "blast-halo",
-          data: corridors.filter((c) => blastRadius.includes(c.id)),
-          getPath: (c: (typeof corridors)[number]) => c.path,
-          getColor: [...cobalt, 70],
-          getWidth: (c: (typeof corridors)[number]) => (WIDTH_BY_CLASS[c.cls] ?? 3) + 10,
-          widthUnits: "pixels",
-          capRounded: true,
-          jointRounded: true,
-        }),
-      );
-    }
-
-    // Corridors colored by pressure for the current network state.
     out.push(
       new PathLayer({
-        id: "corridors",
-        data: corridors,
+        id: "roads",
+        data: edgePaths,
         pickable: true,
-        getPath: (c: (typeof corridors)[number]) => c.path,
-        getColor: (c: (typeof corridors)[number]) => {
-          const p = c[networkState];
-          return pressureRamp(p, { intensity, dark });
-        },
-        getWidth: (c: (typeof corridors)[number]) =>
-          (WIDTH_BY_CLASS[c.cls] ?? 3) + (selectedEdges.has(c.id) ? 4 : 0),
+        getPath: (e: EdgePath) => e.path,
+        getColor: (e: EdgePath) => pressureRamp(pressure[e.idx] ?? 0, { intensity, dark }),
+        getWidth: (e: EdgePath) =>
+          (WIDTH_BY_CLASS[e.road_class] ?? 2) + (selectedEdges.has(e.edge_id) ? 4 : 0),
         widthUnits: "pixels",
+        widthMinPixels: 1,
         capRounded: true,
         jointRounded: true,
         updateTriggers: {
-          getColor: [networkState, intensity, dark],
+          getColor: [pressureSeq, intensity, dark],
           getWidth: [Array.from(selectedEdges).join(",")],
         },
-        onClick: (info: { object?: (typeof corridors)[number] }) => {
-          if (info.object) selectEdge(info.object.id, true);
+        onClick: (info: { object?: EdgePath }) => {
+          if (info.object) selectEdge(info.object.edge_id, true);
         },
       }),
     );
 
-    // Stadium pin (always on).
+    // Stadium pin (geography).
     out.push(
       new ScatterplotLayer({
         id: "stadium",
-        data: [stadium],
-        getPosition: (d: typeof stadium) => d.coord,
-        getRadius: 60,
+        data: [STADIUM],
+        getPosition: (d: typeof STADIUM) => d.coord,
+        getRadius: 70,
         radiusUnits: "meters",
         getFillColor: dark ? [111, 155, 255] : [36, 85, 214],
         stroked: true,
@@ -137,47 +145,20 @@ export function MapCanvas() {
       }),
     );
 
-    // Intervention markers (after a plan is applied).
-    if (appliedActions.length) {
-      const placed = actions.filter((a) => appliedActions.includes(a.id));
-      out.push(
-        new ScatterplotLayer({
-          id: "action-dots",
-          data: placed,
-          getPosition: (a: (typeof actions)[number]) => a.coord,
-          getRadius: 40,
-          radiusUnits: "meters",
-          getFillColor: dark ? [111, 155, 255, 230] : [36, 85, 214, 230],
-        }),
-      );
-      out.push(
-        new TextLayer({
-          id: "action-labels",
-          data: placed,
-          getPosition: (a: (typeof actions)[number]) => a.coord,
-          getText: (_a: (typeof actions)[number], { index }: { index: number }) =>
-            String(index + 1),
-          getSize: 13,
-          getColor: [255, 255, 255],
-          fontFamily: "IBM Plex Mono, monospace",
-        }),
-      );
-    }
-    // Transit overlay (visual only) — vehicles animate along the scrubber time.
-    if (showTransit) {
-      const currentTime = scrubberMinute * 60; // minutes → secs since midnight
-      out.push(...buildTransitLayers(TRANSIT_ROUTES, TRANSIT_TRAJECTORIES, currentTime));
+    if (showTransit && routes.length) {
+      out.push(...buildTransitLayers(routes, trajectories, scrubberMinute * 60));
     }
     return out;
   }, [
-    networkState,
+    edgePaths,
+    pressureSeq,
     intensity,
     dark,
-    eventFired,
-    appliedActions,
     selectedEdges,
     selectEdge,
     showTransit,
+    routes,
+    trajectories,
     scrubberMinute,
   ]);
 
@@ -185,9 +166,9 @@ export function MapCanvas() {
     <Map
       mapLib={maplibregl as never}
       initialViewState={{
-        longitude: center[0],
-        latitude: center[1],
-        zoom: 14.1,
+        longitude: MAP_CENTER[0],
+        latitude: MAP_CENTER[1],
+        zoom: MAP_ZOOM,
         pitch: tilt,
         bearing: -18,
       }}

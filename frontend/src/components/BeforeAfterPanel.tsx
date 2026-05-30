@@ -1,22 +1,42 @@
-import { type MetricKey, metricLabels, metricOrder, metrics } from "../data/demo";
-import { useAppStore } from "../state/appStore";
+import { LOWER_IS_BETTER, METRIC_LABELS, METRIC_ORDER } from "../config";
+import { type NetworkState, useAppStore } from "../state/appStore";
+
+function fmt(v: number): string {
+  if (Math.abs(v) >= 100) return Math.round(v).toLocaleString();
+  return v.toFixed(2);
+}
 
 export function BeforeAfterPanel() {
   const networkState = useAppStore((s) => s.networkState);
   const phase = useAppStore((s) => s.phase);
-
-  // Compare reference: surge vs base, mitigated vs surge (design semantics).
-  const [from, to, fromLabel, toLabel] =
-    networkState === "mit"
-      ? (["surge", "mit", "Event", "Mitigated"] as const)
-      : (["base", "surge", "Baseline", "Event"] as const);
+  const summaries = useAppStore((s) => s.summaries);
 
   if (phase === "baseline" || phase === "first-run") {
     return (
       <div className="panel metrics">
         <div className="eyebrow">Outcome</div>
         <h2 className="panel-title">Before / After</h2>
-        <div className="warn-row">Network nominal — apply an intervention or play the matchday.</div>
+        <div className="warn-row">
+          Network nominal — apply an intervention or play the matchday.
+        </div>
+      </div>
+    );
+  }
+
+  // Compare reference: surge vs base, mitigated vs surge (real engine summaries).
+  const [from, to, fromLabel, toLabel]: [NetworkState, NetworkState, string, string] =
+    networkState === "mit"
+      ? ["surge", "mit", "Event", "Mitigated"]
+      : ["base", "surge", "Baseline", "Event"];
+
+  const a = summaries[from];
+  const b = summaries[to];
+  if (!a || !b) {
+    return (
+      <div className="panel metrics">
+        <div className="eyebrow">Outcome</div>
+        <h2 className="panel-title">Before / After</h2>
+        <div className="warn-row">Computing…</div>
       </div>
     );
   }
@@ -24,25 +44,21 @@ export function BeforeAfterPanel() {
   return (
     <div className="panel metrics">
       <div className="eyebrow">
-        {fromLabel} → {toLabel}
+        {fromLabel} → {toLabel} · live engine
       </div>
       <h2 className="panel-title">Before / After</h2>
       <div className="metric-grid">
-        {metricOrder.map((k: MetricKey) => {
-          const a = metrics[from][k].v;
-          const b = metrics[to][k].v;
-          const pct = a !== 0 ? ((b - a) / a) * 100 : 0;
-          const better = b < a; // lower is better for every metric here
-          const arrow = b < a ? "↓" : b > a ? "↑" : "→";
+        {METRIC_ORDER.map((k) => {
+          const av = a[k] ?? 0;
+          const bv = b[k] ?? 0;
+          const pct = av !== 0 ? ((bv - av) / Math.abs(av)) * 100 : 0;
+          const lowerBetter = LOWER_IS_BETTER.has(k);
+          const better = lowerBetter ? bv <= av : bv >= av;
+          const arrow = bv < av ? "↓" : bv > av ? "↑" : "→";
           return (
             <div className="metric" key={k}>
-              <div className="label">{metricLabels[k]}</div>
-              <div className="val">
-                {b.toLocaleString()}
-                <span className="mono" style={{ fontSize: 11, marginLeft: 4 }}>
-                  {metrics[to][k].u}
-                </span>
-              </div>
+              <div className="label">{METRIC_LABELS[k] ?? k}</div>
+              <div className="val">{fmt(bv)}</div>
               <div className={`delta ${better ? "good" : "bad"}`}>
                 {arrow} {Math.abs(pct).toFixed(0)}% vs {fromLabel.toLowerCase()}
               </div>
@@ -52,9 +68,13 @@ export function BeforeAfterPanel() {
       </div>
 
       {networkState === "surge" ? (
-        <div className="warn-row bad">34% local-road infiltration into Parkdale / Liberty Village.</div>
+        <div className="warn-row bad">
+          Post-match surge — severe congestion + local-road infiltration near Exhibition.
+        </div>
       ) : networkState === "mit" ? (
-        <div className="warn-row good">Plan valid. No hard-constraint conflicts.</div>
+        <div className="warn-row good">
+          Plan applied — congestion eased. No hard-constraint conflicts.
+        </div>
       ) : null}
     </div>
   );

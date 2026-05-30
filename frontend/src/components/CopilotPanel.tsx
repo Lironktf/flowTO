@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { copilotChips } from "../data/demo";
+import { COPILOT_CHIPS } from "../config";
 import { useAppStore } from "../state/appStore";
 
 export function CopilotPanel() {
@@ -9,7 +9,7 @@ export function CopilotPanel() {
 
   const submit = (value: string) => {
     if (!value.trim()) return;
-    send(value.trim());
+    void send(value.trim());
     setText("");
   };
 
@@ -25,14 +25,7 @@ export function CopilotPanel() {
         )}
         {log.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>
-            <div dangerouslySetInnerHTML={{ __html: m.text }} />
-            {m.steps && (
-              <ol style={{ margin: "6px 0 0", paddingLeft: 16 }}>
-                {m.steps.map((s, j) => (
-                  <li key={j}>{s}</li>
-                ))}
-              </ol>
-            )}
+            <div>{m.text}</div>
             {m.citations?.map((c, j) => (
               <div className="cite" key={j}>
                 § {c.ref} — {c.note}
@@ -42,7 +35,7 @@ export function CopilotPanel() {
         ))}
       </div>
       <div className="chips">
-        {copilotChips.map((c) => (
+        {COPILOT_CHIPS.map((c) => (
           <button key={c} className="chip-btn" onClick={() => submit(c)}>
             {c}
           </button>

@@ -36,7 +36,7 @@ export function TopBar() {
       <button className="btn" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
         {theme === "light" ? "Dark" : "Light"}
       </button>
-      <button className="btn" onClick={reset}>
+      <button className="btn" onClick={() => void reset()}>
         Reset
       </button>
     </div>

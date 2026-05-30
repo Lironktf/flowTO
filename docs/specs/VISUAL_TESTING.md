@@ -4,15 +4,22 @@ How to verify the frontend **by eye in the browser**, screen by screen. Each
 step lists what to do, what you should see, and the ✅ pass criteria. The 6
 states below were confirmed in-browser on 2026-05-30.
 
-## Launch
+## Launch (the API is REQUIRED — the app renders real engine data)
 ```bash
-# Option A — built preview (fastest, no API needed; runs the deterministic demo)
-cd ~/flowTO-build/frontend && npm run build && npm run preview     # http://localhost:4399
-# Option B — dev server (hot reload), optionally with the live API
-cd ~/flowTO-build && scripts/run_api.sh          # terminal 1 → :8000 (optional, for live data)
-cd ~/flowTO-build/frontend && npm run dev         # terminal 2 → :5173
+# terminal 1 — backend (loads the real 18,190-edge graph; first start ~30–60s)
+cd ~/flowTO-build && scripts/run_api.sh           # http://localhost:8000  (warms the demo cache)
+# terminal 2 — frontend dev server (proxies /api → :8000)
+cd ~/flowTO-build/frontend && npm run dev          # http://localhost:5173
 ```
-Open the URL in a desktop browser (designed at **1440×900** — use a wide window).
+Open **:5173** in a desktop browser (designed at **1440×900** — use a wide window).
+> The frontend talks to the live backend: real graph (`/edges`), real engine
+> pressures (`/demo/run`), real before/after, real copilot (`/copilot/plan`).
+> `npm run preview` (static, no proxy) shows "Could not reach the API" on **Load
+> the twin** — use `npm run dev` with the API up, or set `VITE_API_BASE`.
+>
+> **First surge run is slow (~tens of seconds)** — a full-graph solve. The server
+> **warms the cache at startup**, so after ~a minute the surge/fix clicks are
+> fast. The Recompute perf cell shows the real measured latency.
 
 > **Note on the map:** the basemap is a flat "drafting-paper" background by
 > design (offline-safe — no street tiles needed). The colored **road corridors**

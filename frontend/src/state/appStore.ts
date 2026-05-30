@@ -1,139 +1,139 @@
 /**
- * Warm app state (Zustand) — human-cadence re-renders only (research/06 tier 3).
- * Drives the 6-state machine from design/README.md:
- *   first-run → baseline → recomputing(HERO) → surge → mitigated → blocked.
+ * Warm app state (Zustand). Drives the 6-state machine from design/README.md,
+ * but every traffic number is **real engine output** from the backend:
+ *   loadTwin   → GET /edges (real graph) + /demo/run?scenario=baseline
+ *   fireSurge  → /demo/run?scenario=wc_surge
+ *   applyPlan  → /demo/run?scenario=wc_fix
+ *   copilotSend→ POST /copilot/plan
+ * Pressures land in the tick-store typed arrays (out of React); a bumped
+ * pressureSeq drives the deck.gl updateTriggers recolor.
  */
 import { create } from "zustand";
-import {
-  type CopilotScript,
-  type NetworkState,
-  copilotBlocked,
-  copilotHero,
-  perf,
-  recomputeSteps,
-} from "../data/demo";
+import { api, type CopilotResponse, type EdgeMeta } from "../api/client";
+import { resizeTickStore, writeRecords } from "./tickStore";
 
 export type Phase = "first-run" | "baseline" | "recomputing" | "surge" | "mitigated" | "blocked";
+export type NetworkState = "base" | "surge" | "mit";
 
 interface CopilotMessage {
   role: "user" | "bot";
   text: string;
-  steps?: string[];
   citations?: { ref: string; note: string }[];
   blocked?: boolean;
 }
 
 interface Telemetry {
-  recompute: number;
-  subEdges: number;
-  subNodes: number;
+  recompute: number; // measured /demo/run wall-clock (ms)
+  affected: number;
   llm: number;
   fps: number;
 }
 
+const RECOMPUTE_STEPS = ["Demand model", "Trip assignment", "Edge pressure", "Bylaw check", "Render"];
+
 interface AppState {
-  // tweakables
   theme: "light" | "dark";
-  density: "comfortable" | "compact";
   intensity: number;
-  extrude: number;
   tilt: number;
-  // machine
   phase: Phase;
   networkState: NetworkState;
-  eventFired: boolean;
   recomputing: boolean;
   recomputeStep: number;
   blocked: boolean;
-  // scenario / interaction
-  activeTool: string | null;
-  selectedEdges: Set<string>;
+  loading: boolean;
+  error: string | null;
+
+  edges: EdgeMeta[];
+  pressureSeq: number; // bump → deck recolor
+  summaries: Partial<Record<NetworkState, Record<string, number>>>;
+
   showTransit: boolean;
-  previewVisible: boolean;
-  appliedActions: string[];
+  selectedEdges: Set<string>;
   scrubberMinute: number;
   copilotLog: CopilotMessage[];
   telemetry: Telemetry;
-  // actions
+
   setTheme: (t: "light" | "dark") => void;
-  setDensity: (d: "comfortable" | "compact") => void;
   setIntensity: (n: number) => void;
-  setExtrude: (n: number) => void;
-  setTilt: (n: number) => void;
-  loadTwin: () => void;
-  setScrubber: (m: number) => void;
-  selectEdge: (id: string, additive?: boolean) => void;
-  clearSelection: () => void;
-  setTool: (id: string | null) => void;
   toggleTransit: () => void;
-  runRecompute: (to: NetworkState, onDone?: () => void) => void;
-  fireSurge: () => void;
-  showPreview: () => void;
-  applyPlan: () => void;
-  discardPreview: () => void;
-  copilotSend: (text: string) => void;
-  reset: () => void;
+  selectEdge: (id: string, additive?: boolean) => void;
+  setScrubber: (m: number) => void;
+  loadTwin: () => Promise<void>;
+  fireSurge: () => Promise<void>;
+  applyPlan: () => Promise<void>;
+  copilotSend: (text: string) => Promise<void>;
+  reset: () => Promise<void>;
 }
 
-const liveTelemetry: Telemetry = { ...perf.live };
-const idleTelemetry: Telemetry = { ...perf.base };
+const IDLE: Telemetry = { recompute: 0, affected: 0, llm: 0, fps: 60 };
 
-function scriptToMessages(script: CopilotScript): CopilotMessage[] {
-  return [
-    { role: "user", text: script.user },
-    {
-      role: "bot",
-      text: script.botLead,
-      steps: script.steps,
-      citations: script.citations,
-      blocked: script.blocked,
-    },
-    { role: "bot", text: script.botTail },
-  ];
+type Run = { records: number[][]; summary: Record<string, number> };
+
+function applyRun(
+  set: (partial: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void,
+  state: NetworkState,
+  run: Run,
+) {
+  writeRecords(run.records as [number, number, number, number, number][]);
+  set((s: AppState) => ({
+    networkState: state,
+    pressureSeq: s.pressureSeq + 1,
+    summaries: { ...s.summaries, [state]: run.summary },
+  }));
+}
+
+async function recomputeAround(
+  set: (partial: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void,
+  fn: () => Promise<void>,
+) {
+  set({ recomputing: true, recomputeStep: 0 });
+  const start = performance.now();
+  const stepper = setInterval(
+    () =>
+      set((s: AppState) => ({
+        recomputeStep: Math.min(s.recomputeStep + 1, RECOMPUTE_STEPS.length - 1),
+      })),
+    260,
+  );
+  try {
+    await fn();
+  } finally {
+    clearInterval(stepper);
+    const ms = Math.round(performance.now() - start);
+    set((s: AppState) => ({
+      recomputing: false,
+      recomputeStep: RECOMPUTE_STEPS.length,
+      telemetry: { ...s.telemetry, recompute: ms, fps: 60 },
+    }));
+  }
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   theme: "light",
-  density: "comfortable",
   intensity: 1.0,
-  extrude: 1.0,
   tilt: 52,
   phase: "first-run",
   networkState: "base",
-  eventFired: false,
   recomputing: false,
   recomputeStep: 0,
   blocked: false,
-  activeTool: null,
-  selectedEdges: new Set<string>(),
+  loading: false,
+  error: null,
+  edges: [],
+  pressureSeq: 0,
+  summaries: {},
   showTransit: true,
-  previewVisible: false,
-  appliedActions: [],
+  selectedEdges: new Set<string>(),
   scrubberMinute: 14 * 60,
   copilotLog: [],
-  telemetry: { ...idleTelemetry },
+  telemetry: { ...IDLE },
 
   setTheme: (t) => {
     document.documentElement.setAttribute("data-theme", t);
     set({ theme: t });
   },
-  setDensity: (d) => {
-    document.documentElement.setAttribute("data-density", d);
-    set({ density: d });
-  },
   setIntensity: (n) => set({ intensity: n }),
-  setExtrude: (n) => set({ extrude: n }),
-  setTilt: (n) => set({ tilt: n }),
-
-  loadTwin: () => set({ phase: "baseline", networkState: "base", telemetry: { ...idleTelemetry } }),
-  setScrubber: (m) => {
-    set({ scrubberMinute: m });
-    // Crossing full-time auto-triggers the surge recompute (design behavior).
-    const st = get();
-    if (m >= 17 * 60 + 5 && !st.eventFired && st.phase === "baseline") {
-      st.fireSurge();
-    }
-  },
+  toggleTransit: () => set((s) => ({ showTransit: !s.showTransit })),
   selectEdge: (id, additive = false) =>
     set((s) => {
       const next = new Set(additive ? s.selectedEdges : []);
@@ -141,79 +141,82 @@ export const useAppStore = create<AppState>((set, get) => ({
       else next.add(id);
       return { selectedEdges: next };
     }),
-  clearSelection: () => set({ selectedEdges: new Set<string>() }),
-  setTool: (id) => set({ activeTool: id }),
-  toggleTransit: () => set((s) => ({ showTransit: !s.showTransit })),
-
-  runRecompute: (to, onDone) => {
-    set({ recomputing: true, recomputeStep: 0, telemetry: { ...idleTelemetry } });
-    const total = recomputeSteps.length;
-    let step = 0;
-    const tick = () => {
-      step += 1;
-      const frac = step / total;
-      set({
-        recomputeStep: step,
-        telemetry: {
-          recompute: Math.round(liveTelemetry.recompute * frac),
-          subEdges: Math.round(liveTelemetry.subEdges * frac),
-          subNodes: Math.round(liveTelemetry.subNodes * frac),
-          llm: step >= 4 ? liveTelemetry.llm : 0,
-          fps: step === 3 ? 57 : 60,
-        },
-      });
-      if (step >= total) {
-        set({ recomputing: false, networkState: to, telemetry: { ...liveTelemetry } });
-        onDone?.();
-      } else {
-        setTimeout(tick, 1750 / total);
-      }
-    };
-    setTimeout(tick, 1750 / total);
-  },
-
-  fireSurge: () => {
-    set({ eventFired: true, phase: "recomputing" });
-    get().runRecompute("surge", () => set({ phase: "surge" }));
-  },
-
-  showPreview: () => set({ previewVisible: true }),
-  applyPlan: () => {
-    set({ phase: "recomputing", previewVisible: false });
-    get().runRecompute("mit", () =>
-      set({ phase: "mitigated", appliedActions: ["a1", "a2", "a3", "a4", "a5", "a6"] }),
-    );
-  },
-  discardPreview: () => set({ previewVisible: false }),
-
-  copilotSend: (text) => {
-    const isBlocked = /close lake shore both ways/i.test(text);
-    const script = isBlocked ? copilotBlocked : copilotHero;
-    set((s) => ({ copilotLog: [...s.copilotLog, ...scriptToMessages(script)] }));
-    if (isBlocked) {
-      set({ phase: "blocked", blocked: true });
-    } else {
-      // Hero: model the event if needed, then reveal the preview card.
-      const st = get();
-      if (!st.eventFired) st.fireSurge();
-      set({ previewVisible: true });
+  setScrubber: (m) => {
+    set({ scrubberMinute: m });
+    const s = get();
+    if (m >= 17 * 60 + 5 && s.phase === "baseline" && !s.recomputing) {
+      void s.fireSurge();
     }
   },
 
-  reset: () =>
+  loadTwin: async () => {
+    set({ loading: true, error: null });
+    try {
+      const { edges } = await api.edges();
+      resizeTickStore(edges.length);
+      set({ edges });
+      const run = await api.demoRun("baseline");
+      applyRun(set, "base", run);
+      set({ phase: "baseline", networkState: "base", telemetry: { ...IDLE } });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      set({ error: `Could not reach the API (${msg}). Start scripts/run_api.sh.` });
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  fireSurge: async () => {
+    set({ phase: "recomputing" });
+    await recomputeAround(set, async () => {
+      applyRun(set, "surge", await api.demoRun("wc_surge"));
+    });
+    set({ phase: "surge" });
+  },
+
+  applyPlan: async () => {
+    set({ phase: "recomputing" });
+    await recomputeAround(set, async () => {
+      applyRun(set, "mit", await api.demoRun("wc_fix"));
+    });
+    set({ phase: "mitigated" });
+  },
+
+  copilotSend: async (text) => {
+    set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }] }));
+    let resp: CopilotResponse;
+    try {
+      resp = await api.copilotPlan(text);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: `Copilot unavailable: ${msg}` }] }));
+      return;
+    }
+    set((s) => ({
+      copilotLog: [
+        ...s.copilotLog,
+        { role: "bot", text: resp.rationale, citations: resp.citations, blocked: resp.blocked },
+      ],
+    }));
+    if (resp.blocked) {
+      set({ phase: "blocked", blocked: true });
+    } else {
+      const s = get();
+      if (s.networkState === "base" && !s.recomputing) await s.fireSurge();
+    }
+  },
+
+  reset: async () => {
     set({
       phase: "baseline",
-      networkState: "base",
-      eventFired: false,
-      recomputing: false,
-      recomputeStep: 0,
       blocked: false,
-      activeTool: null,
       selectedEdges: new Set<string>(),
-      previewVisible: false,
-      appliedActions: [],
-      scrubberMinute: 14 * 60,
       copilotLog: [],
-      telemetry: { ...idleTelemetry },
-    }),
+      scrubberMinute: 14 * 60,
+      telemetry: { ...IDLE },
+    });
+    applyRun(set, "base", await api.demoRun("baseline"));
+  },
 }));
+
+export { RECOMPUTE_STEPS };

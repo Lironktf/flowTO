@@ -41,10 +41,23 @@ export function consumeDirty(): boolean {
   return true;
 }
 
-/** Directly set a pressure value (used by the deterministic demo state machine). */
+/** Directly set a pressure value. */
 export function setPressure(idx: number, value: number): void {
   if (idx >= 0 && idx < arrays.pressure.length) {
     arrays.pressure[idx] = value;
     dirty = true;
   }
+}
+
+/** Write a batch of [edge_idx, load, speed, pressure, closure] records (REST runs). */
+export function writeRecords(records: [number, number, number, number, number][]): void {
+  for (const [idx, load, speed, pressure, closure] of records) {
+    if (idx >= 0 && idx < arrays.pressure.length) {
+      arrays.load[idx] = load;
+      arrays.speed[idx] = speed;
+      arrays.pressure[idx] = pressure;
+      arrays.closure[idx] = closure;
+    }
+  }
+  dirty = true;
 }

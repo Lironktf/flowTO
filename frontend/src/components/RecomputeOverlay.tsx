@@ -1,5 +1,4 @@
-import { recomputeSteps } from "../data/demo";
-import { useAppStore } from "../state/appStore";
+import { RECOMPUTE_STEPS as recomputeSteps, useAppStore } from "../state/appStore";
 
 export function RecomputeOverlay() {
   const recomputing = useAppStore((s) => s.recomputing);

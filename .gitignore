@@ -1,0 +1,9 @@
+data/
+*.parquet
+*.feather
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+flowto-venv/
+*.log

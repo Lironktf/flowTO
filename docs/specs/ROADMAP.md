@@ -73,6 +73,7 @@ spec follows the same template: Goal → Current state → Target → Design →
 | S4 | RL proposal layer (Verifiers / constrained PPO) | ranks interventions; sim is the judge |
 | S5 | txt2kg bylaw knowledge graph → optimizer action masks | creativity-bounty hook |
 | S6 | VSS traffic-camera validation layer | optional camera markers |
+| S7 | Feature-engineering audit for the GNN | Drop spatial proxies a GNN learns for free (`distance_to_downtown`, `road_degree`, `near_highway`) + add richer **edge** features (capacity, lanes, speed limit, one-way, current load) and cheap node signals (transit-stop adjacency, venue/POI flag, continuous temp/precip, holiday flag). Touches `model/features.py` (shared train+predict contract; retrain required). Do alongside S3. See `docs/gnn-explainer.md` §8b. |
 
 ---
 

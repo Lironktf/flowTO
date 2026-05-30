@@ -298,6 +298,82 @@ Spec: `docs/specs/stretch/S3-gnn-surrogate.md`.
 
 ---
 
+## 8b. Feature engineering — what we feed the model, and what the GNN changes
+
+A "row" the model sees today is **one intersection × one moment**, built in
+`features.py` (`build_feature_row`). It glues together two different kinds of
+data:
+
+```
+   ┌─ STATIC (per intersection, cached once) ─┐  ┌─ TIME CONTEXT (per query) ─┐
+     lat, lon, road_degree,                       hour, day_of_week, month,
+     distance_to_downtown, near_highway,          is_weekend, weather_code
+     road_class_rank
+```
+
+- **Static** = `compute_static_node_features()` — geometry + topology of the
+  intersection. Never changes with time, so it's computed once per graph.
+- **Time context** = *when* you're asking. "8am, raining, Wednesday."
+
+### The single-source-of-truth rule
+
+All features live in **one file** (`features.py`). To add one you edit
+`FEATURE_ORDER` **and** `build_feature_row` (plus populate it — in
+`compute_static_node_features` if static, or the time context if dynamic).
+Both training and inference call the same builder, so columns can't drift.
+
+> **Coupling to remember:** the trained `demand_model.pkl` stores its
+> `feature_order` inside it. Change the feature set → **you must retrain**. It's
+> modular in code, not hot-swappable at runtime.
+
+### What each feature is for
+
+| Feature | Source | Role |
+|---|---|---|
+| `lat`, `lon` | node geometry | where on the map demand clusters |
+| `road_degree` | `graph.degree` | major junction vs dead-end stub |
+| `distance_to_downtown` | haversine to downtown | hand-built **centrality** signal |
+| `near_highway` | incident edge classes | highway ramps feed big volumes |
+| `road_class_rank` | dominant incident edge class | arterial vs residential — biggest predictor |
+| `hour` / `day_of_week` / `is_weekend` / `month` | time context | rush-hour, weekday vs weekend, seasonality |
+| `weather_code` | ECCC weather, bucketed 0–3 | bad weather dampens demand |
+
+These features are **shared beyond the demand model**: `distance_to_downtown`
+and `road_class_rank` also bias OD generation, and `weather_speed_factor` feeds
+the simulator's speed penalty. `features.py` is a backbone, not just demand
+plumbing.
+
+### What the GNN changes (important)
+
+A GNN reads the graph *structure*, so several of today's hand-engineered
+features exist **only because a table model is blind to neighbours** — and
+become redundant:
+
+```
+   distance_to_downtown  →  the GNN learns "centrality" from the graph itself
+   road_degree           →  the GNN counts neighbours by construction
+   near_highway          →  the GNN sees the highway edge directly as a neighbour
+```
+
+So moving to a GNN flips the investment:
+
+- **Stop** hand-feeding spatial proxies (the structure carries the geography).
+- **Start** investing in richer **edge** features — capacity, lanes, speed
+  limit, one-way, current load — because message passing flows *along edges*,
+  so edges matter far more in a GNN than in today's model (which barely uses
+  them as features).
+
+Candidate additions worth tracking (cheap, from data we already have): edge
+capacity/lanes per node, transit-stop adjacency (GTFS), venue/POI hotspot flag
+(BMO Field for the FIFA demo), continuous temperature/precip instead of the 0–3
+bucket, and a holiday/event flag.
+
+> This audit — *which features to drop as redundant and which edge features to
+> add* — is tracked as a future roadmap ticket (**S7**), to be done alongside
+> whichever GNN direction we pick (see `ROADMAP.md`).
+
+---
+
 ## 9. TL;DR
 
 1. Our road map is a **graph** (intersections = nodes, roads = edges).

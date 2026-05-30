@@ -42,10 +42,29 @@ SYSTEM = (
 )
 
 _WORD = re.compile(r"[a-z]+")
+_EDGE_OPS = {"close_edge", "reopen_edge", "remove_edge", "change_capacity"}
 
 
 class PlanError(RuntimeError):
     pass
+
+
+def sanitize_interventions(interventions, valid_edges: set | None = None) -> list:
+    """Drop malformed ops the model sometimes emits (an edge op with no/unknown
+    edge_id, or change_capacity with no multiplier) so they never reach the sim,
+    which raises KeyError on a missing edge_id."""
+    out = []
+    for iv in interventions:
+        op = getattr(iv, "op", None)
+        if op in _EDGE_OPS:
+            if not iv.edge_id:
+                continue
+            if valid_edges and iv.edge_id not in valid_edges:
+                continue
+            if op == "change_capacity" and iv.multiplier is None:
+                continue
+        out.append(iv)
+    return out
 
 
 def _valid_edge_ids(state) -> set:
@@ -136,6 +155,9 @@ def plan(
             error_note = f"\nUnknown edge_ids {unknown}; only use edges from CANDIDATE EDGES."
             last_exc = PlanError(f"unknown edge_ids {unknown}")
             continue
+
+        # Drop malformed ops (edge op with no edge_id, etc.) before anything runs.
+        call.interventions = sanitize_interventions(call.interventions, valid_edges)
 
         # Hard-constraint check is the SOLE authority on refusal.
         violations = check_request(prompt, [iv.to_op() for iv in call.interventions], state)

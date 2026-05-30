@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 from ..api.schemas import Intervention
 from . import ollama_client, rag
 from .constraints import advisories, check_request
-from .plan import candidate_edges
+from .plan import candidate_edges, sanitize_interventions
 from .tools import Citation
 
 ModelCall = Callable[[str, str, dict], str]
@@ -120,8 +120,7 @@ def _candidate_block(state, goal: str) -> str:
 
 
 def _finalize_propose(goal: str, step: AgentStep, state, steps: list[dict]) -> AgentResult:
-    valid = _valid_edges(state)
-    ivs = [iv for iv in step.interventions if iv.edge_id is None or not valid or iv.edge_id in valid]
+    ivs = sanitize_interventions(step.interventions, _valid_edges(state))
     ops = [iv.to_op() for iv in ivs]
     violations = check_request(goal, ops, state)
     if violations:
@@ -179,7 +178,12 @@ def run_agent(goal: str, state, *, model_call: ModelCall | None = None, max_step
         if step.tool == "retrieve_policy":
             obs = rag.retrieve(step.query or goal, k=3)
         elif step.tool == "simulate":
-            obs = _simulate(state, [iv.to_op() for iv in step.interventions])
+            clean = sanitize_interventions(step.interventions, _valid_edges(state))
+            obs = (
+                _simulate(state, [iv.to_op() for iv in clean])
+                if clean
+                else {"error": "no valid edge_id in the proposed interventions"}
+            )
         elif step.tool == "optimize":
             obs = _optimize(state)
         else:  # pragma: no cover — schema-constrained

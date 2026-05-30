@@ -67,6 +67,18 @@ def test_agent_step_cap_terminates():
     assert res.interventions == []
 
 
+def test_agent_simulate_skips_malformed_intervention():
+    # Regression: the model sometimes emits an edge op with no edge_id; it must
+    # be dropped, not crash the sim (KeyError: 'edge_id').
+    state = _small_state()
+    model = _script(
+        {"tool": "simulate", "interventions": [{"op": "change_capacity", "multiplier": 0.5}]},
+        {"tool": "answer", "answer": "done"},
+    )
+    res = run_agent("x", state, model_call=model)  # must not raise
+    assert res.steps[0]["observation"].get("error")
+
+
 def test_agent_endpoint_is_read_only_when_model_unreachable():
     # No live model in CI → loop breaks to a forced summary; store untouched, 200.
     c = TestClient(create_app(_small_state()))

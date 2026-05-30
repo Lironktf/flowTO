@@ -143,6 +143,10 @@ def _enrich_edges(graph: nx.MultiDiGraph) -> None:
         # ---- capacity (veh/hour) ---------------------------------------
         vphpl = lookup(VEHICLES_PER_HOUR_PER_LANE, road_class)
         capacity = lanes * vphpl
+        # Floor capacity so no drivable edge ends up with 0 throughput, which
+        # would make pressure infinite during simulation.
+        if capacity <= 0:
+            capacity = VEHICLES_PER_HOUR_PER_LANE["default"]
 
         # ---- travel time -----------------------------------------------
         bt = base_time_min(length_m, speed_kmh)

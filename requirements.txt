@@ -2,3 +2,9 @@
 osmnx>=1.9
 # Routing + mutations (what the simulation engine consumes) need only networkx.
 networkx>=3.0
+# Demand model + simulation layer.
+scikit-learn>=1.3
+pandas>=2.0
+numpy>=1.24
+# Optional: GPU-accelerated training backend (e.g. on the ASUS GX10).
+# xgboost>=2.0

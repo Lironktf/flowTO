@@ -22,15 +22,16 @@ from __future__ import annotations
 import os
 import sys
 
-# Make `src` importable when run as a plain script.
+# Make the package importable when run as a plain script (pytest uses conftest).
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+for _p in (_REPO_ROOT, os.path.join(_REPO_ROOT, "src")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 import networkx as nx  # noqa: E402
 
-from src.graph.mutations import close_edge  # noqa: E402
-from src.graph.routing import (  # noqa: E402
+from torontosim.graph.mutations import close_edge  # noqa: E402
+from torontosim.graph.routing import (  # noqa: E402
     build_edge_index,
     find_shortest_path,
     get_nearest_node,

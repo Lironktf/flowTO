@@ -22,18 +22,19 @@ import os
 import sys
 
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _REPO_ROOT not in sys.path:
-    sys.path.insert(0, _REPO_ROOT)
+for _p in (_REPO_ROOT, os.path.join(_REPO_ROOT, "src")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
-from src.graph.routing import import_graph_json  # noqa: E402
-from src.model.predict_node_demand import (  # noqa: E402
+from torontosim.graph.routing import import_graph_json  # noqa: E402
+from torontosim.model.predict_node_demand import (  # noqa: E402
     load_demand_model, predict_node_demand,
 )
-from src.model.generate_od_matrix import generate_od_matrix  # noqa: E402
-from src.simulation.simulate_traffic import (  # noqa: E402
+from torontosim.model.generate_od_matrix import generate_od_matrix  # noqa: E402
+from torontosim.simulation.simulate_traffic import (  # noqa: E402
     compare_simulations, simulate_scenario, simulate_traffic,
 )
-from src.simulation.export_results import export_baseline_result  # noqa: E402
+from torontosim.simulation.export_results import export_baseline_result  # noqa: E402
 
 GRAPH_JSON = os.path.join(_REPO_ROOT, "data", "graph", "toronto_drive_graph.json")
 BASELINE_OUT = os.path.join(_REPO_ROOT, "data", "simulation", "baseline_result.json")

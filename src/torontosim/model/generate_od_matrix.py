@@ -99,8 +99,17 @@ def generate_od_matrix(
     time_context: dict,
     max_pairs: int = 1000,
     nominal_total: float = NOMINAL_TOTAL_TRIPS,
+    calibration: str = "none",
 ) -> List[dict]:
-    """Build the OD trip list. See module docstring for the model."""
+    """Build the OD trip list. See module docstring for the model.
+
+    ``calibration`` (P03): ``none`` keeps the demo-safe gravity baseline
+    (default — per GOAL's "prefer the safe column"); ``ipf``/``ipf_counts``
+    additionally balance the gravity matrix to production/attraction marginals
+    derived from the node-demand strengths (Furness Stage 1). Full ODME against
+    TMC counts (``ipf_counts`` with observed link flows) is applied downstream
+    in the assignment loop where an assignment is available.
+    """
     tc = normalize_time_context(time_context)
     static = compute_static_node_features(graph)
 
@@ -132,7 +141,51 @@ def generate_od_matrix(
     # Keep the strongest max_pairs, then scale so the total is `nominal_total`.
     pairs.sort(key=lambda t: -t[2])
     pairs = pairs[:max_pairs]
+
+    if calibration in ("ipf", "ipf_counts"):
+        pairs = _calibrate_ipf(pairs, origin_strength, dest_strength)
+
     total_val = sum(v for _, _, v in pairs)
     scale = (nominal_total / total_val) if total_val > 0 else 0.0
 
     return [{"origin": i, "destination": j, "trips": v * scale} for (i, j, v) in pairs]
+
+
+def _calibrate_ipf(pairs, origin_strength, dest_strength):
+    """Sparse Furness: balance pair values to per-origin/per-dest marginals.
+
+    Marginals are the node-demand strengths (productions ~ origin_strength,
+    attractions ~ dest_strength), restricted to the nodes present in ``pairs``
+    and renormalized to a common total. Deterministic; structural zeros (pairs
+    absent from the gravity step) stay absent.
+    """
+    used_o = sorted({i for i, _, _ in pairs}, key=str)
+    used_d = sorted({j for _, j, _ in pairs}, key=str)
+    prod = {i: max(0.0, origin_strength.get(i, 0.0)) for i in used_o}
+    attr = {j: max(0.0, dest_strength.get(j, 0.0)) for j in used_d}
+    p_tot, a_tot = sum(prod.values()), sum(attr.values())
+    if p_tot <= 0 or a_tot <= 0:
+        return pairs
+    # Common total so row/col marginals are consistent for IPF.
+    attr = {j: a * (p_tot / a_tot) for j, a in attr.items()}
+
+    vals = {(i, j): v for i, j, v in pairs}
+    for _ in range(50):
+        # Row (origin) balance.
+        row_sum: Dict[object, float] = {}
+        for (i, j), v in vals.items():
+            row_sum[i] = row_sum.get(i, 0.0) + v
+        for i, j in list(vals):
+            rs = row_sum.get(i, 0.0)
+            if rs > 0:
+                vals[(i, j)] *= prod[i] / rs
+        # Column (dest) balance.
+        col_sum: Dict[object, float] = {}
+        for (i, j), v in vals.items():
+            col_sum[j] = col_sum.get(j, 0.0) + v
+        for i, j in list(vals):
+            cs = col_sum.get(j, 0.0)
+            if cs > 0:
+                vals[(i, j)] *= attr[j] / cs
+
+    return [(i, j, vals[(i, j)]) for (i, j, _) in pairs]

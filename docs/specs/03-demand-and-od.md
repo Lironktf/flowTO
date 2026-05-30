@@ -58,13 +58,13 @@ Mode choice / transit demand coupling (stretch S1). Full SPSA ODME (pragmatic IP
 **On Spark:** retrain the demand model on the full real dataset (XGBoost `device=cuda`) over SSH (`scripts/train_on_gx10.sh`); pull the `.pkl` + metrics back; confirm IPF/ODME run on the larger graph.
 
 ## Tasks
-- [ ] T03.1 Zone proxy + node↔zone mapping + TTS2016R spatial join — *1d*
-- [ ] T03.2 `tts_seed.py` (TTS2016R or Census×Employment gravity prior) — *1d*
-- [ ] T03.3 `ipf.py` Stage-1 marginal balancing (`ipfn`) — *0.5d*
-- [ ] T03.4 `odme.py` Stage-2 IPF-on-counts (SPSA = stretch task) — *1d*
-- [ ] T03.5 `timeofday.py` AM/PM factoring — *0.5d*
-- [ ] T03.6 `validate_past.py` accuracy harness — *1d*
-- [ ] T03.7 Wire calibration into `generate_od_matrix` + tests — *0.5d*
+- [x] T03.1 Zone proxy + node↔zone mapping + TTS2016R spatial join — *1d*
+- [x] T03.2 `tts_seed.py` (TTS2016R or Census×Employment gravity prior) — *1d*
+- [x] T03.3 `ipf.py` Stage-1 marginal balancing (`ipfn`) — *0.5d*
+- [x] T03.4 `odme.py` Stage-2 IPF-on-counts (SPSA = stretch task) — *1d*
+- [x] T03.5 `timeofday.py` AM/PM factoring — *0.5d*
+- [x] T03.6 `validate_past.py` accuracy harness — *1d*
+- [x] T03.7 Wire calibration into `generate_od_matrix` + tests — *0.5d*
 
 ## Risks / fallbacks
 - **TTS2016R mapping to graph zones imperfect** → Census-pop×Employment gravity prior (fully open) is the fallback; the ML node-demand still drives within-zone weights.

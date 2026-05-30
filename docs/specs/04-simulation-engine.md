@@ -127,14 +127,14 @@ scripts/spark/run.sh "python -m torontosim.simulation.simulate_traffic --backend
 Record: rgap curve, CPU vs GPU wall-clock on the downtown graph (feeds P11 perf evidence).
 
 ## Tasks (subtickets)
-- [ ] T04.1 `bpr.py` + per-class α/β config + `congestion_model` dispatch; `test_bpr.py` — *0.5d*
-- [ ] T04.2 `backends/` interface + `cpu_networkx` SSSP tree; refactor `assign_paths` AON to use it — *1d*
-- [ ] T04.3 `equilibrium.py` Frank-Wolfe + line search + rgap; wire into `simulate_traffic` behind `engine` flag — *1.5d*
-- [ ] T04.4 AequilibraE oracle + TNTP fixtures; `test_equilibrium_oracle.py` (SiouxFalls) — *1d*
-- [ ] T04.5 Upgrade FW → bi-conjugate FW (BFW); confirm faster convergence, same flows — *0.5d*
-- [ ] T04.6 Determinism: tie-break epsilon, float64, ordered reductions; `test_determinism.py` — *0.5d*
-- [ ] T04.7 `gpu_cugraph` backend (CPU-authored, Spark-tested); `test_gpu_matches_cpu` (spark) — *1.5d*
-- [ ] T04.8 Regression-fix Liron's sim test under new defaults; verify on Spark; record perf — *0.5d*
+- [x] T04.1 `bpr.py` + per-class α/β config + `congestion_model` dispatch; `test_bpr.py` — *0.5d*
+- [x] T04.2 `backends/` interface + `cpu_networkx` SSSP tree; refactor `assign_paths` AON to use it — *1d*
+- [x] T04.3 `equilibrium.py` Frank-Wolfe + line search + rgap; wire into `simulate_traffic` behind `engine` flag — *1.5d*
+- [x] T04.4 AequilibraE oracle + TNTP fixtures; `test_equilibrium_oracle.py` (SiouxFalls) — *1d*
+- [x] T04.5 Upgrade FW → bi-conjugate FW (BFW); confirm faster convergence, same flows — *0.5d*
+- [x] T04.6 Determinism: tie-break epsilon, float64, ordered reductions; `test_determinism.py` — *0.5d*
+- [x] T04.7 `gpu_cugraph` backend (CPU-authored, Spark-tested); `test_gpu_matches_cpu` (spark) — *1.5d*
+- [x] T04.8 Regression-fix Liron's sim test under new defaults; verify on Spark; record perf — *0.5d*
 
 ## Risks / fallbacks
 - **RAPIDS won't run on GB10 (sm_121)** → `backend=gpu` auto-falls-back to CPU; the demo runs CPU (18k-edge downtown graph is small — CPU equilibrium is seconds). GPU becomes a "we accelerated where supported" footnote, not a dependency. *This is the single biggest external risk and it is fully contained.*

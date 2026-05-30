@@ -158,27 +158,28 @@ def simulate_traffic(
     # Start from free-flow times.
     reset_loads(G)
 
+    from ..perf.timing import timer
+
     if engine == "equilibrium":
-        frames, eq = _run_equilibrium(
-            G,
-            od_used,
-            iterations=iterations,
-            weather=weather,
-            congestion_model=congestion_model,
-            backend=backend,
-            rgap_target=rgap_target,
-            max_iter=max_equilibrium_iter,
-            capture_frames=capture_frames,
-        )
+        with timer(f"assign_{engine}_{backend}"):
+            frames, eq = _run_equilibrium(
+                G,
+                od_used,
+                iterations=iterations,
+                weather=weather,
+                congestion_model=congestion_model,
+                backend=backend,
+                rgap_target=rgap_target,
+                max_iter=max_equilibrium_iter,
+                capture_frames=capture_frames,
+            )
     else:
         eq = None
         frames = []
-        for step in range(iterations):
-            assign_demand_to_paths(G, od_used, k=k_paths, reset=True)
-            update_edge_congestion(G, weather=weather, congestion_model=congestion_model)
-            if capture_frames:
-                frames.append(_frame(G, step, _label_for(step, iterations)))
-
+        with timer(f"assign_{engine}"):
+            _kpath_loop(
+                G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames
+            )
     summary = summarize(G, od_used)
     result = {
         "time_context": tc,
@@ -200,6 +201,15 @@ def simulate_traffic(
         result["equilibrium_iterations"] = eq.iterations
         result["converged"] = eq.converged
     return result
+
+
+def _kpath_loop(G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames):
+    """Liron's all-or-nothing top-k propagation loop (the baseline engine)."""
+    for step in range(iterations):
+        assign_demand_to_paths(G, od_used, k=k_paths, reset=True)
+        update_edge_congestion(G, weather=weather, congestion_model=congestion_model)
+        if capture_frames:
+            frames.append(_frame(G, step, _label_for(step, iterations)))
 
 
 def _run_equilibrium(

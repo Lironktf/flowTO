@@ -19,7 +19,7 @@
 | P08 | Transit overlay (GTFS) | todo | |
 | P09 | Copilot (Nemotron) | done ✅ | `copilot/`: `tools` (ToolCall schema, shared w/ API), `plan` (constrained-gen + validate + re-ask, mockable), `constraints` (hard bylaw checker), `rag` (offline TF-cosine over packaged bylaw corpus), `explain`, `planner` (deterministic demo router + live Nemotron). API `/copilot/plan` + `/copilot/explain` live. 13 tests. **Spark: live `nemotron3:33b` NL→valid tool call PASSED (8.8s).** PR: FLO-16. |
 | P10 | Optimizer (heuristic + cuOpt) | done ✅ | `optimizer/`: `problem`, `constraints` (action masks + budget), `heuristic`+`search` (greedy generate→mask→score→keep), `score` (**sim-as-verifier**), `cuopt_client`. API `/optimize` live. 9 tests; improving-or-neutral + deterministic. **cuOpt service deferred** (not installed on Spark → `CUOPT_UNAVAILABLE`; heuristic is the path). PR: FLO-17. |
-| P11 | Profiling & perf | todo | land early |
+| P11 | Profiling & perf | done ✅ | `perf/timing` (@timed + timer harness, deterministic labels), `perf/bench` (full-vs-blast CLI → results.json/.md), Nsight scripts (sim+llm), instrumented sim engine block. **Measured: full recompute 11.6s → blast-radius 766ms = 15.19× speedup** on 18,190-edge graph. 5 tests; DebugPanel (P07) live. PR: FLO-18. |
 | P12 | FIFA WC demo | done ✅ | `demo/wc_surge.py` (BMO Field ~45k egress injection + road-side mitigation) + scenario JSONs + `RUNBOOK.md`. **Deterministic, headline metric melts baseline→surge→fix** (Exhibition pressure 0.0→0.90→0.51); 4 tests. `python -m torontosim.demo.wc_surge`. PR: FLO-13. |
 | S1–S6 | Stretch | todo | only after core stable |
 

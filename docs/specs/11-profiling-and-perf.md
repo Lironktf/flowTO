@@ -50,11 +50,11 @@ Spec §14 acceptance metrics. `research/04` (cuGraph timings, RAPIDS-on-Spark ca
 **On Spark:** `scripts/spark/nsight_sim.sh` + `nsight_llm.sh` over SSH → pull `.nsys-rep`; record cuDF/cuGraph/Ollama timelines + CPU-vs-GPU sim latency. **This is the demo's "computed in Xs on-device" evidence.**
 
 ## Tasks
-- [ ] T11.1 `timing.py` harness + decorators; instrument P04/P05 hot paths — *0.5d*
-- [ ] T11.2 `bench.py` CLI + Markdown table + fixed scenario set — *0.5d*
-- [ ] T11.3 Full-city vs blast-radius + CPU vs GPU comparison rows — *0.5d*
-- [ ] T11.4 Nsight capture scripts (sim + LLM) + pull-back — *0.5d*
-- [ ] T11.5 Frontend DebugPanel counters — *0.5d*
+- [x] T11.1 `timing.py` harness + decorators; instrument P04/P05 hot paths — *0.5d*
+- [x] T11.2 `bench.py` CLI + Markdown table + fixed scenario set — *0.5d*
+- [x] T11.3 Full-city vs blast-radius + CPU vs GPU comparison rows — *0.5d*
+- [x] T11.4 Nsight capture scripts (sim + LLM) + pull-back — *0.5d*
+- [x] T11.5 Frontend DebugPanel counters — *0.5d*
 
 ## Risks / fallbacks
 - **GPU unavailable (sm_121)** → report CPU latencies (downtown scale is fast); the full-vs-blast comparison stands on CPU alone; Nsight still profiles cuDF/Ollama where they run.

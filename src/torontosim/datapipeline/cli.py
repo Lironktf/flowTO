@@ -14,14 +14,18 @@ import argparse
 import os
 import sys
 
-# Catalog of CKAN datasets to fetch (research/01). Resolve-by-name on fetch.
+# Catalog of CKAN datasets to fetch (research/01): name -> (package, format,
+# name_contains). ``name_contains`` disambiguates packages with many same-format
+# resources — e.g. the TMC package ships a 346k-row raw decade file AND a 6k-row
+# summary; without it, first-by-format can grab the wrong one. ``None`` = take
+# the first resource of that format.
 CKAN_DATASETS = {
-    "centreline": ("toronto-centreline-tcl", "csv"),
-    "intersections": ("intersection-file-city-of-toronto", "geojson"),
-    "tmc": ("traffic-volumes-at-intersections-for-all-modes", "csv"),
-    "signals": ("traffic-signals-tabular", "csv"),
-    "bridges": ("bridge-structure", "geojson"),
-    "zones": ("neighbourhoods", "geojson"),
+    "centreline": ("toronto-centreline-tcl", "csv", None),
+    "intersections": ("intersection-file-city-of-toronto", "geojson", None),
+    "tmc": ("traffic-volumes-at-intersections-for-all-modes", "csv", "raw_data_2020_2029"),
+    "signals": ("traffic-signals-tabular", "csv", None),
+    "bridges": ("bridge-structure", "geojson", None),
+    "zones": ("neighbourhoods", "geojson", None),
 }
 
 DEFAULT_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data")
@@ -47,11 +51,11 @@ def cmd_fetch(args) -> int:
     only = _split_only(args.only)
     print("[fetch] attribution:", ATTRIBUTION["toronto"])
 
-    for name, (pkg, fmt) in CKAN_DATASETS.items():
+    for name, (pkg, fmt, name_contains) in CKAN_DATASETS.items():
         if only and name not in only:
             continue
         try:
-            res = ckan.resolve_resource(pkg, fmt)
+            res = ckan.resolve_resource(pkg, fmt, name_contains=name_contains)
             url = res.get("url") or ckan.dump_url(res["id"])
             dest = os.path.join(raw_dir, f"{name}.{fmt}")
             print(f"[fetch] {name}: {url}")

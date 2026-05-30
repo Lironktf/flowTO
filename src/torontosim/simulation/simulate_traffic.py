@@ -52,20 +52,64 @@ def _calibrate_trips(graph, od_matrix, k_paths, weather, target_pressure):
     """Return an OD list scaled so the mean loaded-edge pressure ≈ target.
 
     Pressure is linear in trips for a fixed routing pattern, so one assignment
-    pass tells us the scale factor. Non-destructive: resets the graph after.
+    pass tells us the scale factor. Uses a single vectorized scipy all-or-nothing
+    pass (fast — ~0.5s vs ~45s for the NetworkX k-path pass); falls back to the
+    k-path pass if the scipy path is unavailable. Non-destructive.
     """
-    reset_loads(graph)
-    assign_demand_to_paths(graph, od_matrix, k=k_paths, reset=True)
-    update_edge_congestion(graph, weather=weather)
-    pressures = _loaded_pressures(graph)
-    reset_loads(graph)
-    if not pressures:
-        return [dict(od) for od in od_matrix], 1.0
-    mean_p = sum(pressures) / len(pressures)
-    scale = (target_pressure / mean_p) if mean_p > 0 else 1.0
-    scale = max(0.01, min(100.0, scale))
+    scale = _estimate_scale_scipy(graph, od_matrix, weather, target_pressure)
+    if scale is None:
+        # Fallback: original NetworkX k-path calibration.
+        reset_loads(graph)
+        assign_demand_to_paths(graph, od_matrix, k=k_paths, reset=True)
+        update_edge_congestion(graph, weather=weather)
+        pressures = _loaded_pressures(graph)
+        reset_loads(graph)
+        if not pressures:
+            return [dict(od) for od in od_matrix], 1.0
+        mean_p = sum(pressures) / len(pressures)
+        scale = (target_pressure / mean_p) if mean_p > 0 else 1.0
+        scale = max(0.01, min(100.0, scale))
     scaled = [{**od, "trips": od["trips"] * scale} for od in od_matrix]
     return scaled, scale
+
+
+def _estimate_scale_scipy(graph, od_matrix, weather, target_pressure):
+    """Mean loaded-edge v/c from a single scipy AON -> trip scale factor.
+
+    Returns ``None`` if scipy/Network construction is unavailable so the caller
+    can fall back to the NetworkX path.
+    """
+    try:
+        import numpy as np
+
+        from ..model.features import weather_speed_factor
+        from .backends import scipy_backend
+        from .equilibrium import network_from_graph
+
+        wfac = weather_speed_factor(weather) or 1.0
+        net, node_index, _edge_keys = network_from_graph(graph, weather_factor=wfac)
+        costs = np.where(net.cap > 0, net.t0, np.inf).astype(np.float64)
+
+        od_by_origin: dict = {}
+        for od in od_matrix:
+            o = node_index.get(od["origin"])
+            d = node_index.get(od["destination"])
+            trips = float(od.get("trips", 0.0))
+            if o is not None and d is not None and trips > 0:
+                od_by_origin.setdefault(o, []).append((d, trips))
+        if not od_by_origin:
+            return None
+
+        flow = scipy_backend.all_or_nothing(net, costs, od_by_origin)
+        mask = (net.cap > 0) & (flow > 0)
+        if not mask.any():
+            return None
+        mean_p = float(np.mean(flow[mask] / net.cap[mask]))
+        if mean_p <= 0:
+            return None
+        return max(0.01, min(100.0, target_pressure / mean_p))
+    except Exception:  # noqa: BLE001 — fall back to the NetworkX path
+        return None
 
 
 def _frame(graph, step, label, only_active=True):
@@ -178,7 +222,7 @@ def simulate_traffic(
         frames = []
         with timer(f"assign_{engine}"):
             _kpath_loop(
-                G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames
+                G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames, backend
             )
     summary = summarize(G, od_used)
     result = {
@@ -203,10 +247,10 @@ def simulate_traffic(
     return result
 
 
-def _kpath_loop(G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames):
+def _kpath_loop(G, od_used, k_paths, iterations, weather, congestion_model, capture_frames, frames, backend="cpu"):
     """Liron's all-or-nothing top-k propagation loop (the baseline engine)."""
     for step in range(iterations):
-        assign_demand_to_paths(G, od_used, k=k_paths, reset=True)
+        assign_demand_to_paths(G, od_used, k=k_paths, reset=True, backend=backend)
         update_edge_congestion(G, weather=weather, congestion_model=congestion_model)
         if capture_frames:
             frames.append(_frame(G, step, _label_for(step, iterations)))
@@ -278,6 +322,7 @@ def summarize(graph, od_matrix) -> dict:
             if p is not None and math.isfinite(p):
                 pressures.append(p)
     avg_p = (sum(pressures) / len(pressures)) if pressures else 0.0
+    stranded = _count_stranded_trips(graph, od_matrix)
     return {
         "total_assigned_trips": round(total_trips, 1),
         "active_edges": len(pressures),
@@ -285,7 +330,39 @@ def summarize(graph, od_matrix) -> dict:
         "high_risk_edges": high,
         "severe_edges": severe,
         "closed_edges": closed,
+        "stranded_trips": round(stranded, 1),
     }
+
+
+def _count_stranded_trips(graph, od_matrix) -> float:
+    """Total OD demand with NO route under the current graph (free-flow costs).
+
+    Surfaces trips a closure leaves un-routable instead of silently dropping
+    them — so a road closure that disconnects destinations shows up as a cost,
+    not a phantom improvement. Best-effort: returns 0.0 if the routing check
+    can't run (e.g. scipy unavailable).
+    """
+    try:
+        import numpy as np
+
+        from ..blastradius.pathcache import build_path_cache
+        from .equilibrium import network_from_graph
+
+        net, node_index, _edge_keys = network_from_graph(graph)
+        costs = np.where(net.cap > 0, net.t0, np.inf).astype(np.float64)
+        od = [
+            (node_index[e["origin"]], node_index[e["destination"]], float(e.get("trips", 0.0)))
+            for e in od_matrix
+            if e["origin"] in node_index
+            and e["destination"] in node_index
+            and e.get("trips", 0) > 0
+        ]
+        if not od:
+            return 0.0
+        cache = build_path_cache(net, od, costs, backend="scipy")
+        return float(sum(d for (_o, _d, d), path in zip(od, cache.paths) if not path))
+    except Exception:  # noqa: BLE001
+        return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -354,6 +431,8 @@ def simulate_scenario(
     congestion_model: str = "legacy",
     backend: str = "cpu",
     recompute: str = "full",
+    rgap_target: float = 1e-4,
+    max_equilibrium_iter: int = 100,
 ) -> dict:
     """Apply `scenario` to a copy of `graph`, then simulate on the SAME trips.
 
@@ -363,6 +442,9 @@ def simulate_scenario(
     ``recompute`` (P05): ``full`` re-solves the whole network (default, always
     correct); ``blast`` re-routes only the OD bundles affected by the change
     over an adaptive subgraph (the headline performance feature).
+
+    ``rgap_target`` / ``max_equilibrium_iter`` control the Frank-Wolfe stopping
+    rule when ``engine="equilibrium"`` (looser/fewer = faster, demo-grade).
     """
     G = graph.copy()
     from ..graph.routing import build_edge_index
@@ -372,7 +454,7 @@ def simulate_scenario(
 
     if recompute == "blast":
         result = _run_blast_scenario(
-            G, od_matrix, weather, time_context, congestion_model, iterations, capture_frames
+            G, od_matrix, weather, time_context, congestion_model, iterations, capture_frames, backend
         )
     else:
         result = simulate_traffic(
@@ -388,6 +470,8 @@ def simulate_scenario(
             engine=engine,
             congestion_model=congestion_model,
             backend=backend,
+            rgap_target=rgap_target,
+            max_equilibrium_iter=max_equilibrium_iter,
         )
     result["scenario"] = scenario
     result["recompute"] = recompute
@@ -395,7 +479,7 @@ def simulate_scenario(
 
 
 def _run_blast_scenario(
-    G, od_matrix, weather, time_context, congestion_model, iterations, capture_frames
+    G, od_matrix, weather, time_context, congestion_model, iterations, capture_frames, backend="cpu"
 ):
     """Blast-radius scenario: re-route only affected ODs over an adaptive subgraph.
 
@@ -424,7 +508,7 @@ def _run_blast_scenario(
     ]
     # Free-flow baseline cache (before the closures take cost effect).
     base_costs = net.t0.copy()
-    cache = build_path_cache(net, od, base_costs)
+    cache = build_path_cache(net, od, base_costs, backend=backend)
 
     # Changed links = those now closed/zero-capacity in the mutated graph.
     new_costs = base_costs.copy()
@@ -434,7 +518,7 @@ def _run_blast_scenario(
             new_costs[i] = np.inf
             changed.append(i)
 
-    res = blast_assign(net, od, cache, changed, new_costs)
+    res = blast_assign(net, od, cache, changed, new_costs, backend=backend)
     for i, (u, v, k) in enumerate(edge_keys):
         if G.has_edge(u, v, k):
             G[u][v][k]["load"] = float(res.flow[i])
@@ -456,7 +540,7 @@ def _run_blast_scenario(
         "weather": weather,
         "engine": "blast",
         "congestion_model": congestion_model,
-        "backend": "cpu",
+        "backend": backend,
         "iterations_run": iterations,
         "summary": summarize(G, od_matrix),
         "od_matrix": od_matrix,
@@ -513,6 +597,9 @@ def compare_simulations(baseline_result: dict, scenario_result: dict) -> dict:
             "high_risk_edges": ss["high_risk_edges"] - bs["high_risk_edges"],
             "severe_edges": ss["severe_edges"] - bs["severe_edges"],
             "active_edges": ss["active_edges"] - bs["active_edges"],
+            # Trips the scenario leaves un-routable beyond the baseline — a real
+            # cost of the change, not a phantom improvement from dropped demand.
+            "stranded_trips": _r(ss.get("stranded_trips", 0.0) - bs.get("stranded_trips", 0.0)),
         },
         "baseline_summary": bs,
         "scenario_summary": ss,

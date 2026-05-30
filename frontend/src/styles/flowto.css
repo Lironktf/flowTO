@@ -499,10 +499,23 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .copilot-input input { flex: 1; min-width: 0; appearance: none; border: 1px solid var(--hair); background: var(--chrome-2); color: var(--ink); border-radius: var(--r-sm); padding: 9px 10px; font-family: 'Public Sans', sans-serif; font-size: 12px; outline: none; }
 .copilot-input input:focus { border-color: var(--cobalt-line); }
 .copilot-input input::placeholder { color: var(--ink-4); }
-.copilot-send { width: 34px; height: 34px; flex-shrink: 0; padding: 0; }
+.copilot-send { width: 34px; height: 34px; flex-shrink: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.copilot-input input:disabled { opacity: .55; cursor: default; }
+.chip:disabled { opacity: .45; cursor: default; }
 
-/* Agent-mode toggle (active state) */
-.chip.active { border-color: var(--cobalt-line); color: var(--cobalt-ink); background: var(--cobalt-wash, var(--chrome-hi)); font-weight: 600; }
+/* Mode selector (Plan / Chat / Agent) */
+.copilot-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.copilot-modes { margin-left: auto; display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--hair); border-radius: 999px; background: var(--chrome-2); flex: 0 0 auto; }
+.mode-tab { appearance: none; cursor: pointer; border: 0; background: transparent; color: var(--ink-3); font-size: 10px; font-weight: 600; letter-spacing: .02em; padding: 4px 10px; border-radius: 999px; transition: background .14s, color .14s; }
+.mode-tab:hover { color: var(--cobalt-ink); }
+.mode-tab.active { background: var(--cobalt); color: #fff; }
+
+/* per-reply mode badge */
+.mode-badge { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--chrome-2); border: 1px solid var(--hair); color: var(--ink-3); font-size: 8px; letter-spacing: .08em; }
+.aborted-tag { color: var(--ink-4); font-style: italic; }
+
+/* latency bar */
+.copilot-latbar { padding: 3px 12px; font-size: 11px; opacity: .6; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--hair); flex: none; }
 
 /* "thinking / investigating" indicator */
 .copilot-thinking { display: inline-flex; align-items: center; gap: 5px; }
@@ -514,9 +527,20 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .stream-cursor { display: inline-block; width: 7px; color: var(--cobalt-ink); animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 
-/* agent reasoning trace */
-.agent-trace { list-style: decimal; font-size: 11px; color: var(--ink-3); border-left: 2px solid var(--hair-2); }
+/* collapsible agent reasoning trace */
+.agent-trace-wrap { margin-top: 8px; }
+.agent-trace-wrap > summary { cursor: pointer; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .04em; color: var(--ink-3); list-style: none; user-select: none; }
+.agent-trace-wrap > summary::-webkit-details-marker { display: none; }
+.agent-trace-wrap > summary::before { content: "▸ "; color: var(--ink-4); }
+.agent-trace-wrap[open] > summary::before { content: "▾ "; }
+.agent-trace { list-style: decimal; font-size: 11px; color: var(--ink-3); margin: 6px 0 0; padding-left: 20px; border-left: 2px solid var(--hair-2); }
+.agent-trace li { margin-bottom: 3px; }
 .agent-trace .ref { color: var(--cobalt-ink); font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+.agent-trace .thought { opacity: .8; }
+.plan-steps { margin: 6px 0 0; padding-left: 16px; }
+
+/* confirm button spacing */
+.copilot-confirm { margin-top: 9px; }
 
 /* ============================================================ TIMELINE TRANSPORT (sim) */
 #dock-bottom { padding: 0; }

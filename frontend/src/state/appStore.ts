@@ -48,6 +48,8 @@ export interface SceneObject {
   planId?: string;
 }
 
+export type CopilotMode = "plan" | "chat" | "agent";
+
 interface CopilotMessage {
   role: "user" | "bot";
   text: string;
@@ -60,13 +62,19 @@ interface CopilotMessage {
   // Agent-mode investigation trace + live-streaming flag.
   agentSteps?: AgentStepLog[];
   streaming?: boolean;
+  // Which mode produced this reply (badge), and whether it was aborted.
+  mode?: CopilotMode;
+  aborted?: boolean;
 }
 
 interface CopilotLatency {
   ms: number;
   firstTokenMs?: number;
-  mode: "plan" | "agent" | "stream";
+  mode: CopilotMode;
 }
+
+// Non-reactive holder for the in-flight request's abort controller.
+let copilotAbort: AbortController | null = null;
 
 interface Telemetry {
   recompute: number;
@@ -112,7 +120,7 @@ interface AppState {
   scenarioId: string | null;
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
-  agentMode: boolean;
+  copilotMode: CopilotMode;
   copilotThinking: boolean;
   copilotLatency: CopilotLatency | null;
   scrubberMinute: number;
@@ -134,7 +142,8 @@ interface AppState {
   setCompare: (c: Compare) => void;
   copilotAsk: (text: string) => Promise<void>;
   copilotConfirm: (msgIndex: number) => Promise<void>;
-  toggleAgentMode: () => void;
+  setCopilotMode: (mode: CopilotMode) => void;
+  copilotStop: () => void;
   selectTool: (id: string) => void;
   placeAt: (coord: [number, number]) => Promise<void>;
   selectObject: (id: string) => void;
@@ -233,7 +242,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedId: null,
   scenarioId: null,
   copilotLog: [],
-  agentMode: false,
+  copilotMode: "plan",
   copilotThinking: false,
   copilotLatency: null,
   scrubberMinute: TIMELINE.startMin,
@@ -356,10 +365,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     else if (modelled === "mit") paint(set, get, which === "before" ? "surge" : "mit");
   },
 
-  toggleAgentMode: () => set((s) => ({ agentMode: !s.agentMode })),
+  setCopilotMode: (mode) => set({ copilotMode: mode }),
+
+  copilotStop: () => {
+    copilotAbort?.abort();
+    copilotAbort = null;
+    set((s) => {
+      const log = s.copilotLog.slice();
+      const last = log[log.length - 1];
+      if (last && last.role === "bot" && last.streaming) {
+        log[log.length - 1] = { ...last, streaming: false, aborted: true };
+      }
+      return { copilotLog: log, copilotThinking: false };
+    });
+  },
 
   copilotAsk: async (text) => {
+    const mode = get().copilotMode;
     set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }], copilotThinking: true }));
+    const controller = new AbortController();
+    copilotAbort = controller;
+    const { signal } = controller;
+
     const flashBlocked = () => {
       set({ status: { state: "blocked", label: "Action blocked · bylaw conflict" } });
       setTimeout(() => {
@@ -372,16 +399,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (hasPlan && get().modelled === "base") await get().triggerSurge(false);
       if (hasPlan) set({ planStaged: true });
     };
-
     const t0 = performance.now();
-    const isQuestion =
-      /\?\s*$/.test(text) ||
-      /^(why|what|how|when|where|who|which|is|are|does|do|can|should)\b/i.test(text.trim());
 
     try {
-      // 1) Agent mode → bounded multi-tool loop (investigate → propose).
-      if (get().agentMode) {
-        const res = await api.copilotAgent(text);
+      if (mode === "agent") {
+        const res = await api.copilotAgent(text, signal);
         const hasPlan = res.requires_user_confirmation && res.interventions.length > 0;
         set((s) => ({
           copilotLog: [
@@ -393,16 +415,14 @@ export const useAppStore = create<AppState>((set, get) => ({
               blocked: res.blocked,
               agentSteps: res.steps,
               interventions: hasPlan ? res.interventions : undefined,
+              mode: "agent",
             },
           ],
           copilotLatency: { ms: Math.round(performance.now() - t0), mode: "agent" },
         }));
-        return void (await afterPlan(hasPlan, res.blocked));
-      }
-
-      // 2) A question → stream a live free-text answer.
-      if (isQuestion) {
-        set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: "", streaming: true }] }));
+        await afterPlan(hasPlan, res.blocked);
+      } else if (mode === "chat") {
+        set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: "", streaming: true, mode: "chat" }] }));
         let first: number | undefined;
         const patchLast = (fn: (m: CopilotMessage) => CopilotMessage) =>
           set((s) => {
@@ -423,35 +443,38 @@ export const useAppStore = create<AppState>((set, get) => ({
               copilotLatency: {
                 ms: done.total_ms ?? Math.round(performance.now() - t0),
                 firstTokenMs: done.first_token_ms ?? first,
-                mode: "stream",
+                mode: "chat",
               },
             });
           },
+          signal,
         );
-        return;
+      } else {
+        const resp: CopilotResponse = await api.copilotPlan(text, signal);
+        const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
+        set((s) => ({
+          copilotLog: [
+            ...s.copilotLog,
+            {
+              role: "bot",
+              text: resp.rationale,
+              citations: resp.citations,
+              blocked: resp.blocked,
+              interventions: confirmable ? resp.interventions : undefined,
+              mode: "plan",
+            },
+          ],
+          copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
+        }));
+        await afterPlan(confirmable, resp.blocked);
       }
-
-      // 3) Default → fast structured plan + confirm.
-      const resp: CopilotResponse = await api.copilotPlan(text);
-      const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
-      set((s) => ({
-        copilotLog: [
-          ...s.copilotLog,
-          {
-            role: "bot",
-            text: resp.rationale,
-            citations: resp.citations,
-            blocked: resp.blocked,
-            interventions: confirmable ? resp.interventions : undefined,
-          },
-        ],
-        copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
-      }));
-      await afterPlan(confirmable, resp.blocked);
     } catch (e) {
+      // User-initiated Stop (AbortError) is handled in copilotStop — stay quiet.
+      if (signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return;
       const msg = e instanceof Error ? e.message : String(e);
       set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: `Copilot unavailable: ${msg}` }] }));
     } finally {
+      if (copilotAbort === controller) copilotAbort = null;
       set({ copilotThinking: false });
     }
   },

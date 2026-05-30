@@ -81,11 +81,12 @@ async function jget<T>(path: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-async function jpost<T>(path: string, body: unknown): Promise<T> {
+async function jpost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!r.ok) throw new Error(`POST ${path} → ${r.status}`);
   return r.json() as Promise<T>;
@@ -105,8 +106,10 @@ export const api = {
   health: () => jget<{ status: string; edges: number }>("/healthz"),
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
-  copilotPlan: (prompt: string) => jpost<CopilotResponse>("/copilot/plan", { prompt }),
-  copilotAgent: (prompt: string) => jpost<CopilotAgentResult>("/copilot/agent", { prompt }),
+  copilotPlan: (prompt: string, signal?: AbortSignal) =>
+    jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
+  copilotAgent: (prompt: string, signal?: AbortSignal) =>
+    jpost<CopilotAgentResult>("/copilot/agent", { prompt }, signal),
   copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>
     jpost<CopilotConfirmResult>("/copilot/confirm", { interventions, name }),
   // Edit-mode scenario flow (real engine, blast-radius recompute).
@@ -133,11 +136,13 @@ export async function copilotStream(
   prompt: string,
   onToken: (t: string) => void,
   onDone: (d: StreamDone) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const r = await fetch(`${BASE}/copilot/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt }),
+    signal,
   });
   if (!r.ok || !r.body) throw new Error(`POST /copilot/stream → ${r.status}`);
   const reader = r.body.getReader();

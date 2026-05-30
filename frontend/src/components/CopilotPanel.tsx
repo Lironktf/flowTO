@@ -7,6 +7,9 @@ export function CopilotRegion() {
   const log = useAppStore((s) => s.copilotLog);
   const ask = useAppStore((s) => s.copilotAsk);
   const confirm = useAppStore((s) => s.copilotConfirm);
+  const agentMode = useAppStore((s) => s.agentMode);
+  const toggleAgentMode = useAppStore((s) => s.toggleAgentMode);
+  const latency = useAppStore((s) => s.copilotLatency);
   const [text, setText] = useState("");
 
   const submit = (value: string) => {
@@ -19,6 +22,23 @@ export function CopilotRegion() {
     <section className="region grow" id="copilot-region">
       <div className="region-hd">
         <span className="lbl">Copilot · Nemotron · on-device</span>
+        <span className="copilot-hud" style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
+          {latency && (
+            <span className="lat" title="last copilot call" style={{ opacity: 0.7, fontVariantNumeric: "tabular-nums" }}>
+              ⏱ {(latency.ms / 1000).toFixed(1)}s
+              {latency.firstTokenMs != null ? ` · first ${latency.firstTokenMs}ms` : ""}
+              {` · ${latency.mode}`}
+            </span>
+          )}
+          <button
+            className={`chip ${agentMode ? "active" : ""}`}
+            aria-pressed={agentMode}
+            onClick={toggleAgentMode}
+            title="Let Nemotron chain tools (investigate → propose) before recommending"
+          >
+            🧠 Agent {agentMode ? "on" : "off"}
+          </button>
+        </span>
       </div>
       <div className="copilot-log">
         {log.length === 0 && (
@@ -35,6 +55,16 @@ export function CopilotRegion() {
             <span className="who">{m.role === "user" ? "You" : "Copilot"}</span>
             <div className="bub">
               {m.text}
+              {m.streaming && <span className="stream-cursor" aria-hidden>▍</span>}
+              {m.agentSteps && m.agentSteps.length > 0 && (
+                <ol className="agent-trace" style={{ margin: "6px 0 0", paddingLeft: 18, opacity: 0.8 }}>
+                  {m.agentSteps.map((s, j) => (
+                    <li key={j}>
+                      <span className="ref">{s.tool}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
               {m.steps && m.steps.length > 0 && (
                 <ul style={{ margin: "6px 0 0", paddingLeft: 16 }}>
                   {m.steps.map((s, j) => (

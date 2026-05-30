@@ -53,6 +53,27 @@ export interface CopilotConfirmResult {
   explanation: string;
 }
 
+export interface AgentStepLog {
+  tool: string;
+  observation: unknown;
+}
+
+export interface CopilotAgentResult {
+  answer: string;
+  interventions: Intervention[];
+  citations: { ref: string; note: string }[];
+  steps: AgentStepLog[];
+  requires_user_confirmation: boolean;
+  blocked: boolean;
+}
+
+export interface StreamDone {
+  first_token_ms: number | null;
+  total_ms: number | null;
+  backend?: string;
+  error?: string;
+}
+
 async function jget<T>(path: string): Promise<T> {
   const r = await fetch(`${BASE}${path}`);
   if (!r.ok) throw new Error(`GET ${path} → ${r.status}`);
@@ -84,6 +105,7 @@ export const api = {
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string) => jpost<CopilotResponse>("/copilot/plan", { prompt }),
+  copilotAgent: (prompt: string) => jpost<CopilotAgentResult>("/copilot/agent", { prompt }),
   copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>
     jpost<CopilotConfirmResult>("/copilot/confirm", { interventions, name }),
   // Edit-mode scenario flow (real engine, blast-radius recompute).
@@ -101,6 +123,42 @@ export const api = {
       `/transit/trajectories?agencies=${agencies}`,
     ),
 };
+
+/**
+ * Stream a free-text copilot answer via SSE (`/copilot/stream`). Calls `onToken`
+ * as tokens arrive and `onDone` with the latency payload on the final event.
+ */
+export async function copilotStream(
+  prompt: string,
+  onToken: (t: string) => void,
+  onDone: (d: StreamDone) => void,
+): Promise<void> {
+  const r = await fetch(`${BASE}/copilot/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!r.ok || !r.body) throw new Error(`POST /copilot/stream → ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    // SSE events are separated by a blank line.
+    let nl: number;
+    while ((nl = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, nl);
+      buf = buf.slice(nl + 2);
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      const evt = JSON.parse(line.slice(6)) as { token?: string; done?: boolean } & StreamDone;
+      if (evt.token) onToken(evt.token);
+      if (evt.done) onDone(evt);
+    }
+  }
+}
 
 /** Connect the binary tick WebSocket (live-tick scenarios → tick store). */
 export function connectStream(scenarioId: string): WebSocket {

@@ -110,8 +110,7 @@ live wiring); `api/schemas.py` (tool schemas + confirm payload); `frontend/src/{
 - [x] T09.5 Real `Intervention` ops on plans (live + hero) + `POST /copilot/confirm` (apply → run → compare →
       explain) + frontend Confirm-&-run button. Also fixed a latent bug: `GET /scenarios` serialized
       `_last_result` (a graph) and broke after any run — now strips internal keys — *1d*
-- [~] T09.6 Streaming `/copilot/stream` SSE (backend done + mocked test + live-verified: 315ms first token,
-      1.1s total) — frontend incremental render + latency HUD still TODO — *0.5d*
+- [x] T09.6 Frontend: Agent toggle (plan/stream/agent routing) + live token streaming + latency HUD + agent trace. tsc + vitest green
 - [x] T09.7 `optimize` intent in planner → P10 `optimizer.propose` → confirmable preview + test
 - [x] T09.9 Bounded **read-only multi-tool agent loop** (`copilot/agent.py` + `POST /copilot/agent`): Nemotron
       chains retrieve/simulate-on-scratch/optimize then proposes a confirmable plan; never mutates the store;

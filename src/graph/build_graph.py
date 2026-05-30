@@ -24,10 +24,10 @@ import networkx as nx
 
 from .config import (
     DEFAULT_CENTER,
+    DEFAULT_LANES,
     DEFAULT_PLACE,
     DEFAULT_RADIUS_M,
     DEFAULT_SPEED_KMH,
-    DEFAULT_LANES,
     VEHICLES_PER_HOUR_PER_LANE,
     base_time_min,
     first_value,
@@ -280,8 +280,7 @@ def build_and_save(
     """Full pipeline: download -> enrich -> save. Returns the enriched graph."""
     print("Downloading road graph from OpenStreetMap ...")
     graph = download_graph(place=place, center=center, radius_m=radius_m)
-    print(f"  raw graph: {graph.number_of_nodes():,} nodes, "
-          f"{graph.number_of_edges():,} edges")
+    print(f"  raw graph: {graph.number_of_nodes():,} nodes, " f"{graph.number_of_edges():,} edges")
     print("Enriching edges ...")
     enrich_graph(graph)
     print("Saving ...")

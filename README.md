@@ -22,38 +22,20 @@ graph recolored by the assignment engine, not canned data.
 ## Quick start
 
 ```bash
-# From the repository root. Python 3.12 or 3.13 is required.
-
-# 1. Python env + backend dependencies (CPU)
-make install          # venv + pip install -e .[dev,api,data]
+# 1. Python env + tests (CPU)
+make install          # venv + pip install -e .[dev,...]
 make test             # pytest -q  → 104 passed, 2 skipped (spark-gated)
 
-# Optional: external AequilibraE oracle (macOS may need libomp/OpenMP toolchain)
-make install-sim
-
-# 2. Start the backend in terminal A (loads the real graph, warms the demo cache)
+# 2. Run the API (loads the real graph, warms the demo cache)
 scripts/run_api.sh                         # http://localhost:8000  (OpenAPI at /docs)
 
-# 3. Verify the backend from terminal B
-curl -fsS http://localhost:8000/healthz
-# {"status":"ok","edges":18190,"scenarios":1}
+# 3. Run the frontend (proxies /api → :8000)
+cd frontend && npm install && npm run dev  # http://localhost:5173
 
-# 4. Start the frontend in terminal B (installs npm packages if needed)
-scripts/run_frontend.sh                    # http://localhost:5173
-
-# 5. Headless demo + perf evidence
+# 4. Headless demo + perf evidence
 python -m torontosim.demo.wc_surge --scenario all   # baseline → surge → fix (deterministic)
 python -m torontosim.perf.bench                     # full-city vs blast-radius (~15× speedup)
-
-# 5. Run + test on the DGX Spark from your dev box (real data; no ngrok)
-scripts/spark/fetch_and_bake.sh                     # real Centreline/TMC/GTFS → parquet store
-TS_GRAPH_SOURCE=centreline scripts/spark/serve.sh   # API+Vite on the Spark; prints the ssh -L line
 ```
-
-The Vite dev server proxies `/api` and WebSocket traffic to
-`http://localhost:8000`, so use the default backend port for the interactive
-app. For API-only work, an alternate port is available with
-`PORT=8001 scripts/run_api.sh`.
 
 Then open **:5173**, click **Load the twin**, and use the **Simulate / Edit**
 switch. The 90-second run-of-show is in [`demo/RUNBOOK.md`](demo/RUNBOOK.md);
@@ -129,7 +111,6 @@ network-/hardware-bound and each has a working fallback (see
 - [`docs/specs/ROADMAP.md`](docs/specs/ROADMAP.md) — phases, locked decisions, dependency graph
 - [`docs/specs/BUILD_STATUS.md`](docs/specs/BUILD_STATUS.md) — per-phase status dashboard
 - [`docs/specs/HANDOFF.md`](docs/specs/HANDOFF.md) — what's done/deferred + exact run commands
-- [`docs/specs/HANDOFF-realdata.md`](docs/specs/HANDOFF-realdata.md) — next: swap sample inputs for real City data (Centreline/TMC/GTFS)
 - [`docs/specs/TESTING.md`](docs/specs/TESTING.md) · [`docs/specs/VISUAL_TESTING.md`](docs/specs/VISUAL_TESTING.md) — how to test
 - [`infra/README-spark.md`](infra/README-spark.md) — the DGX Spark harness + gating verdicts
 - `docs/00-…05-…` — original planning briefs · `README_MODEL_SIMULATION.md` — Liron's prototype

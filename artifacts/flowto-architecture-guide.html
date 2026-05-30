@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlowTO Architecture Guide</title>
+  <style>
+    :root {
+      --ink: #142033;
+      --muted: #5d6a7c;
+      --blue: #2455d6;
+      --blue-dark: #183b91;
+      --blue-soft: #edf3ff;
+      --line: #d9e1ec;
+      --paper: #ffffff;
+      --bg: #e9eef5;
+      --green: #167657;
+      --amber: #9a6500;
+      --red: #a33939;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.4pt;
+      line-height: 1.36;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      position: relative;
+      width: 8.5in;
+      min-height: 11in;
+      margin: 18px auto;
+      padding: 0.62in 0.68in 0.54in;
+      overflow: hidden;
+      background: var(--paper);
+      box-shadow: 0 10px 28px rgba(35, 56, 88, 0.14);
+      page-break-after: always;
+    }
+    .page:last-child { page-break-after: auto; }
+    .topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 22px;
+      color: var(--blue);
+      font-size: 8.2pt;
+      font-weight: 700;
+      letter-spacing: 1.15px;
+      text-transform: uppercase;
+    }
+    .mark {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+    }
+    .mark::before {
+      width: 13px;
+      height: 13px;
+      content: "";
+      border-radius: 3px;
+      background: var(--blue);
+    }
+    h1 {
+      max-width: 6.7in;
+      margin: 0 0 8px;
+      color: var(--ink);
+      font-size: 29pt;
+      line-height: 1.05;
+      letter-spacing: -0.7px;
+    }
+    .subtitle {
+      max-width: 6.4in;
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 13pt;
+      line-height: 1.32;
+    }
+    h2 {
+      margin: 18px 0 8px;
+      color: var(--blue-dark);
+      font-size: 15pt;
+      line-height: 1.12;
+      letter-spacing: -0.1px;
+    }
+    h3 {
+      margin: 11px 0 4px;
+      color: var(--blue-dark);
+      font-size: 11.3pt;
+      line-height: 1.2;
+    }
+    p { margin: 0 0 8px; }
+    ul {
+      margin: 5px 0 8px;
+      padding-left: 18px;
+    }
+    li { margin-bottom: 4px; }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 9pt;
+    }
+    .callout {
+      margin: 13px 0 15px;
+      padding: 13px 15px;
+      border: 1px solid #cddcfb;
+      border-left: 4px solid var(--blue);
+      border-radius: 7px;
+      background: var(--blue-soft);
+      color: #233758;
+      font-size: 10.1pt;
+    }
+    .callout strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--blue-dark);
+      font-size: 9pt;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 10px 0 12px;
+    }
+    .card {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fbfcfe;
+    }
+    .card b {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--blue-dark);
+      font-size: 10.2pt;
+    }
+    .small { color: var(--muted); font-size: 9.1pt; }
+    .endpoint-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 13px;
+      margin: 8px 0 10px;
+    }
+    .endpoint {
+      min-height: 46px;
+      padding: 7px 8px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: #fbfcfe;
+      font-size: 8.85pt;
+      line-height: 1.28;
+    }
+    .endpoint code {
+      color: var(--blue-dark);
+      font-size: 8.4pt;
+      font-weight: 700;
+    }
+    .endpoint > code:first-child {
+      display: block;
+      margin-bottom: 2px;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    pre {
+      margin: 6px 0 9px;
+      padding: 9px 10px;
+      overflow: hidden;
+      border-radius: 6px;
+      background: #17243a;
+      color: #e7efff;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 8.4pt;
+      line-height: 1.32;
+      white-space: pre-wrap;
+    }
+    .label {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 8.2pt;
+      font-weight: 700;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+    .file-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 14px;
+      margin-top: 7px;
+    }
+    .file {
+      padding-bottom: 5px;
+      border-bottom: 1px solid var(--line);
+      font-size: 9pt;
+    }
+    .file code {
+      display: block;
+      color: var(--blue-dark);
+      font-size: 8.35pt;
+      font-weight: 700;
+    }
+    .trouble {
+      margin: 8px 0;
+      padding: 9px 11px;
+      border-left: 3px solid var(--amber);
+      border-radius: 3px;
+      background: #fffaf0;
+    }
+    .trouble b { color: #6d4900; }
+    .appendix {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .appendix ul { margin-bottom: 0; }
+    .footer {
+      position: absolute;
+      right: 0.68in;
+      bottom: 0.28in;
+      left: 0.68in;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 7px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 8pt;
+    }
+    .accent { color: var(--blue); font-weight: 700; }
+    .status { color: var(--green); font-weight: 700; }
+    @media print {
+      @page { size: Letter; margin: 0; }
+      body { background: #fff; }
+      .page {
+        margin: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="topline">
+      <span class="mark">FlowTO Technical Brief</span>
+      <span>Architecture Guide</span>
+    </div>
+
+    <h1>FlowTO Traffic Digital Twin</h1>
+    <p class="subtitle">
+      How the simulation backend, API, and interactive planning frontend work together.
+    </p>
+
+    <div class="callout">
+      <strong>Reading time</strong>
+      About 4 minutes. This guide is based on the current repository implementation rather
+      than the older planning specifications.
+    </div>
+
+    <h2>Overview</h2>
+    <p>
+      FlowTO is a Toronto traffic and transit planning tool. It lets planners load a city
+      road network, view congestion, test road closures, and compare intervention results.
+      The showcase scenario models FIFA World Cup post-match traffic around BMO Field.
+    </p>
+    <p>
+      The backend is a FastAPI service around a Python simulation engine. The frontend is
+      a React, Vite, and TypeScript app using deck.gl with a Mapbox basemap. The system is
+      local-first: the CPU simulation is the reliable demo path, while GPU and local AI
+      features are optional DGX Spark upgrades.
+    </p>
+
+    <h2>Architecture Diagram</h2>
+    <div class="callout">
+      <strong>Dataflow</strong>
+      Toronto open data -> baked graph and demand model -> simulation engine -> FastAPI
+      REST and WebSocket API -> Zustand state and typed arrays -> deck.gl map and planning panels.
+    </div>
+
+    <h2>At A Glance</h2>
+    <div class="grid">
+      <div class="card">
+        <b>Road Network</b>
+        <span class="small">A stable edge index and geometry table is loaded once, then reused for repainting.</span>
+      </div>
+      <div class="card">
+        <b>Simulation</b>
+        <span class="small">BPR congestion, equilibrium tooling, and blast-radius recompute power scenario runs.</span>
+      </div>
+      <div class="card">
+        <b>Planner UI</b>
+        <span class="small">Simulate and Edit modes expose the map, interventions, saved scenarios, and metrics.</span>
+      </div>
+      <div class="card">
+        <b>Local-First Stack</b>
+        <span class="small">No runtime database or queue is required. Optional Spark services improve the demo.</span>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>FlowTO Architecture Guide</span>
+      <span>Page 1 of 4</span>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span class="mark">FlowTO Technical Brief</span>
+      <span>Backend and API</span>
+    </div>
+
+    <h2>Backend &amp; API</h2>
+    <p>
+      The FastAPI application loads a read-only baseline graph and demand-derived
+      origin-destination matrix at startup. Scenario state is held in memory. JSON snapshots
+      can be enabled when the API is created with a snapshot directory.
+    </p>
+
+    <div class="endpoint-list">
+      <div class="endpoint"><code>GET /healthz</code>Service status and graph size.</div>
+      <div class="endpoint"><code>GET /edges</code>Stable edge index, geometry, road name, and class.</div>
+      <div class="endpoint"><code>GET /demo/run?scenario=...</code>Cached <code>baseline</code>, <code>wc_surge</code>, or <code>wc_fix</code> demo output.</div>
+      <div class="endpoint"><code>POST /scenarios</code>Create an editable scenario.</div>
+      <div class="endpoint"><code>PATCH /scenarios/{id}</code>Update name, weather, time context, or interventions.</div>
+      <div class="endpoint"><code>POST /scenarios/{id}/run</code>Run a full or blast-radius recompute.</div>
+      <div class="endpoint"><code>GET /scenarios/{id}/records</code>Return per-edge results for a map repaint.</div>
+      <div class="endpoint"><code>GET /scenarios/{id}/compare</code>Return before/after metric deltas.</div>
+      <div class="endpoint"><code>POST /scenarios/{id}/preview</code>Run without mutating the stored scenario.</div>
+      <div class="endpoint"><code>POST /copilot/plan</code>Return a preview-first intervention plan with citations.</div>
+      <div class="endpoint"><code>GET /transit/routes</code>Return cached real or fallback TTC route lines.</div>
+      <div class="endpoint"><code>GET /transit/trajectories</code>Return cached real or fallback vehicle trajectories.</div>
+      <div class="endpoint"><code>WS /scenarios/{id}/stream</code>Send compact binary tick frames for live scenarios.</div>
+      <div class="endpoint"><code>POST /optimize</code>Propose a heuristic, simulation-verified improvement.</div>
+    </div>
+
+    <div class="callout">
+      <strong>Authentication</strong>
+      Authentication and multi-tenant access are intentionally out of scope. Development
+      CORS allows all origins so the Vite frontend can call the API locally.
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div class="label">Example scenario</div>
+        <pre>{
+  "name": "Close Lake Shore",
+  "interventions": [
+    {"op": "close_edge", "edge_id": "12345"}
+  ]
+}</pre>
+      </div>
+      <div>
+        <div class="label">Example run</div>
+        <pre>{
+  "recompute": "blast",
+  "congestion_model": "bpr"
+}</pre>
+        <div class="label">Map record</div>
+        <pre>[edge_index, load, speed_kmh,
+ pressure, closure_flag]</pre>
+      </div>
+    </div>
+
+    <div class="footer">
+      <span>FlowTO Architecture Guide</span>
+      <span>Page 2 of 4</span>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span class="mark">FlowTO Technical Brief</span>
+      <span>Frontend and Integrations</span>
+    </div>
+
+    <h2>Frontend</h2>
+    <ul>
+      <li><code>App.tsx</code> assembles the map, docks, status bar, edit tools, and first-run screen.</li>
+      <li><code>MapCanvas.tsx</code> renders roads, transit lines, closures, pins, and the BMO Field marker.</li>
+      <li><code>appStore.ts</code> handles loading, saved scenarios, interventions, recomputing, and copilot requests.</li>
+      <li><code>tickStore.ts</code> keeps pressure updates in typed arrays outside React for fast repainting.</li>
+      <li><code>api/client.ts</code> uses REST <code>fetch()</code> calls and supports the binary WebSocket stream.</li>
+      <li>Vite proxies <code>/api</code> to <code>http://localhost:8000</code> during development.</li>
+    </ul>
+
+    <div class="callout">
+      <strong>Primary UI flow</strong>
+      Load <code>GET /edges</code>, then load <code>GET /demo/run?scenario=baseline</code>.
+      In Edit mode, create or patch a scenario, run a blast-radius recompute, fetch records,
+      and repaint the deck.gl road layer.
+    </div>
+
+    <h2>Integration Points</h2>
+    <div class="grid">
+      <div class="card">
+        <b>Open Data</b>
+        <span class="small">Toronto CKAN datasets, GTFS transit feeds, and weather or restriction inputs.</span>
+      </div>
+      <div class="card">
+        <b>Offline Data Store</b>
+        <span class="small">Parquet files and a DuckDB catalog support reproducible data preparation.</span>
+      </div>
+      <div class="card">
+        <b>Map Rendering</b>
+        <span class="small">Mapbox Standard basemap via <code>VITE_MAPBOX_TOKEN</code>, with deck.gl overlays.</span>
+      </div>
+      <div class="card">
+        <b>Optional Spark Services</b>
+        <span class="small">Ollama Nemotron, cuGraph GPU routing, and a self-hosted cuOpt endpoint.</span>
+      </div>
+    </div>
+
+    <h2>Key Files &amp; Folders</h2>
+    <div class="file-list">
+      <div class="file"><code>src/torontosim/api/app.py</code>FastAPI routes and WebSocket.</div>
+      <div class="file"><code>src/torontosim/api/store.py</code>Scenario state and orchestration.</div>
+      <div class="file"><code>src/torontosim/api/encoding.py</code>Compact binary frame format.</div>
+      <div class="file"><code>src/torontosim/simulation/</code>Traffic assignment and congestion engine.</div>
+      <div class="file"><code>src/torontosim/datapipeline/</code>Fetch, bake, catalog, and manifests.</div>
+      <div class="file"><code>src/torontosim/copilot/</code>Policy-aware intervention planner.</div>
+      <div class="file"><code>frontend/src/api/client.ts</code>Typed frontend API client.</div>
+      <div class="file"><code>frontend/src/state/appStore.ts</code>Planner workflow state.</div>
+      <div class="file"><code>frontend/src/components/MapCanvas.tsx</code>Live map rendering.</div>
+      <div class="file"><code>scripts/run_api.sh</code>Local FastAPI launcher.</div>
+    </div>
+
+    <div class="footer">
+      <span>FlowTO Architecture Guide</span>
+      <span>Page 3 of 4</span>
+    </div>
+  </section>
+
+  <section class="page">
+    <div class="topline">
+      <span class="mark">FlowTO Technical Brief</span>
+      <span>Operations Notes</span>
+    </div>
+
+    <h2>Quick Troubleshooting</h2>
+    <div class="trouble">
+      <b>Map is blank.</b><br>
+      Set <code>VITE_MAPBOX_TOKEN</code> in <code>frontend/.env</code>. The viewport shows a
+      token-required message when Mapbox Standard cannot initialize.
+    </div>
+    <div class="trouble">
+      <b>Frontend cannot load data.</b><br>
+      Run <code>scripts/run_api.sh</code>, then check <code>GET /healthz</code>. The frontend
+      reports an API connection error if the baseline graph cannot be reached.
+    </div>
+    <div class="trouble">
+      <b>Demand surge edits do not affect results.</b><br>
+      The frontend can place a demand-surge object, but backend schema support is still
+      pending. Road closures are the complete end-to-end edit path.
+    </div>
+
+    <h2>Technical Appendix</h2>
+    <div class="appendix">
+      <h3>Runtime State</h3>
+      <ul>
+        <li>No runtime database or queue is required.</li>
+        <li>Scenarios are in-memory dictionaries keyed by short generated IDs.</li>
+        <li>The baseline graph and edge-index mapping are shared across scenario runs.</li>
+      </ul>
+
+      <h3>Streaming Contract</h3>
+      <ul>
+        <li>Binary frames are little-endian and start with a <code>u32</code> record count.</li>
+        <li>Each 17-byte record contains <code>edge_idx:u32</code>, three <code>f32</code> values,
+          and <code>closure:u8</code>.</li>
+        <li>The main showcase uses REST demo records; the client also supports WebSocket ingestion.</li>
+      </ul>
+
+      <h3>Fallback Strategy</h3>
+      <ul>
+        <li>Default graph: committed OSMnx JSON. Optional graph: baked Centreline Parquet.</li>
+        <li>Default transit: hand-authored demo routes. Optional transit: cached real GTFS feeds.</li>
+        <li>Default compute: CPU. Optional compute: cuGraph GPU backend on DGX Spark.</li>
+      </ul>
+    </div>
+
+    <h2>Run Locally</h2>
+    <pre># Backend
+scripts/run_api.sh
+
+# Frontend
+cd frontend &amp;&amp; npm install &amp;&amp; npm run dev</pre>
+    <p class="small">
+      API: <span class="accent">http://localhost:8000</span> &nbsp; | &nbsp;
+      Frontend: <span class="accent">http://localhost:5173</span> &nbsp; | &nbsp;
+      Status: <span class="status">CPU demo path available</span>
+    </p>
+
+    <div class="footer">
+      <span>FlowTO Architecture Guide</span>
+      <span>Page 4 of 4</span>
+    </div>
+  </section>
+</body>
+</html>

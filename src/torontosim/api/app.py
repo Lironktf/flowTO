@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from .encoding import pack_frame
 from .jobs import JobManager
@@ -228,6 +229,47 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 payload.get("summary_delta", {}), top_edges=payload.get("most_impacted_edges")
             )
         }
+
+    @app.post("/copilot/stream")
+    def copilot_stream(payload: dict):
+        """SSE token stream for the free-text ask/explain path + a latency HUD.
+
+        Streams Nemotron tokens as Server-Sent Events; the final event carries
+        first-token and total latency (ms). Grounds any bylaw claim in RAG.
+        """
+        import json as _json
+        import time
+
+        from ..copilot import ollama_client, rag
+
+        prompt = payload.get("prompt", "")
+        try:
+            hits = rag.retrieve(prompt, k=3)
+        except Exception:  # noqa: BLE001
+            hits = []
+        ctx = "\n".join(f"- {h['title']}" for h in hits)
+        system = (
+            "You are a Toronto city-planning copilot. Answer the planner concisely (≤4 sentences). "
+            "Ground any bylaw/policy claim ONLY in this context; do not invent citations:\n" + ctx
+        )
+
+        def gen():
+            t0 = time.monotonic()
+            first_ms = None
+            try:
+                for evt in ollama_client.stream(system, prompt):
+                    if evt["first"]:
+                        first_ms = round((time.monotonic() - t0) * 1000)
+                    out = {"token": evt["token"], "done": evt["done"]}
+                    if evt["done"]:
+                        out["first_token_ms"] = first_ms
+                        out["total_ms"] = evt["total_ms"]
+                        out["backend"] = rag.backend_name()
+                    yield f"data: {_json.dumps(out)}\n\n"
+            except Exception as exc:  # noqa: BLE001 — surface a clean done event
+                yield f"data: {_json.dumps({'error': str(exc), 'done': True})}\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
 
     @app.post("/copilot/confirm", response_model=CopilotConfirmResult)
     def copilot_confirm(payload: CopilotConfirm):

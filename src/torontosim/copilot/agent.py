@@ -74,9 +74,12 @@ def _simulate(state, interventions: list[dict]) -> dict:
     result = simulate_scenario(
         state.graph, state.od_matrix, interventions,
         iterations=4, weather=state.weather, time_context=state.time_context,
-        engine="kpath", congestion_model="bpr", recompute="full",
+        engine="kpath", congestion_model="bpr", recompute="blast",
     )
-    diff = compare_simulations(state.baseline(), result)
+    # Compare against the same-method (AON/blast) baseline when available, so the
+    # agent's scratch deltas are correct AND fast (~1-2s vs ~60s full).
+    base = state.blast_baseline() if hasattr(state, "blast_baseline") else state.baseline()
+    diff = compare_simulations(base, result)
     return {
         "summary_delta": diff.get("summary_delta", {}),
         "most_impacted_edges": diff.get("most_impacted_edges", [])[:3],

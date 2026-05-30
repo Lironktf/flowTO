@@ -29,6 +29,7 @@ class AppState:
     edge_ids: list = field(default_factory=list)  # index -> edge_id (str)
     edge_index: dict = field(default_factory=dict)  # edge_id -> index
     _baseline: dict | None = None
+    _blast_baseline: dict | None = None
 
     @classmethod
     def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None):
@@ -59,6 +60,26 @@ class AppState:
                 congestion_model=congestion_model,
             )
         return self._baseline
+
+    def blast_baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
+        """Cached AON baseline via the blast path (no interventions).
+
+        A blast scenario re-routes only affected ODs over an AON assignment, so
+        its global numbers are NOT comparable to the iterative ``baseline()``.
+        This same-method reference makes blast-vs-baseline deltas correct + fast.
+        """
+        if self._blast_baseline is None:
+            self._blast_baseline = simulate_scenario(
+                self.graph,
+                self.od_matrix,
+                [],
+                iterations=iterations,
+                weather=self.weather,
+                time_context=self.time_context,
+                congestion_model=congestion_model,
+                recompute="blast",
+            )
+        return self._blast_baseline
 
 
 def edge_records(state: AppState, graph) -> list:
@@ -163,4 +184,9 @@ class ScenarioStore:
         scenario_result = sc.get("_last_result")
         if scenario_result is None:
             scenario_result = self.run(sid, {})
-        return compare_simulations(self.state.baseline(), scenario_result)
+        # Compare against a baseline computed with the SAME assignment method:
+        # a blast scenario (AON re-route) vs the iterative full baseline would
+        # diff two different methods and report nonsense global deltas.
+        is_blast = scenario_result.get("recompute") == "blast" or scenario_result.get("engine") == "blast"
+        base = self.state.blast_baseline() if is_blast else self.state.baseline()
+        return compare_simulations(base, scenario_result)

@@ -91,7 +91,9 @@ class CopilotConfirm(BaseModel):
 
     interventions: list[Intervention] = Field(default_factory=list)
     name: str = "Copilot scenario"
-    run: RunRequest = Field(default_factory=RunRequest)
+    # Blast-radius recompute by default: interactive (~1-2s vs ~60s full) and now
+    # compared against the matching AON baseline, so the deltas are correct.
+    run: RunRequest = Field(default_factory=lambda: RunRequest(recompute="blast"))
 
 
 class CopilotConfirmResult(BaseModel):

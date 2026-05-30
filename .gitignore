@@ -13,9 +13,7 @@ cache/
 .DS_Store
 
 # Data feature store (fetched/baked by datapipeline, not committed)
-data/
-*.parquet
-*.feather
+
 
 # Large artifacts / trained models
 models/*.pkl

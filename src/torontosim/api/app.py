@@ -181,6 +181,24 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             raise HTTPException(501, "optimizer not available (P10 not installed)") from None
         return propose(state, payload)
 
+    # ---- transit overlay (P08) ----------------------------------------- #
+    @app.get("/transit/routes")
+    def transit_routes(agencies: str = "ttc"):
+        from ..transit.routes import demo_routes
+
+        wanted = {a.strip() for a in agencies.split(",") if a.strip()}
+        return {"routes": [r for r in demo_routes() if r["agency"] in wanted]}
+
+    @app.get("/transit/trajectories")
+    def transit_trajectories(date: str = "2026-06-12", agencies: str = "ttc"):
+        from ..transit.routes import demo_trajectories
+
+        wanted = {a.strip() for a in agencies.split(",") if a.strip()}
+        return {
+            "date": date,
+            "trajectories": [t for t in demo_trajectories() if t["agency"] in wanted],
+        }
+
     # ---- jobs ----------------------------------------------------------- #
     @app.get("/jobs/{job_id}")
     def get_job(job_id: str):

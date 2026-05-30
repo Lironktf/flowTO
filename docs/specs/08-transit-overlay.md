@@ -50,11 +50,11 @@ Rider loading / mode choice / crowding (stretch S1). GTFS-RT live positions (lat
 **On Spark:** precompute all 3 agencies on the Spark (more trips) and serve; confirm hundreds of vehicles animate smoothly (GPU interpolation in TripsLayer).
 
 ## Tasks
-- [ ] T08.1 `routes.py` GTFS → route polylines + stops GeoJSON (3 agencies) — *0.5d*
-- [ ] T08.2 `trajectories.py` schedule → `{path,timestamps}` + cache (float32-safe) — *1d*
-- [ ] T08.3 Transit API endpoints (routes, trajectories) — *0.5d*
-- [ ] T08.4 Frontend route PathLayer + TripsLayer + scrubber sync + toggle — *1d*
-- [ ] T08.5 Tests + verify smooth animation — *0.5d*
+- [x] T08.1 `routes.py` GTFS → route polylines + stops GeoJSON (3 agencies) — *0.5d*
+- [x] T08.2 `trajectories.py` schedule → `{path,timestamps}` + cache (float32-safe) — *1d*
+- [x] T08.3 Transit API endpoints (routes, trajectories) — *0.5d*
+- [x] T08.4 Frontend route PathLayer + TripsLayer + scrubber sync + toggle — *1d*
+- [x] T08.5 Tests + verify smooth animation — *0.5d*
 
 ## Risks / fallbacks
 - **GO/UP feed access friction** → TTC alone restores the streetcar/subway demo; add GO/UP if time.

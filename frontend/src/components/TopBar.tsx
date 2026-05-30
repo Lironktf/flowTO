@@ -14,6 +14,8 @@ export function TopBar() {
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const reset = useAppStore((s) => s.reset);
+  const showTransit = useAppStore((s) => s.showTransit);
+  const toggleTransit = useAppStore((s) => s.toggleTransit);
   const status = STATUS[phase] ?? STATUS.baseline;
 
   return (
@@ -28,6 +30,9 @@ export function TopBar() {
         <span className="dot" />
         {status.label}
       </div>
+      <button className={`btn ${showTransit ? "primary" : ""}`} onClick={toggleTransit}>
+        Transit
+      </button>
       <button className="btn" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>
         {theme === "light" ? "Dark" : "Light"}
       </button>

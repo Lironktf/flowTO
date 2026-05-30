@@ -48,6 +48,7 @@ interface AppState {
   // scenario / interaction
   activeTool: string | null;
   selectedEdges: Set<string>;
+  showTransit: boolean;
   previewVisible: boolean;
   appliedActions: string[];
   scrubberMinute: number;
@@ -64,6 +65,7 @@ interface AppState {
   selectEdge: (id: string, additive?: boolean) => void;
   clearSelection: () => void;
   setTool: (id: string | null) => void;
+  toggleTransit: () => void;
   runRecompute: (to: NetworkState, onDone?: () => void) => void;
   fireSurge: () => void;
   showPreview: () => void;
@@ -104,6 +106,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   blocked: false,
   activeTool: null,
   selectedEdges: new Set<string>(),
+  showTransit: true,
   previewVisible: false,
   appliedActions: [],
   scrubberMinute: 14 * 60,
@@ -140,6 +143,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }),
   clearSelection: () => set({ selectedEdges: new Set<string>() }),
   setTool: (id) => set({ activeTool: id }),
+  toggleTransit: () => set((s) => ({ showTransit: !s.showTransit })),
 
   runRecompute: (to, onDone) => {
     set({ recomputing: true, recomputeStep: 0, telemetry: { ...idleTelemetry } });

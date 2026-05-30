@@ -12,8 +12,27 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useMemo } from "react";
 import { Map, useControl } from "react-map-gl/maplibre";
 import { actions, blastRadius, center, corridors, stadium } from "../data/demo";
+import { buildTransitLayers, type RouteGeom, type Trajectory } from "../layers/transit";
 import { pressureRamp, type RGB } from "../lib/pressureRamp";
 import { useAppStore } from "../state/appStore";
+
+// Demo transit: routes + synthesized trajectories from the transit corridors.
+const TRANSIT_ROUTES: RouteGeom[] = corridors
+  .filter((c) => c.cls === "transit")
+  .map((c) => ({ route_id: c.id, mode: "streetcar", path: c.path }));
+
+function makeTrajectories(): Trajectory[] {
+  const trajs: Trajectory[] = [];
+  for (const r of TRANSIT_ROUTES) {
+    const run = 600; // 10 min end-to-end
+    for (let depart = 14 * 3600; depart <= 20 * 3600; depart += 360) {
+      const ts = r.path.map((_p, i) => depart + (i / Math.max(1, r.path.length - 1)) * run);
+      trajs.push({ trip_id: `${r.route_id}_${depart}`, route_type: 0, path: r.path, timestamps: ts });
+    }
+  }
+  return trajs;
+}
+const TRANSIT_TRAJECTORIES = makeTrajectories();
 
 function DeckOverlay(props: { layers: unknown[] }) {
   const overlay = useControl(() => new MapboxOverlay({ interleaved: true, layers: [] }));
@@ -53,6 +72,8 @@ export function MapCanvas() {
   const appliedActions = useAppStore((s) => s.appliedActions);
   const selectedEdges = useAppStore((s) => s.selectedEdges);
   const selectEdge = useAppStore((s) => s.selectEdge);
+  const showTransit = useAppStore((s) => s.showTransit);
+  const scrubberMinute = useAppStore((s) => s.scrubberMinute);
   const dark = theme === "dark";
 
   const layers = useMemo(() => {
@@ -142,8 +163,23 @@ export function MapCanvas() {
         }),
       );
     }
+    // Transit overlay (visual only) — vehicles animate along the scrubber time.
+    if (showTransit) {
+      const currentTime = scrubberMinute * 60; // minutes → secs since midnight
+      out.push(...buildTransitLayers(TRANSIT_ROUTES, TRANSIT_TRAJECTORIES, currentTime));
+    }
     return out;
-  }, [networkState, intensity, dark, eventFired, appliedActions, selectedEdges, selectEdge]);
+  }, [
+    networkState,
+    intensity,
+    dark,
+    eventFired,
+    appliedActions,
+    selectedEdges,
+    selectEdge,
+    showTransit,
+    scrubberMinute,
+  ]);
 
   return (
     <Map

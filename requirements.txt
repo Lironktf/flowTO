@@ -1,0 +1,4 @@
+# Build step (downloading from OpenStreetMap) needs osmnx.
+osmnx>=1.9
+# Routing + mutations (what the simulation engine consumes) need only networkx.
+networkx>=3.0

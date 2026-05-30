@@ -98,7 +98,30 @@ def cmd_bake(args) -> int:
         print(f"[bake] no raw datasets under {raw_dir}; run `fetch` first", file=sys.stderr)
     print(f"[bake] catalog -> {db_path}")
     print(f"[bake] manifest -> {manifest_path}")
+
+    # Bake fetched GTFS zips (raw/gtfs_{agency}_{date}.zip) -> real transit feeds
+    # cached at data/transit/{agency}_{date}.json for the overlay.
+    _bake_transit(raw_dir, data_dir)
     return 0
+
+
+def _bake_transit(raw_dir: str, data_dir: str) -> None:
+    """Cache each fetched GTFS zip to data/transit/{agency}_{date}.json."""
+    import glob
+
+    from ..transit import gtfs_reader
+
+    for zpath in sorted(glob.glob(os.path.join(raw_dir, "gtfs_*.zip"))):
+        stem = os.path.splitext(os.path.basename(zpath))[0]  # gtfs_<agency>_<date>
+        parts = stem.split("_", 2)
+        if len(parts) < 3:
+            continue
+        _, agency, date = parts
+        try:
+            out = gtfs_reader.build_feed_cache(zpath, agency=agency, date=date, data_dir=data_dir)
+            print(f"[bake] transit/{agency}: {out}")
+        except Exception as exc:  # noqa: BLE001 — a bad feed shouldn't fail the bake.
+            print(f"[bake] transit/{agency} FAILED: {exc!r}", file=sys.stderr)
 
 
 def cmd_verify(args) -> int:

@@ -24,6 +24,20 @@ from .schemas import (
 from .store import AppState, ScenarioStore, edge_records
 
 
+def _transit_data_dir() -> str:
+    import os
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    return os.path.abspath(os.environ.get("TS_DATA_DIR", os.path.join(repo_root, "data")))
+
+
+def _load_real_feed(agency: str, *, date: str):
+    """Return a cached real GTFS feed for ``agency`` (any date), else ``None``."""
+    from ..transit.gtfs_reader import load_cached_feed
+
+    return load_cached_feed(agency, date, _transit_data_dir())
+
+
 def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -211,22 +225,36 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         return propose(state, payload)
 
     # ---- transit overlay (P08) ----------------------------------------- #
+    # Prefer cached **real** GTFS feeds (data/transit/{agency}_{date}.json, baked
+    # by transit.gtfs_reader) when present; else the hand-authored demo set so
+    # the overlay always renders.
     @app.get("/transit/routes")
     def transit_routes(agencies: str = "ttc"):
         from ..transit.routes import demo_routes
 
         wanted = {a.strip() for a in agencies.split(",") if a.strip()}
-        return {"routes": [r for r in demo_routes() if r["agency"] in wanted]}
+        routes = []
+        for agency in sorted(wanted):
+            feed = _load_real_feed(agency, date="latest")
+            if feed:
+                routes.extend(feed.get("routes", []))
+        if not routes:
+            routes = [r for r in demo_routes() if r["agency"] in wanted]
+        return {"routes": routes}
 
     @app.get("/transit/trajectories")
     def transit_trajectories(date: str = "2026-06-12", agencies: str = "ttc"):
         from ..transit.routes import demo_trajectories
 
         wanted = {a.strip() for a in agencies.split(",") if a.strip()}
-        return {
-            "date": date,
-            "trajectories": [t for t in demo_trajectories() if t["agency"] in wanted],
-        }
+        trajs = []
+        for agency in sorted(wanted):
+            feed = _load_real_feed(agency, date=date)
+            if feed:
+                trajs.extend(feed.get("trajectories", []))
+        if not trajs:
+            trajs = [t for t in demo_trajectories() if t["agency"] in wanted]
+        return {"date": date, "trajectories": trajs}
 
     # ---- FIFA WC demo: real engine runs on the real graph (P12) --------- #
     app.state.demo_cache = {}

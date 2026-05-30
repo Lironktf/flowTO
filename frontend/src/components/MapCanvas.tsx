@@ -1,19 +1,28 @@
 /**
- * Viewport: MapLibre basemap + interleaved deck.gl, rendering the REAL graph
- * recolored by live engine pressures (tick store). Camera eases 3-D (Simulate)
- * ↔ top-down (Edit); Edit mode click-to-place drops pins via nearest-edge snap.
- * HUD (mode banner, recenter/tilt, legend, plan bar) + recompute overlay live
- * here as absolutely-positioned overlays inside #viewport.
+ * Viewport: Mapbox Standard basemap + interleaved deck.gl, rendering the REAL
+ * graph recolored by live engine pressures (tick store). Standard gives us
+ * dynamic time-of-day lighting (driven by the scrubber) and opaque 3D buildings;
+ * the congestion PathLayer is drawn over it. Camera eases 3-D (Simulate) ↔
+ * top-down (Edit). In Edit, clicks snap to the nearest intersection (vertex):
+ * two for a corridor closure, one for a demand surge. In Simulate, clicking a
+ * road selects it (drives the bottom congestion chart).
  */
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
-import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Map, useControl, type MapRef } from "react-map-gl/maplibre";
+import { Map, useControl, type MapRef } from "react-map-gl/mapbox";
 import { api } from "../api/client";
 import { MAP_CENTER, MAP_ZOOM, RECOMPUTE_STEPS_LABEL, STADIUM } from "../config";
-import { buildTransitLayers, type RouteGeom, type Trajectory } from "../layers/transit";
+import { buildTransitLayers, type RouteGeom } from "../layers/transit";
+import {
+  applyLightPreset,
+  HAS_MAPBOX_TOKEN,
+  lightPresetForMinute,
+  MAPBOX_TOKEN,
+  setShow3dObjects,
+  STANDARD_STYLE,
+} from "../lib/mapbox";
 import { pressureRamp } from "../lib/pressureRamp";
 import { RECOMPUTE_STEPS, useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
@@ -30,19 +39,10 @@ const WIDTH_BY_CLASS: Record<string, number> = {
   motorway: 6, trunk: 5, primary: 4.5, secondary: 3.5, tertiary: 3, residential: 2, service: 1.5,
 };
 const PIN_COLOR: Record<string, [number, number, number]> = {
-  closure: [224, 112, 27], lane: [224, 162, 26], oneway: [36, 85, 214],
-  signal: [36, 85, 214], surge: [210, 58, 50], transit: [31, 157, 87],
+  closure: [224, 112, 27], surge: [210, 58, 50],
 };
 
 interface EdgePath { edge_id: string; idx: number; road_class: string; path: [number, number][]; }
-
-function basemapStyle(dark: boolean): maplibregl.StyleSpecification {
-  return {
-    version: 8,
-    sources: {},
-    layers: [{ id: "bg", type: "background", paint: { "background-color": dark ? "#0a0d11" : "#e6e0d0" } }],
-  };
-}
 
 export function MapCanvas() {
   const mapRef = useRef<MapRef | null>(null);
@@ -50,9 +50,13 @@ export function MapCanvas() {
   const intensity = useAppStore((s) => s.intensity);
   const view = useAppStore((s) => s.view);
   const edges = useAppStore((s) => s.edges);
+  const graph = useAppStore((s) => s.graph);
   const pressureSeq = useAppStore((s) => s.pressureSeq);
   const objects = useAppStore((s) => s.objects);
   const selectedId = useAppStore((s) => s.selectedId);
+  const selectedRoadId = useAppStore((s) => s.selectedRoadId);
+  const selectRoad = useAppStore((s) => s.selectRoad);
+  const pendingVertices = useAppStore((s) => s.pendingVertices);
   const activeTool = useAppStore((s) => s.activeTool);
   const planStaged = useAppStore((s) => s.planStaged);
   const recomputing = useAppStore((s) => s.recomputing);
@@ -81,14 +85,13 @@ export function MapCanvas() {
   }, [edges]);
 
   const [routes, setRoutes] = useState<RouteGeom[]>([]);
-  const [trajectories, setTrajectories] = useState<Trajectory[]>([]);
   useEffect(() => {
     let alive = true;
-    Promise.all([api.transitRoutes("ttc"), api.transitTrajectories("ttc")])
-      .then(([r, t]) => {
+    api
+      .transitRoutes("ttc")
+      .then((r) => {
         if (!alive) return;
         setRoutes(r.routes.map((x) => ({ route_id: x.route_id, mode: x.mode, path: x.path })));
-        setTrajectories(t.trajectories.map((x) => ({ trip_id: x.trip_id, route_type: x.route_type, path: x.path, timestamps: x.timestamps })));
       })
       .catch(() => void 0);
     return () => { alive = false; };
@@ -108,6 +111,11 @@ export function MapCanvas() {
     m.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
   }, [recenterNonce]);
 
+  // Time of day → Mapbox Standard light preset (dawn/day/dusk/night).
+  useEffect(() => {
+    applyLightPreset(mapRef.current?.getMap() as never, lightPresetForMinute(scrubMin));
+  }, [scrubMin]);
+
   const layers = useMemo(() => {
     const out: unknown[] = [];
     const pressure = getArrays().pressure;
@@ -124,11 +132,59 @@ export function MapCanvas() {
         capRounded: true,
         jointRounded: true,
         updateTriggers: { getColor: [pressureSeq, intensity, dark] },
+        onClick: (info: { object?: EdgePath }) => {
+          if (useAppStore.getState().view === "sim" && info.object) selectRoad(info.object.edge_id);
+        },
       }),
     );
-    if (view === "sim" && routes.length) {
-      out.push(...buildTransitLayers(routes, trajectories, scrubMin * 60));
+
+    // Selected-road highlight (sim).
+    const selSeg = selectedRoadId && graph ? graph.byId.get(selectedRoadId) : null;
+    if (selSeg) {
+      out.push(
+        new PathLayer({
+          id: "road-selected",
+          data: [{ path: selSeg.geometry.map(([la, ln]) => [ln, la] as [number, number]) }],
+          getPath: (d: { path: [number, number][] }) => d.path,
+          getColor: [36, 85, 214],
+          getWidth: 6,
+          widthUnits: "pixels",
+          capRounded: true,
+          jointRounded: true,
+        }),
+      );
     }
+
+    // Closure corridors (sealed edges) drawn as a thick red overlay.
+    if (graph) {
+      const closurePaths: { path: [number, number][] }[] = [];
+      for (const o of objects) {
+        if (o.type !== "closure" || !o.visible) continue;
+        for (const id of o.edgeIds ?? []) {
+          const s = graph.byId.get(id);
+          if (s) closurePaths.push({ path: s.geometry.map(([la, ln]) => [ln, la] as [number, number]) });
+        }
+      }
+      if (closurePaths.length) {
+        out.push(
+          new PathLayer({
+            id: "closure-edges",
+            data: closurePaths,
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: [210, 58, 50],
+            getWidth: 5,
+            widthUnits: "pixels",
+            capRounded: true,
+            jointRounded: true,
+          }),
+        );
+      }
+    }
+
+    if (view === "sim" && routes.length) {
+      out.push(...buildTransitLayers(routes));
+    }
+
     out.push(
       new ScatterplotLayer({
         id: "stadium", data: [STADIUM], getPosition: (d: typeof STADIUM) => d.coord,
@@ -136,6 +192,20 @@ export function MapCanvas() {
         stroked: true, getLineColor: [255, 255, 255], lineWidthMinPixels: 2,
       }),
     );
+
+    // Pending closure vertices (the first picked intersection).
+    if (pendingVertices.length) {
+      out.push(
+        new ScatterplotLayer({
+          id: "pending-verts",
+          data: pendingVertices,
+          getPosition: (v: { lng: number; lat: number }) => [v.lng, v.lat],
+          getRadius: 40, radiusUnits: "meters", getFillColor: [36, 85, 214],
+          stroked: true, getLineColor: [255, 255, 255], lineWidthMinPixels: 2,
+        }),
+      );
+    }
+
     const visible = objects.filter((o) => o.visible);
     if (visible.length) {
       out.push(
@@ -160,18 +230,36 @@ export function MapCanvas() {
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, trajectories, scrubMin, objects, selectedId, selectObject]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices]);
+
+  if (!HAS_MAPBOX_TOKEN) {
+    return (
+      <div id="map" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: dark ? "#0a0d11" : "#e6e0d0" }}>
+        <div className="recompute-card" style={{ maxWidth: 360, textAlign: "center" }}>
+          <div className="rc-t">Mapbox token required</div>
+          <div className="rc-sub" style={{ marginTop: 8 }}>
+            Set <code>VITE_MAPBOX_TOKEN</code> in <code>frontend/.env</code> to render the Standard basemap. See <code>.env.example</code>.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
       <div id="map" style={{ position: "absolute", inset: 0 }}>
         <Map
           ref={mapRef}
-          mapLib={maplibregl as never}
+          mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
-          mapStyle={basemapStyle(dark) as never}
+          mapStyle={STANDARD_STYLE}
           reuseMaps
           cursor={placing ? "crosshair" : "grab"}
+          onLoad={(e) => {
+            const m = e.target;
+            applyLightPreset(m as never, lightPresetForMinute(useAppStore.getState().scrubberMinute));
+            setShow3dObjects(m as never, true);
+          }}
           onClick={(e) => {
             if (placing) void placeAt([e.lngLat.lng, e.lngLat.lat]);
           }}
@@ -212,8 +300,8 @@ export function MapCanvas() {
           <div className="plan-bar">
             <span className="pb-ico"><Icon.check /></span>
             <span className="pb-tx">
-              <span className="pb-t">Recommended plan</span>
-              <span className="pb-s">3 bylaw-valid actions · contraflow + retiming</span>
+              <span className="pb-t">Copilot plan ready</span>
+              <span className="pb-s">Apply to recompute the network with the proposed actions</span>
             </span>
             <button className="btn primary btn-sm" onClick={() => void applyPlan()}>Apply &amp; recompute</button>
             <button className="btn ghost btn-sm" onClick={() => discardPlan()}>Discard</button>

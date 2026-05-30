@@ -22,23 +22,34 @@ graph recolored by the assignment engine, not canned data.
 ## Quick start
 
 ```bash
-# 1. Python env + tests (CPU)
+# From the repository root. Python 3.12 or 3.13 is required.
+
+# 1. Python env + backend dependencies (CPU)
 make install          # venv + pip install -e .[dev,api,data]
 make test             # pytest -q  → 104 passed, 2 skipped (spark-gated)
 
 # Optional: external AequilibraE oracle (macOS may need libomp/OpenMP toolchain)
 make install-sim
 
-# 2. Run the API (loads the real graph, warms the demo cache)
+# 2. Start the backend in terminal A (loads the real graph, warms the demo cache)
 scripts/run_api.sh                         # http://localhost:8000  (OpenAPI at /docs)
 
-# 3. Run the frontend (proxies /api → :8000)
-cd frontend && npm install && npm run dev  # http://localhost:5173
+# 3. Verify the backend from terminal B
+curl -fsS http://localhost:8000/healthz
+# {"status":"ok","edges":18190,"scenarios":1}
 
-# 4. Headless demo + perf evidence
+# 4. Start the frontend in terminal B (installs npm packages if needed)
+scripts/run_frontend.sh                    # http://localhost:5173
+
+# 5. Headless demo + perf evidence
 python -m torontosim.demo.wc_surge --scenario all   # baseline → surge → fix (deterministic)
 python -m torontosim.perf.bench                     # full-city vs blast-radius (~15× speedup)
 ```
+
+The Vite dev server proxies `/api` and WebSocket traffic to
+`http://localhost:8000`, so use the default backend port for the interactive
+app. For API-only work, an alternate port is available with
+`PORT=8001 scripts/run_api.sh`.
 
 Then open **:5173**, click **Load the twin**, and use the **Simulate / Edit**
 switch. The 90-second run-of-show is in [`demo/RUNBOOK.md`](demo/RUNBOOK.md);

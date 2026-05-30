@@ -61,6 +61,15 @@ scripts/spark/build_full_graph.sh                                    # -> data/g
 TS_GRAPH_JSON=data/graph/toronto_full_graph.json scripts/run_api.sh  # load it (baseline untouched)
 ```
 
+To **see and test it from your dev box**, `scripts/spark/serve.sh` starts the
+API (8000) + Vite UI (5173) on the Spark in tmux and prints the `ssh -L` line to
+forward both to localhost (no ngrok needed):
+
+```bash
+TS_GRAPH_SOURCE=centreline scripts/spark/serve.sh    # serves the real Centreline graph
+ssh -N -L 5173:localhost:5173 -L 8000:localhost:8000 asus@gx10-4f5f   # then open http://localhost:5173
+```
+
 ⚠️ **Do not run `python -m torontosim.graph.build_graph --full`** to make the
 full graph: it writes to the *fixed* path `toronto_drive_graph.json` and would
 **overwrite the committed baseline**. Use `graph.build --source centreline

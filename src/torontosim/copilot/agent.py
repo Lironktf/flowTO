@@ -29,9 +29,13 @@ from .tools import Citation
 ModelCall = Callable[[str, str, dict], str]
 
 AGENT_SYSTEM = (
-    "You are a Toronto city-planning copilot working step by step. Each turn, emit ONE JSON action "
-    "to make progress on the GOAL, then you will see its result and choose the next action.\n"
-    "Read-only tools (use to investigate before proposing):\n"
+    "You are a Toronto city-planning copilot working step by step. Each turn, emit ONE JSON action, "
+    "then you will see its result and choose the next action. ALWAYS fill 'thought' with one short "
+    "sentence explaining why you chose this action.\n"
+    "If the message is a greeting, small talk, or a general question that is NOT a request to change "
+    "the road network, use 'answer' to reply briefly and conversationally — do NOT invent "
+    "interventions, edges, or bylaws.\n"
+    "Read-only tools (use to investigate before proposing a network change):\n"
     "  - retrieve_policy: look up relevant bylaws. Set 'query'.\n"
     "  - simulate: run a hypothetical intervention set and see its effect vs baseline. Set 'interventions'.\n"
     "  - optimize: ask the optimizer for a sim-verified plan (no args).\n"
@@ -137,14 +141,25 @@ def _finalize_propose(goal: str, step: AgentStep, state, steps: list[dict]) -> A
     )
 
 
+def _require_thought(schema: dict) -> dict:
+    """Mark 'thought' required so the model emits its reasoning each step."""
+    req = schema.setdefault("required", [])
+    if "thought" not in req:
+        req.append("thought")
+    return schema
+
+
+def _open_schema() -> dict:
+    return _require_thought(AgentStep.model_json_schema())
+
+
 def _terminal_schema() -> dict:
     """AgentStep schema with the action enum restricted to terminal actions."""
     schema = AgentStep.model_json_schema()
-    for key in ("tool",):
-        prop = schema.get("properties", {}).get(key)
-        if prop is not None:
-            prop["enum"] = ["propose", "answer"]
-    return schema
+    prop = schema.get("properties", {}).get("tool")
+    if prop is not None:
+        prop["enum"] = ["propose", "answer"]
+    return _require_thought(schema)
 
 
 def run_agent(goal: str, state, *, model_call: ModelCall | None = None, max_steps: int = 4) -> AgentResult:
@@ -154,7 +169,7 @@ def run_agent(goal: str, state, *, model_call: ModelCall | None = None, max_step
     loop always converges to a plan or an answer instead of investigating forever.
     """
     model_call = model_call or _default_model_call
-    open_schema = AgentStep.model_json_schema()
+    open_schema = _open_schema()
     term_schema = _terminal_schema()
     steps: list[dict] = []
 
@@ -172,8 +187,10 @@ def run_agent(goal: str, state, *, model_call: ModelCall | None = None, max_step
             break  # invalid output or model unreachable → forced summary
 
         if step.tool == "answer":
+            steps.append({"tool": "answer", "thought": step.thought, "observation": step.answer})
             return AgentResult(answer=step.answer or "Done.", steps=steps)
         if step.tool == "propose":
+            steps.append({"tool": "propose", "thought": step.thought, "observation": "proposed a plan"})
             return _finalize_propose(goal, step, state, steps)
         if step.tool == "retrieve_policy":
             obs = rag.retrieve(step.query or goal, k=3)
@@ -188,7 +205,7 @@ def run_agent(goal: str, state, *, model_call: ModelCall | None = None, max_step
             obs = _optimize(state)
         else:  # pragma: no cover — schema-constrained
             break
-        steps.append({"tool": step.tool, "observation": obs})
+        steps.append({"tool": step.tool, "thought": step.thought, "observation": obs})
 
     # Step cap or parse failure: summarize what we learned, no plan committed.
     return AgentResult(

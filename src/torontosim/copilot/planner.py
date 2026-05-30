@@ -91,10 +91,16 @@ def _live_enabled() -> bool:
 
 
 def _generic_preview() -> ToolCall:
+    # Reached when nothing actionable could be parsed (e.g. small talk). Be
+    # honest + helpful instead of staging an empty "preview".
     return ToolCall(
-        tool="preview_intervention",
-        rationale="Previewing the requested change — confirm to apply.",
-        requires_user_confirmation=True,
+        tool="answer",
+        rationale=(
+            "I'm the planning copilot — I turn plain-English requests into traffic interventions. "
+            "Try: \"ease congestion near BMO Field\", \"reduce capacity on Lake Shore eastbound\", "
+            "or ask why a corridor is congested."
+        ),
+        requires_user_confirmation=False,
     )
 
 

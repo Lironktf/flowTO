@@ -21,25 +21,35 @@ export function CopilotRegion() {
   return (
     <section className="region grow" id="copilot-region">
       <div className="region-hd">
-        <span className="lbl">Copilot · Nemotron · on-device</span>
-        <span className="copilot-hud" style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
-          {latency && (
-            <span className="lat" title="last copilot call" style={{ opacity: 0.7, fontVariantNumeric: "tabular-nums" }}>
-              ⏱ {(latency.ms / 1000).toFixed(1)}s
-              {latency.firstTokenMs != null ? ` · first ${latency.firstTokenMs}ms` : ""}
-              {` · ${latency.mode}`}
-            </span>
-          )}
-          <button
-            className={`chip ${agentMode ? "active" : ""}`}
-            aria-pressed={agentMode}
-            onClick={toggleAgentMode}
-            title="Let Nemotron chain tools (investigate → propose) before recommending"
-          >
-            🧠 Agent {agentMode ? "on" : "off"}
-          </button>
+        <span className="lbl" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          Copilot · Nemotron
         </span>
+        <button
+          className={`chip ${agentMode ? "active" : ""}`}
+          aria-pressed={agentMode}
+          onClick={toggleAgentMode}
+          title="Let Nemotron chain tools (investigate → propose) before recommending"
+          style={{ marginLeft: "auto", flex: "0 0 auto" }}
+        >
+          🧠 Agent {agentMode ? "on" : "off"}
+        </button>
       </div>
+      {latency && (
+        <div
+          className="copilot-latbar"
+          style={{
+            padding: "2px 10px",
+            fontSize: 11,
+            opacity: 0.6,
+            fontVariantNumeric: "tabular-nums",
+            borderBottom: "1px solid var(--hairline, #2b3440)",
+          }}
+        >
+          ⏱ {(latency.ms / 1000).toFixed(1)}s
+          {latency.firstTokenMs != null ? ` · first ${latency.firstTokenMs}ms` : ""}
+          {` · ${latency.mode}`}
+        </div>
+      )}
       <div className="copilot-log">
         {log.length === 0 && (
           <div className="msg bot">
@@ -57,10 +67,11 @@ export function CopilotRegion() {
               {m.text}
               {m.streaming && <span className="stream-cursor" aria-hidden>▍</span>}
               {m.agentSteps && m.agentSteps.length > 0 && (
-                <ol className="agent-trace" style={{ margin: "6px 0 0", paddingLeft: 18, opacity: 0.8 }}>
+                <ol className="agent-trace" style={{ margin: "6px 0 0", paddingLeft: 18, opacity: 0.85 }}>
                   {m.agentSteps.map((s, j) => (
-                    <li key={j}>
+                    <li key={j} style={{ marginBottom: 3 }}>
                       <span className="ref">{s.tool}</span>
+                      {s.thought ? <span style={{ opacity: 0.75 }}> — {s.thought}</span> : null}
                     </li>
                   ))}
                 </ol>

@@ -33,8 +33,9 @@ def test_agent_investigates_then_proposes():
     res = run_agent("ease congestion and check it helps", state, model_call=model)
     assert res.requires_user_confirmation is True
     assert res.interventions[0].edge_id == "e0"
-    # It investigated (retrieve + simulate) before proposing.
-    assert [s["tool"] for s in res.steps] == ["retrieve_policy", "simulate"]
+    # It investigated (retrieve + simulate) before proposing; the trace now
+    # records the terminal step too.
+    assert [s["tool"] for s in res.steps] == ["retrieve_policy", "simulate", "propose"]
 
 
 def test_agent_refuses_blocked_proposal():

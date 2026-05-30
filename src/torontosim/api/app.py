@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from .encoding import pack_frame
 from .jobs import JobManager
@@ -270,6 +270,13 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 yield f"data: {_json.dumps({'error': str(exc), 'done': True})}\n\n"
 
         return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.get("/copilot/debug", response_class=HTMLResponse)
+    def copilot_debug_page():
+        """Standalone copilot debug console (no build step — just open the URL)."""
+        from ..copilot.debug_page import DEBUG_HTML
+
+        return HTMLResponse(DEBUG_HTML)
 
     @app.post("/copilot/agent")
     def copilot_agent(payload: dict):

@@ -55,6 +55,7 @@ export interface CopilotConfirmResult {
 
 export interface AgentStepLog {
   tool: string;
+  thought?: string;
   observation: unknown;
 }
 

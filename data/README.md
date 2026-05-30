@@ -45,6 +45,29 @@ These are **opt-in**: the graph defaults to the committed OSMnx JSON
 the gravity baseline (`calibration=ipf_counts` to reconcile against TMC), and
 transit falls back to the 509/511 demo set when no cached feed exists.
 
+### Full citywide graph (opt-in, Spark-only, **not committed**)
+
+The committed `data/graph/toronto_drive_graph.json` is the **18k-edge downtown
+extent** — it is the test baseline (`test_simulation`, `test_graph_mutation`,
+`test_graph_schema`, `test_packaging`) and the offline demo default. Keep it.
+
+The **full citywide** graph (~10× larger, slow to build, heavy to route — a
+P11 perf concern) is generated on the Spark and used as a runtime artifact
+without replacing the baseline:
+
+```bash
+scripts/spark/fetch_and_bake.sh --only centreline,intersections,tmc  # bake first
+scripts/spark/build_full_graph.sh                                    # -> data/graph/toronto_full_graph.json
+TS_GRAPH_JSON=data/graph/toronto_full_graph.json scripts/run_api.sh  # load it (baseline untouched)
+```
+
+⚠️ **Do not run `python -m torontosim.graph.build_graph --full`** to make the
+full graph: it writes to the *fixed* path `toronto_drive_graph.json` and would
+**overwrite the committed baseline**. Use `graph.build --source centreline
+--out <file>` (what `build_full_graph.sh` does), which writes a separate file.
+If the baseline ever gets clobbered, restore it with
+`git checkout -- data/graph/toronto_drive_graph.json`.
+
 ## Provenance & attribution
 
 - City of Toronto datasets (Centreline, TMC, road restrictions):

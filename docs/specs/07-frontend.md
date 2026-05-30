@@ -65,13 +65,13 @@ Map specifics + per-tick update technique still come from **`research/06-fronten
 **On Spark:** point the frontend at the API running on the Spark (Tailscale tunnel); confirm the full on-device loop renders.
 
 ## Tasks
-- [ ] T07.1 Vite+TS scaffold + deps + MapCanvas (interleaved overlay + PMTiles) — *1d*
-- [ ] T07.2 Road + massing + closure + hex layers — *1d*
-- [ ] T07.3 `tickStore` typed-array WS plumbing + imperative deck updates — *1d*
-- [ ] T07.4 `appStore` + selection + intervention create/preview/apply flow — *1.5d*
-- [ ] T07.5 Scrubber + BeforeAfter + Copilot/Debug panel shells (design-drop slots) — *1d*
-- [ ] T07.6 API client (typed REST + WS) + tests — *0.5d*
-- [ ] T07.7 Recreate `design/` faithfully: tokens (light+dark) → `styles/tokens.css`; Fraunces/Public Sans/IBM Plex Mono; the floating-panel layout + all 6 states from `design/README.md` + `design/flowto.html` — *1.5d*
+- [x] T07.1 Vite+TS scaffold + deps + MapCanvas (interleaved overlay + PMTiles) — *1d*
+- [x] T07.2 Road + massing + closure + hex layers — *1d*
+- [x] T07.3 `tickStore` typed-array WS plumbing + imperative deck updates — *1d*
+- [x] T07.4 `appStore` + selection + intervention create/preview/apply flow — *1.5d*
+- [x] T07.5 Scrubber + BeforeAfter + Copilot/Debug panel shells (design-drop slots) — *1d*
+- [x] T07.6 API client (typed REST + WS) + tests — *0.5d*
+- [x] T07.7 Recreate `design/` faithfully: tokens (light+dark) → `styles/tokens.css`; Fraunces/Public Sans/IBM Plex Mono; the floating-panel layout + all 6 states from `design/README.md` + `design/flowto.html` — *1.5d*
 
 ## Risks / fallbacks
 - **Design drop is in `design/`** (no longer a risk) → recreate it faithfully; if time-pressed, prioritize tokens + the panel layout + the recompute(HERO) + before/after states (the demo beats) over the tweaks panel/first-run polish.

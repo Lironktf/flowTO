@@ -1,5 +1,14 @@
 # 05 — Demo Script (target: 90 seconds)
 
+> **P12 update (road-centric fix):** the *measured* mitigation is now **road-side**
+> — eastbound contraflow on Lake Shore Blvd W, signal retiming at Dufferin &
+> Strachan, and a pedestrian corridor on Princes' Blvd, recomputed via
+> blast-radius. The **509 / 511** streetcars appear as a transit **visual**
+> ("+frequency / priority hold"), not a measured rider model (transit is
+> visual-only per the scope decision). The canonical, click-by-click
+> run-of-show now lives in **`demo/RUNBOOK.md`**; this file is the original
+> narrative draft.
+
 The demo IS the product. Optimize everything for this narrative. Pre-load the scenario;
 never debug live.
 

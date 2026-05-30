@@ -20,7 +20,7 @@
 | P09 | Copilot (Nemotron) | todo | Spark-gated |
 | P10 | Optimizer (heuristic + cuOpt) | todo | Spark-gated |
 | P11 | Profiling & perf | todo | land early |
-| P12 | FIFA WC demo | todo | |
+| P12 | FIFA WC demo | done ✅ | `demo/wc_surge.py` (BMO Field ~45k egress injection + road-side mitigation) + scenario JSONs + `RUNBOOK.md`. **Deterministic, headline metric melts baseline→surge→fix** (Exhibition pressure 0.0→0.90→0.51); 4 tests. `python -m torontosim.demo.wc_surge`. PR: FLO-13. |
 | S1–S6 | Stretch | todo | only after core stable |
 
 ## Gating verdicts (record once)

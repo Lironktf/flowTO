@@ -51,12 +51,12 @@ New engine features (this composes P00–P11). Anything not on the 90-second pat
 **On Spark (the actual demo environment):** full run on the Spark over Tailscale: scrub → surge → copilot fix → blast-radius red→green → metric card; capture the **recorded fallback** from this run; confirm crash-free repeated runs. Rehearse the 90 seconds.
 
 ## Tasks
-- [ ] T12.1 `wc_surge.py` match-day demand + scenario JSONs (baseline/surge/fix) — *1d*
-- [ ] T12.2 Wire the copilot rehearsed prompt + same-JSON fallback button — *0.5d*
-- [ ] T12.3 Metric card framing + blast-radius timing number — *0.5d*
-- [ ] T12.4 `RUNBOOK.md` run-of-show + record the fallback capture + canned results — *0.5d*
-- [ ] T12.5 `test_demo_scenarios.py` + rehearse on Spark (crash-free, deterministic) — *0.5d*
-- [ ] T12.6 Update `docs/05-demo-script.md` to road-centric fix + transit-visual — *0.25d*
+- [x] T12.1 `wc_surge.py` match-day demand + scenario JSONs (baseline/surge/fix) — *1d*
+- [x] T12.2 Wire the copilot rehearsed prompt + same-JSON fallback button — *0.5d*
+- [x] T12.3 Metric card framing + blast-radius timing number — *0.5d*
+- [x] T12.4 `RUNBOOK.md` run-of-show + record the fallback capture + canned results — *0.5d*
+- [x] T12.5 `test_demo_scenarios.py` + rehearse on Spark (crash-free, deterministic) — *0.5d*
+- [x] T12.6 Update `docs/05-demo-script.md` to road-centric fix + transit-visual — *0.25d*
 
 ## Risks / fallbacks
 - **Live box hiccups** → pre-recorded full-run capture; canned optimizer/copilot results; deterministic scenarios mean rehearsal == performance.

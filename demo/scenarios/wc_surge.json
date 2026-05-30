@@ -1,0 +1,8 @@
+{
+  "id": "wc_surge",
+  "name": "FIFA WC26 post-match egress — unmitigated",
+  "time_context": { "hour": 17, "day_of_week": 4, "month": 6, "weather": "clear" },
+  "surge": { "generator": "BMO Field / Exhibition Place", "coord": [-79.4185, 43.6332], "egress_trips": 45000, "k_dest": 40, "full_time": "17:05" },
+  "interventions": [],
+  "note": "~45,000 released over 25 min onto the Lake Shore / Strachan / Dufferin spine. Southwest goes deep red; local-road infiltration into Parkdale / Liberty Village."
+}

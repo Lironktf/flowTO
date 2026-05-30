@@ -1,0 +1,8 @@
+{
+  "id": "baseline",
+  "name": "Weekday baseline — Fri 12 Jun 2026, 17:00",
+  "time_context": { "hour": 17, "day_of_week": 4, "month": 6, "weather": "clear" },
+  "surge": null,
+  "interventions": [],
+  "note": "Nominal evening rush. Network mostly green/amber; Exhibition Place calm."
+}

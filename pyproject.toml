@@ -7,7 +7,7 @@ name = "torontosim"
 version = "0.1.0"
 description = "TorontoSim — local-first 3-D Toronto traffic digital twin (DGX Spark)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 license = { text = "MIT" }
 authors = [{ name = "FlowTo" }]
 dependencies = [

@@ -23,8 +23,11 @@ graph recolored by the assignment engine, not canned data.
 
 ```bash
 # 1. Python env + tests (CPU)
-make install          # venv + pip install -e .[dev,...]
+make install          # venv + pip install -e .[dev,api,data]
 make test             # pytest -q  → 104 passed, 2 skipped (spark-gated)
+
+# Optional: external AequilibraE oracle (macOS may need libomp/OpenMP toolchain)
+make install-sim
 
 # 2. Run the API (loads the real graph, warms the demo cache)
 scripts/run_api.sh                         # http://localhost:8000  (OpenAPI at /docs)

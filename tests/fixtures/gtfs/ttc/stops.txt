@@ -1,0 +1,6 @@
+stop_id,stop_name,stop_lat,stop_lon
+S1,Union Station,43.6348,-79.4120
+S2,Spadina Ave,43.6360,-79.4040
+S3,Bathurst St,43.6372,-79.3960
+B1,Bathurst @ Front,43.6428,-79.4035
+B2,Bathurst @ Bloor,43.6492,-79.4040

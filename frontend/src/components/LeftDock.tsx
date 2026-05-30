@@ -1,26 +1,89 @@
-import { SCENARIOS, TOOLS } from "../config";
+import { TOOLS } from "../config";
 import { useAppStore } from "../state/appStore";
 import { Icon, type IconKey } from "./Icons";
 
 const TYPE_COLOR: Record<string, string> = {
   closure: "var(--c-heavy)",
-  lane: "var(--c-mod)",
-  oneway: "var(--cobalt)",
-  signal: "var(--cobalt)",
   surge: "var(--c-sev)",
-  transit: "var(--c-free)",
 };
 const TOOL_ICON: Record<string, IconKey> = {
   closure: "closure",
-  lane: "lane",
-  oneway: "oneway",
-  signal: "signal",
   surge: "surge",
 };
 
-export function LeftDock() {
+/** Simulate → Saved simulations (live scenario CRUD). */
+function SavedSims() {
+  const savedSims = useAppStore((s) => s.savedSims);
+  const activeId = useAppStore((s) => s.activeSavedSimId);
+  const currentName = useAppStore((s) => s.currentName);
+  const dirty = useAppStore((s) => s.dirty);
+  const setCurrentName = useAppStore((s) => s.setCurrentName);
+  const newSim = useAppStore((s) => s.newSim);
+  const saveCurrent = useAppStore((s) => s.saveCurrent);
+  const selectSavedSim = useAppStore((s) => s.selectSavedSim);
+  const deleteSavedSim = useAppStore((s) => s.deleteSavedSim);
+
+  return (
+    <section className="region grow v-sim">
+      <div className="region-hd">
+        <span className="lbl">Saved simulations</span>
+        <span className="spacer" />
+        <button className="iconbtn sm" onClick={() => newSim()} title="New simulation">
+          <Icon.plus />
+        </button>
+      </div>
+      <div className="region-body">
+        <div className="save-row">
+          <input
+            className="name-input"
+            value={currentName}
+            onChange={(e) => setCurrentName(e.target.value)}
+            placeholder="Simulation name"
+          />
+          <button className="btn btn-sm primary" onClick={() => void saveCurrent()}>
+            <Icon.save /> Save
+          </button>
+        </div>
+        {dirty && <div className="dirty-note">Unsaved changes — Save to {activeId ? "update" : "create"}.</div>}
+        <div className="scn">
+          {savedSims.length === 0 ? (
+            <div className="outliner-empty">No saved simulations yet. Edit the network, then Save.</div>
+          ) : (
+            savedSims.map((sc) => (
+              <div
+                key={sc.id}
+                className={`scn-item ${activeId === sc.id ? "active" : ""}`}
+                onClick={() => void selectSavedSim(sc.id)}
+              >
+                <span className="badge">SIM</span>
+                <span className="grow">
+                  <div className="nm">{sc.name ?? sc.id}</div>
+                  <div className="mt">{(sc.interventions?.length ?? 0)} interventions</div>
+                </span>
+                <span
+                  className="ovis"
+                  title="Delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void deleteSavedSim(sc.id);
+                  }}
+                >
+                  <Icon.trash />
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Edit → edit-type picker + scene outliner. */
+function EditPanels() {
   const activeTool = useAppStore((s) => s.activeTool);
   const selectTool = useAppStore((s) => s.selectTool);
+  const pending = useAppStore((s) => s.pendingVertices);
   const objects = useAppStore((s) => s.objects);
   const selectedId = useAppStore((s) => s.selectedId);
   const selectObject = useAppStore((s) => s.selectObject);
@@ -28,30 +91,9 @@ export function LeftDock() {
 
   return (
     <>
-      {/* Simulate → Scenarios */}
-      <section className="region grow v-sim">
-        <div className="region-hd">
-          <span className="lbl">Scenarios</span>
-        </div>
-        <div className="region-body">
-          <div className="scn">
-            {SCENARIOS.map((sc) => (
-              <div key={sc.id} className={`scn-item ${sc.active ? "active" : ""}`}>
-                <span className="badge">{sc.badge}</span>
-                <span className="grow">
-                  <div className="nm">{sc.name}</div>
-                  <div className="mt">{sc.meta}</div>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Edit → Interventions */}
       <section className="region v-edit">
         <div className="region-hd">
-          <span className="lbl">Interventions</span>
+          <span className="lbl">Edit type</span>
         </div>
         <div className="region-body">
           <div className="tool-list">
@@ -75,10 +117,19 @@ export function LeftDock() {
               );
             })}
           </div>
+          {activeTool === "closure" && (
+            <div className="dirty-note">
+              {pending.length === 0
+                ? "Click the first intersection on the map."
+                : `Pick the second intersection… (${pending.length}/2)`}
+            </div>
+          )}
+          {activeTool === "surge" && pending.length === 0 && (
+            <div className="dirty-note">Click an intersection to inject demand.</div>
+          )}
         </div>
       </section>
 
-      {/* Edit → Scene outliner */}
       <section className="region grow v-edit">
         <div className="region-hd">
           <span className="lbl">Scene</span>
@@ -87,9 +138,7 @@ export function LeftDock() {
         </div>
         <div className="region-body">
           {objects.length === 0 ? (
-            <div className="outliner-empty">
-              No interventions placed. Pick a tool and click the map to drop one.
-            </div>
+            <div className="outliner-empty">No interventions placed. Pick an edit type and click the map.</div>
           ) : (
             <div className="outliner">
               {objects.map((o) => (
@@ -118,6 +167,15 @@ export function LeftDock() {
           )}
         </div>
       </section>
+    </>
+  );
+}
+
+export function LeftDock() {
+  return (
+    <>
+      <SavedSims />
+      <EditPanels />
     </>
   );
 }

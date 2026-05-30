@@ -1,0 +1,3 @@
+PX,MAIN_STREET,SIDE1_STREET,SIDE2_STREET,CONTROL_MODE,PEDWALKSPEED,TRANSIT_PREEMPT,geometry
+42,YONGE ST,KING ST W,,Fixed Time,1.0,1,"{""type"":""Point"",""coordinates"":[-79.384,43.672]}"
+7,KING ST W,BAY ST,,Semi-Actuated,1.2,0,"{""type"":""Point"",""coordinates"":[-79.382,43.673]}"

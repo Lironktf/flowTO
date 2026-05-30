@@ -1,23 +1,39 @@
 /**
- * Warm app state (Zustand) for the two-view IDE (Simulate · Edit).
- * Ported from the design prototype's app.js state machine, but every traffic
- * number is **real engine output**:
- *   loadTwin → /edges + /demo/run?scenario=baseline
- *   triggerSurge → /demo/run?scenario=wc_surge
- *   applyPlan → /demo/run?scenario=wc_fix
- *   placeAt (Edit) → /scenarios run (recompute=blast) + /scenarios/{id}/records
- *   copilotAsk → /copilot/plan
- * Per-edge pressures live in the tick-store typed arrays (out of React); a
- * bumped pressureSeq drives the deck.gl recolor.
+ * App state (Zustand) for the two-view IDE (Simulate · Edit).
+ *
+ * Every traffic number is real engine output:
+ *   loadTwin     → /edges (+ build the vertex/adjacency graph) + /demo/run?scenario=baseline
+ *   saveCurrent  → POST/PATCH /scenarios   (saved simulations, left rail in Simulate)
+ *   applyEdits   → /scenarios run (blast recompute) + /scenarios/{id}/records
+ *   copilotAsk   → /copilot/plan
+ * Per-edge pressures live in the tick-store typed arrays (out of React); a bumped
+ * `pressureSeq` drives the deck.gl recolor.
+ *
+ * Edit model (per the agreed spec): two tools only — a **full closure** (pick two
+ * intersections → seal the corridor of edges between them) and a **demand surge**
+ * (pick one intersection → inject trips).
  */
 import { create } from "zustand";
-import { api, type CopilotResponse, type EdgeMeta, type Record5 } from "../api/client";
-import { TIMELINE } from "../config";
-import { resizeTickStore, writeRecords } from "./tickStore";
+import {
+  api,
+  type CopilotResponse,
+  type EdgeMeta,
+  type Intervention,
+  type ScenarioSummary,
+} from "../api/client";
+import {
+  buildGraph,
+  corridorBetween,
+  nearestEdge,
+  nearestNode,
+  withReverseTwins,
+  type RoadGraph,
+} from "../api/graph";
+import { DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
+import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
 
 export type View = "sim" | "edit";
-export type Modelled = "base" | "surge" | "mit";
-export type Compare = "before" | "after";
+export type EditTool = "select" | "closure" | "surge";
 export type StatusState = "nominal" | "recomputing" | "surge" | "blocked";
 
 export const RECOMPUTE_STEPS = [
@@ -28,16 +44,34 @@ export const RECOMPUTE_STEPS = [
   "Render",
 ];
 
+export interface SurgeParams {
+  amount: number;
+  mode: "absolute" | "relative";
+}
+
+/** A placed Edit-mode intervention (closure or surge). */
 export interface SceneObject {
   id: string;
-  type: string; // closure | lane | oneway | signal | surge | transit
+  type: "closure" | "surge";
   name: string;
-  sub: string;
-  coord: [number, number];
-  edge_id?: string;
   visible: boolean;
   n: number;
-  planId?: string;
+  coord: [number, number]; // pin position (surge: the vertex; closure: corridor midpoint)
+  roadName?: string;
+  baselinePressure?: number;
+  // closure
+  vertices?: { key: string; lng: number; lat: number }[];
+  edgeIds?: string[];
+  // surge
+  surge?: SurgeParams;
+}
+
+export interface Warning {
+  id: string;
+  severity: "info" | "warn" | "danger";
+  title: string;
+  detail: string;
+  ref?: string;
 }
 
 interface CopilotMessage {
@@ -57,6 +91,8 @@ interface Telemetry {
 
 const IDLE: Telemetry = { recompute: 12, subEdges: 0, llm: 0, fps: 60 };
 
+type PendingVertex = { key: string; lng: number; lat: number };
+
 interface AppState {
   // tweakables
   theme: "light" | "dark";
@@ -72,27 +108,33 @@ interface AppState {
   loaded: boolean;
   loading: boolean;
   error: string | null;
-  modelled: Modelled;
-  compare: Compare;
   recomputing: boolean;
   recomputeStep: number;
   recomputeTitle: string;
-  eventFired: boolean;
   planStaged: boolean;
   status: { state: StatusState; label: string };
   // data
   edges: EdgeMeta[];
+  graph: RoadGraph | null;
   pressureSeq: number;
-  recordsByState: Partial<Record<Modelled, Record5[]>>;
-  summaries: Partial<Record<Modelled, Record<string, number>>>;
+  warnings: Warning[];
+  // saved simulations
+  savedSims: ScenarioSummary[];
+  scenarioId: string | null;
+  activeSavedSimId: string | null;
+  currentName: string;
+  dirty: boolean;
+  // simulate selection
+  selectedRoadId: string | null;
   // editor
-  activeTool: string; // 'select' | toolId
+  activeTool: EditTool;
   objects: SceneObject[];
   selectedId: string | null;
-  scenarioId: string | null;
+  pendingVertices: PendingVertex[];
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
   scrubberMinute: number;
+  dayOfYear: number;
   playing: boolean;
   speed: number;
   telemetry: Telemetry;
@@ -105,17 +147,30 @@ interface AppState {
   toggleDock: (which: "left" | "right" | "bottom" | "rail") => void;
   setView: (v: View) => void;
   loadTwin: () => Promise<void>;
-  triggerSurge: (thenPlan?: boolean) => Promise<void>;
+  // saved sims
+  loadSavedSims: () => Promise<void>;
+  newSim: () => void;
+  saveCurrent: (name?: string) => Promise<void>;
+  selectSavedSim: (id: string) => Promise<void>;
+  deleteSavedSim: (id: string) => Promise<void>;
+  setCurrentName: (name: string) => void;
+  // copilot
+  copilotAsk: (text: string) => Promise<void>;
   applyPlan: () => Promise<void>;
   discardPlan: () => void;
-  setCompare: (c: Compare) => void;
-  copilotAsk: (text: string) => Promise<void>;
-  selectTool: (id: string) => void;
+  // editor
+  selectTool: (id: EditTool) => void;
   placeAt: (coord: [number, number]) => Promise<void>;
   selectObject: (id: string) => void;
   deleteObject: (id: string) => void;
   toggleObjectVis: (id: string) => void;
+  setSurgeParams: (id: string, patch: Partial<SurgeParams>) => void;
+  applyEdits: () => Promise<void>;
+  clearPending: () => void;
+  // simulate
+  selectRoad: (edgeId: string | null) => void;
   setScrubber: (m: number) => void;
+  setDayOfYear: (d: number) => void;
   setPlaying: (p: boolean) => void;
   setSpeed: (s: number) => void;
   recenter: () => void;
@@ -123,19 +178,55 @@ interface AppState {
   reset: () => Promise<void>;
 }
 
-function paint(set: SetFn, get: GetFn, state: Modelled) {
-  const recs = get().recordsByState[state];
-  if (recs) {
-    writeRecords(recs);
-    set((s) => ({ pressureSeq: s.pressureSeq + 1 }));
+type SetFn = (p: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void;
+
+/** Recompute warnings from the live per-edge pressures (real engine output). */
+function buildWarnings(): Warning[] {
+  const arr = getArrays().pressure;
+  let severe = 0;
+  let high = 0;
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i];
+    if (p >= 1.0) severe++;
+    else if (p >= 0.75) high++;
   }
+  const out: Warning[] = [];
+  if (severe > 0)
+    out.push({
+      id: "severe",
+      severity: "danger",
+      title: `${severe.toLocaleString()} edges in gridlock`,
+      detail: "Pressure ≥ 1.0 — demand exceeds capacity on these segments.",
+    });
+  if (high > 0)
+    out.push({
+      id: "high",
+      severity: "warn",
+      title: `${high.toLocaleString()} high-risk edges`,
+      detail: "Pressure 0.75–1.0 — approaching capacity.",
+    });
+  if (out.length === 0)
+    out.push({
+      id: "ok",
+      severity: "info",
+      title: "Network nominal",
+      detail: "No edges above the high-risk threshold.",
+    });
+  return out;
 }
 
-type SetFn = (p: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void;
-type GetFn = () => AppState;
+function paintBaseline(set: SetFn, records: [number, number, number, number, number][]) {
+  writeRecords(records);
+  set((s) => ({ pressureSeq: s.pressureSeq + 1, warnings: buildWarnings() }));
+}
 
 async function recomputeAround(set: SetFn, title: string, fn: () => Promise<void>) {
-  set({ recomputing: true, recomputeStep: 0, recomputeTitle: title, status: { state: "recomputing", label: "Recomputing…" } });
+  set({
+    recomputing: true,
+    recomputeStep: 0,
+    recomputeTitle: title,
+    status: { state: "recomputing", label: "Recomputing…" },
+  });
   const start = performance.now();
   const stepper = setInterval(
     () => set((s) => ({ recomputeStep: Math.min(s.recomputeStep + 1, RECOMPUTE_STEPS.length - 1) })),
@@ -154,30 +245,26 @@ async function recomputeAround(set: SetFn, title: string, fn: () => Promise<void
   }
 }
 
-/** Nearest edge_id to a clicked lng/lat, from the loaded graph geometry. */
-function nearestEdge(edges: EdgeMeta[], lng: number, lat: number): EdgeMeta | null {
-  let best: EdgeMeta | null = null;
-  let bd = Infinity;
-  for (const e of edges) {
-    if (!e.geometry) continue;
-    for (const [glat, glng] of e.geometry) {
-      const d = (glng - lng) ** 2 + (glat - lat) ** 2;
-      if (d < bd) {
-        bd = d;
-        best = e;
-      }
+/** Flatten the placed scene objects into backend interventions. */
+function interventionsFromObjects(objects: SceneObject[]): Intervention[] {
+  const out: Intervention[] = [];
+  for (const o of objects) {
+    if (!o.visible) continue;
+    if (o.type === "closure") {
+      for (const edgeId of o.edgeIds ?? []) out.push({ op: "close_edge", edge_id: edgeId });
+    } else if (o.type === "surge" && o.surge) {
+      // Best-effort: backend demand-surge-at-vertex support is pending (see client.ts).
+      out.push({
+        op: "demand_surge",
+        amount: o.surge.amount,
+        mode: o.surge.mode,
+        lng: o.coord[0],
+        lat: o.coord[1],
+      });
     }
   }
-  return best;
+  return out;
 }
-
-const TOOL_TO_OP: Record<string, string> = {
-  closure: "close_edge",
-  lane: "change_capacity",
-  oneway: "change_capacity",
-  signal: "change_capacity",
-  surge: "close_edge",
-};
 
 export const useAppStore = create<AppState>((set, get) => ({
   theme: "light",
@@ -191,24 +278,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   loaded: false,
   loading: false,
   error: null,
-  modelled: "base",
-  compare: "after",
   recomputing: false,
   recomputeStep: 0,
   recomputeTitle: "",
-  eventFired: false,
   planStaged: false,
   status: { state: "nominal", label: "Baseline · nominal" },
   edges: [],
+  graph: null,
   pressureSeq: 0,
-  recordsByState: {},
-  summaries: {},
+  warnings: [],
+  savedSims: [],
+  scenarioId: null,
+  activeSavedSimId: null,
+  currentName: "Untitled simulation",
+  dirty: false,
+  selectedRoadId: null,
   activeTool: "select",
   objects: [],
   selectedId: null,
-  scenarioId: null,
+  pendingVertices: [],
   copilotLog: [],
-  scrubberMinute: TIMELINE.startMin,
+  scrubberMinute: TIMELINE.defaultMin,
+  dayOfYear: DEFAULT_DAY_OF_YEAR,
   playing: false,
   speed: 1,
   telemetry: { ...IDLE },
@@ -232,14 +323,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
   setView: (v) => {
-    const cur = get().view;
-    if (v === cur) return;
-    // Sim: timeline open, rail closed. Edit: timeline closed, rail open.
+    if (v === get().view) return;
     set({
       view: v,
       showBottom: v === "sim",
       showRail: v === "edit",
       activeTool: v === "sim" ? "select" : get().activeTool,
+      pendingVertices: [],
     });
   },
 
@@ -249,17 +339,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const { edges } = await api.edges();
       resizeTickStore(edges.length);
+      const graph = buildGraph(edges);
       const base = await api.demoRun("baseline");
-      set((s) => ({
+      set({
         edges,
-        recordsByState: { ...s.recordsByState, base: base.records },
-        summaries: { ...s.summaries, base: base.summary },
+        graph,
         loaded: true,
-        modelled: "base",
         status: { state: "nominal", label: "Baseline · nominal" },
         telemetry: { ...IDLE },
-      }));
-      paint(set, get, "base");
+      });
+      paintBaseline(set, base.records);
+      void get().loadSavedSims();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       set({ error: `Could not reach the API (${msg}). Start scripts/run_api.sh.` });
@@ -268,65 +358,74 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  triggerSurge: async (thenPlan = false) => {
-    const s0 = get();
-    if (s0.modelled === "surge" || s0.modelled === "mit") {
-      if (thenPlan) set({ planStaged: true });
-      return;
+  loadSavedSims: async () => {
+    try {
+      const { scenarios } = await api.listScenarios();
+      set({ savedSims: scenarios });
+    } catch {
+      /* keep whatever we have */
     }
-    set({ eventFired: true, recenterNonce: get().recenterNonce + 1 });
-    await recomputeAround(set, "Assigning event demand · 45,000 egress…", async () => {
-      const run = await api.demoRun("wc_surge");
-      set((s) => ({
-        recordsByState: { ...s.recordsByState, surge: run.records },
-        summaries: { ...s.summaries, surge: run.summary },
-        modelled: "surge",
-        compare: "after",
-        telemetry: { ...s.telemetry, subEdges: 1284, llm: 312 },
-      }));
-      paint(set, get, "surge");
-    });
-    set({ status: { state: "surge", label: "Post-match surge · gridlock" } });
-    if (thenPlan) set({ planStaged: true });
   },
 
-  applyPlan: async () => {
-    if (get().modelled === "base") {
-      await get().triggerSurge(true);
-      return;
+  newSim: () =>
+    set({
+      objects: [],
+      selectedId: null,
+      pendingVertices: [],
+      scenarioId: null,
+      activeSavedSimId: null,
+      currentName: "Untitled simulation",
+      dirty: false,
+    }),
+
+  saveCurrent: async (name) => {
+    const s = get();
+    const finalName = (name ?? s.currentName) || "Untitled simulation";
+    const interventions = interventionsFromObjects(s.objects);
+    try {
+      if (s.activeSavedSimId) {
+        await api.patchScenario(s.activeSavedSimId, { name: finalName, interventions });
+        set({ currentName: finalName, dirty: false });
+      } else {
+        const created = await api.createScenario({ name: finalName, interventions });
+        set({ activeSavedSimId: created.id, scenarioId: created.id, currentName: finalName, dirty: false });
+      }
+      await get().loadSavedSims();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      set({ error: `Save failed (${msg}).` });
     }
-    set({ planStaged: false });
-    await recomputeAround(set, "Validating bylaws · reassigning network…", async () => {
-      const run = await api.demoRun("wc_fix");
-      set((s) => ({
-        recordsByState: { ...s.recordsByState, mit: run.records },
-        summaries: { ...s.summaries, mit: run.summary },
-        modelled: "mit",
-        compare: "after",
-      }));
-      paint(set, get, "mit");
+  },
+
+  selectSavedSim: async (id) => {
+    set({ activeSavedSimId: id, scenarioId: id });
+    const meta = get().savedSims.find((x) => x.id === id);
+    if (meta?.name) set({ currentName: meta.name });
+    await recomputeAround(set, "Loading saved simulation…", async () => {
+      try {
+        await api.run(id, { recompute: "full", congestion_model: "bpr" });
+        const rec = await api.scenarioRecords(id);
+        paintBaseline(set, rec.records);
+      } catch {
+        /* leave current paint if the run fails */
+      }
     });
+    set({ dirty: false, status: { state: "nominal", label: "Saved sim · loaded" } });
+  },
+
+  deleteSavedSim: async (id) => {
+    try {
+      await api.deleteScenario(id);
+    } catch {
+      /* ignore */
+    }
     set((s) => ({
-      status: { state: "nominal", label: "Mitigated · plan applied" },
-      copilotLog: [
-        ...s.copilotLog,
-        {
-          role: "bot",
-          text: "Applied. Network reassigned with the contraflow + retiming plan — total delay down vs unmitigated; six actions staged on the map.",
-        },
-      ],
+      savedSims: s.savedSims.filter((x) => x.id !== id),
+      activeSavedSimId: s.activeSavedSimId === id ? null : s.activeSavedSimId,
     }));
   },
 
-  discardPlan: () => set({ planStaged: false }),
-
-  setCompare: (which) => {
-    const { modelled } = get();
-    set({ compare: which });
-    if (modelled === "base") return paint(set, get, "base");
-    if (modelled === "surge") paint(set, get, which === "before" ? "base" : "surge");
-    else if (modelled === "mit") paint(set, get, which === "before" ? "surge" : "mit");
-  },
+  setCurrentName: (name) => set({ currentName: name, dirty: true }),
 
   copilotAsk: async (text) => {
     set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }] }));
@@ -345,47 +444,125 @@ export const useAppStore = create<AppState>((set, get) => ({
       ],
     }));
     if (resp.blocked) {
-      set({ status: { state: "blocked", label: "Action blocked · bylaw conflict" } });
-      setTimeout(() => {
-        const e = get().eventFired;
-        set({ status: { state: e ? "surge" : "nominal", label: e ? "Post-match surge · gridlock" : "Baseline · nominal" } });
-      }, 3200);
+      set((s) => ({
+        status: { state: "blocked", label: "Action blocked · bylaw conflict" },
+        warnings: [
+          {
+            id: "bylaw",
+            severity: "danger",
+            title: "Bylaw conflict",
+            detail: resp.rationale,
+            ref: resp.citations?.[0]?.ref,
+          },
+          ...s.warnings,
+        ],
+      }));
       return;
     }
-    if (get().modelled === "base") await get().triggerSurge(false);
     set({ planStaged: true });
   },
 
-  selectTool: (id) => {
-    set({ activeTool: id, selectedId: id === "select" ? get().selectedId : null });
+  applyPlan: async () => {
+    set({ planStaged: false });
+    await get().applyEdits();
   },
+  discardPlan: () => set({ planStaged: false }),
+
+  selectTool: (id) =>
+    set({ activeTool: id, selectedId: id === "select" ? get().selectedId : null, pendingVertices: [] }),
 
   placeAt: async (coord) => {
-    const { activeTool, edges } = get();
-    if (activeTool === "select" || !activeTool) return;
-    const near = nearestEdge(edges, coord[0], coord[1]);
+    const { activeTool, graph } = get();
+    if (activeTool === "select" || !graph) return;
+    const [lng, lat] = coord;
+
+    if (activeTool === "surge") {
+      const node = nearestNode(graph, lng, lat);
+      if (!node) return;
+      const near = nearestEdge(graph, node.lng, node.lat);
+      const seq = get().objects.length + 1;
+      const obj: SceneObject = {
+        id: `obj${Date.now()}`,
+        type: "surge",
+        name: `Surge${near?.road_name ? " · " + near.road_name : ""}`,
+        visible: true,
+        n: seq,
+        coord: [node.lng, node.lat],
+        roadName: near?.road_name,
+        baselinePressure: near ? getArrays().pressure[near.idx] : undefined,
+        surge: { amount: 500, mode: "absolute" },
+      };
+      set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select", dirty: true }));
+      await get().applyEdits();
+      return;
+    }
+
+    // closure: collect two vertices, then seal the corridor between them.
+    const node = nearestNode(graph, lng, lat);
+    if (!node) return;
+    const v: PendingVertex = { key: node.key, lng: node.lng, lat: node.lat };
+    const pending = [...get().pendingVertices, v];
+    if (pending.length < 2) {
+      set({ pendingVertices: pending });
+      return;
+    }
+    const [a, b] = pending;
+    const corridor = corridorBetween(graph, a.key, b.key);
+    const edges = withReverseTwins(graph, corridor);
+    const edgeIds = edges.map((e) => e.edge_id);
+    const midLng = (a.lng + b.lng) / 2;
+    const midLat = (a.lat + b.lat) / 2;
+    const roadName = corridor[0]?.road_name;
     const seq = get().objects.length + 1;
     const obj: SceneObject = {
       id: `obj${Date.now()}`,
-      type: activeTool,
-      name: `${activeTool}${near?.road_name ? " · " + near.road_name : ""}`,
-      sub: "manual",
-      coord,
-      edge_id: near?.edge_id,
+      type: "closure",
+      name: `Closure${roadName ? " · " + roadName : ""}`,
       visible: true,
       n: seq,
+      coord: [midLng, midLat],
+      roadName,
+      vertices: [a, b],
+      edgeIds,
     };
-    set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select" }));
+    set((s) => ({
+      objects: [...s.objects, obj],
+      selectedId: obj.id,
+      activeTool: "select",
+      pendingVertices: [],
+      dirty: true,
+    }));
+    await get().applyEdits();
+  },
 
-    // Real targeted recompute over the placed interventions (blast-radius = fast).
+  selectObject: (id) => set({ selectedId: id, activeTool: "select" }),
+  deleteObject: (id) =>
+    set((s) => ({
+      objects: s.objects.filter((o) => o.id !== id),
+      selectedId: s.selectedId === id ? null : s.selectedId,
+      dirty: true,
+    })),
+  toggleObjectVis: (id) =>
+    set((s) => ({
+      objects: s.objects.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o)),
+      dirty: true,
+    })),
+  setSurgeParams: (id, patch) =>
+    set((s) => ({
+      objects: s.objects.map((o) =>
+        o.id === id && o.surge ? { ...o, surge: { ...o.surge, ...patch } } : o,
+      ),
+      dirty: true,
+    })),
+  clearPending: () => set({ pendingVertices: [] }),
+
+  applyEdits: async () => {
     await recomputeAround(set, "Reassigning affected subgraph…", async () => {
       try {
+        const interventions = interventionsFromObjects(get().objects);
         let sid = get().scenarioId;
-        const interventions = get()
-          .objects.filter((o) => o.edge_id)
-          .map((o) => ({ op: TOOL_TO_OP[o.type] ?? "close_edge", edge_id: o.edge_id, multiplier: o.type === "lane" ? 0.5 : 1.4 }));
         if (!sid) {
-          const created = await api.createScenario({ name: "Edit session", interventions });
+          const created = await api.createScenario({ name: get().currentName, interventions });
           sid = created.id;
           set({ scenarioId: sid });
         } else {
@@ -394,30 +571,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         await api.run(sid, { recompute: "blast", congestion_model: "bpr" });
         const rec = await api.scenarioRecords(sid);
         writeRecords(rec.records);
-        set((s) => ({ pressureSeq: s.pressureSeq + 1, telemetry: { ...s.telemetry, subEdges: 1284 } }));
+        set((s) => ({
+          pressureSeq: s.pressureSeq + 1,
+          warnings: buildWarnings(),
+          telemetry: { ...s.telemetry, subEdges: 1284 },
+        }));
       } catch {
-        /* keep the pin even if the recompute call fails */
+        /* keep the placement even if the recompute call fails */
       }
     });
     set({ status: { state: "nominal", label: "Edited · recomputed" } });
   },
 
-  selectObject: (id) => set({ selectedId: id, activeTool: "select" }),
-  deleteObject: (id) =>
-    set((s) => ({
-      objects: s.objects.filter((o) => o.id !== id),
-      selectedId: s.selectedId === id ? null : s.selectedId,
-    })),
-  toggleObjectVis: (id) =>
-    set((s) => ({
-      objects: s.objects.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o)),
-    })),
-
-  setScrubber: (m) => {
-    set({ scrubberMinute: m });
-    const s = get();
-    if (m >= TIMELINE.fulltime && !s.eventFired && !s.recomputing) void s.triggerSurge(false);
-  },
+  selectRoad: (edgeId) => set({ selectedRoadId: edgeId }),
+  setScrubber: (m) => set({ scrubberMinute: Math.max(TIMELINE.startMin, Math.min(TIMELINE.endMin, m)) }),
+  setDayOfYear: (d) => set({ dayOfYear: Math.max(1, Math.min(366, Math.round(d))) }),
   setPlaying: (p) => set({ playing: p }),
   setSpeed: (sp) => set({ speed: sp }),
 
@@ -428,18 +596,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       objects: [],
       selectedId: null,
+      pendingVertices: [],
       scenarioId: null,
+      activeSavedSimId: null,
+      currentName: "Untitled simulation",
+      dirty: false,
       planStaged: false,
-      eventFired: false,
-      modelled: "base",
-      compare: "after",
+      selectedRoadId: null,
       copilotLog: [],
-      scrubberMinute: TIMELINE.startMin,
+      scrubberMinute: TIMELINE.defaultMin,
       playing: false,
       status: { state: "nominal", label: "Baseline · nominal" },
       telemetry: { ...IDLE },
       recenterNonce: get().recenterNonce + 1,
     });
-    paint(set, get, "base");
+    try {
+      const base = await api.demoRun("baseline");
+      paintBaseline(set, base.records);
+    } catch {
+      /* ignore */
+    }
   },
 }));

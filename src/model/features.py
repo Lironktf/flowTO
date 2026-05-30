@@ -15,7 +15,6 @@ A "row" describes one (node, time-context) pair:
 
 from __future__ import annotations
 
-import math
 from typing import Dict
 
 from ..graph.config import haversine_m
@@ -129,6 +128,7 @@ def normalize_time_context(tc: dict) -> dict:
 # Static (time-independent) node features, computed once per graph.
 # ---------------------------------------------------------------------------
 
+
 def compute_static_node_features(graph) -> Dict[object, dict]:
     """Return {node_id: {lat, lon, road_degree, distance_to_downtown,
     near_highway, road_class_rank, name}} for every node.
@@ -206,16 +206,56 @@ def rush_factor(hour: int, is_weekend: int) -> float:
     if is_weekend:
         # Flatter, peaks late morning and evening.
         base = {
-            0: 0.4, 1: 0.3, 2: 0.25, 3: 0.2, 4: 0.2, 5: 0.25, 6: 0.35,
-            7: 0.5, 8: 0.65, 9: 0.8, 10: 0.95, 11: 1.0, 12: 1.0, 13: 0.95,
-            14: 0.9, 15: 0.9, 16: 0.95, 17: 1.0, 18: 1.0, 19: 0.95, 20: 0.8,
-            21: 0.7, 22: 0.6, 23: 0.5,
+            0: 0.4,
+            1: 0.3,
+            2: 0.25,
+            3: 0.2,
+            4: 0.2,
+            5: 0.25,
+            6: 0.35,
+            7: 0.5,
+            8: 0.65,
+            9: 0.8,
+            10: 0.95,
+            11: 1.0,
+            12: 1.0,
+            13: 0.95,
+            14: 0.9,
+            15: 0.9,
+            16: 0.95,
+            17: 1.0,
+            18: 1.0,
+            19: 0.95,
+            20: 0.8,
+            21: 0.7,
+            22: 0.6,
+            23: 0.5,
         }
     else:
         base = {
-            0: 0.3, 1: 0.2, 2: 0.18, 3: 0.18, 4: 0.25, 5: 0.45, 6: 0.75,
-            7: 1.15, 8: 1.4, 9: 1.1, 10: 0.85, 11: 0.85, 12: 0.9, 13: 0.88,
-            14: 0.9, 15: 1.0, 16: 1.3, 17: 1.5, 18: 1.4, 19: 1.05, 20: 0.8,
-            21: 0.65, 22: 0.5, 23: 0.38,
+            0: 0.3,
+            1: 0.2,
+            2: 0.18,
+            3: 0.18,
+            4: 0.25,
+            5: 0.45,
+            6: 0.75,
+            7: 1.15,
+            8: 1.4,
+            9: 1.1,
+            10: 0.85,
+            11: 0.85,
+            12: 0.9,
+            13: 0.88,
+            14: 0.9,
+            15: 1.0,
+            16: 1.3,
+            17: 1.5,
+            18: 1.4,
+            19: 1.05,
+            20: 0.8,
+            21: 0.65,
+            22: 0.5,
+            23: 0.38,
         }
     return base.get(int(hour) % 24, 0.7)

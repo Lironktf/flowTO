@@ -47,7 +47,6 @@ import pandas as pd
 
 from .features import (
     DOWNTOWN_LATLON,
-    FEATURE_ORDER,
     compute_static_node_features,
     weather_code,
 )
@@ -159,7 +158,9 @@ def load_weather(weather_dir: str = WEATHER_DIR) -> Dict[tuple, str]:
 
     for _, row in wx.iterrows():
         try:
-            y = int(row[c_year]); mo = int(row[c_month]); d = int(row[c_day])
+            y = int(row[c_year])
+            mo = int(row[c_month])
+            d = int(row[c_day])
             hh = int(str(row[c_time]).split(":")[0])
         except (ValueError, TypeError):
             continue

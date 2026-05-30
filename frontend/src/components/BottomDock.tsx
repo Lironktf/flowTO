@@ -1,12 +1,21 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { TIMELINE } from "../config";
+import { congestionSeries } from "../lib/congestion";
 import { useAppStore } from "../state/appStore";
+import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
 
 const SPAN = TIMELINE.endMin - TIMELINE.startMin;
 const pct = (min: number) => ((min - TIMELINE.startMin) / SPAN) * 100;
 const fmtClock = (min: number) =>
-  `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+  `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(Math.round(min) % 60).padStart(2, "0")}`;
+
+function dateLabel(doy: number): string {
+  const d = new Date(Date.UTC(2026, 0, doy));
+  return d
+    .toLocaleDateString("en-CA", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" })
+    .toUpperCase();
+}
 
 export function BottomDock() {
   const minute = useAppStore((s) => s.scrubberMinute);
@@ -15,10 +24,15 @@ export function BottomDock() {
   const setPlaying = useAppStore((s) => s.setPlaying);
   const speed = useAppStore((s) => s.speed);
   const setSpeed = useAppStore((s) => s.setSpeed);
-  const modelled = useAppStore((s) => s.modelled);
+  const dayOfYear = useAppStore((s) => s.dayOfYear);
+  const setDayOfYear = useAppStore((s) => s.setDayOfYear);
+  const selectedRoadId = useAppStore((s) => s.selectedRoadId);
+  const selectRoad = useAppStore((s) => s.selectRoad);
+  const graph = useAppStore((s) => s.graph);
+  const pressureSeq = useAppStore((s) => s.pressureSeq);
   const laneRef = useRef<HTMLDivElement>(null);
 
-  // Playback: advance every 520/speed ms, snapped to the 15-min step.
+  // Playback: advance every 520/speed ms, snapped to the step.
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => {
@@ -41,12 +55,42 @@ export function BottomDock() {
     setScrubber(Math.round(raw / TIMELINE.step) * TIMELINE.step);
   };
 
-  // Ruler ticks every 15 min; major + label on the hour.
   const ticks: { min: number; major: boolean }[] = [];
-  for (let m = TIMELINE.startMin; m <= TIMELINE.endMin; m += TIMELINE.step) {
-    ticks.push({ min: m, major: m % 60 === 0 });
+  for (let m = TIMELINE.startMin; m <= TIMELINE.endMin; m += 60) {
+    ticks.push({ min: m, major: m % 180 === 0 });
   }
-  const frame = Math.round((minute - TIMELINE.startMin) * 2);
+
+  // Congestion-over-time: selected road's pressure, else the network average.
+  const selSeg = selectedRoadId && graph ? graph.byId.get(selectedRoadId) : null;
+  const series = useMemo(() => {
+    const arr = getArrays().pressure;
+    let amplitude: number;
+    if (selSeg) {
+      amplitude = Math.max(0.25, arr[selSeg.idx] ?? 0);
+    } else {
+      let sum = 0;
+      let c = 0;
+      for (let i = 0; i < arr.length; i++) {
+        if (arr[i] > 0) {
+          sum += arr[i];
+          c++;
+        }
+      }
+      amplitude = Math.max(0.2, c ? sum / c : 0.2);
+    }
+    return congestionSeries(amplitude, 96, TIMELINE.startMin, TIMELINE.endMin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selSeg, pressureSeq]);
+
+  const polyline = series
+    .map((p) => `${pct(p.min).toFixed(2)},${(100 - p.v * 100).toFixed(2)}`)
+    .join(" ");
+  const nowV = (() => {
+    // value at the current minute (nearest sample)
+    let best = series[0];
+    for (const p of series) if (Math.abs(p.min - minute) < Math.abs(best.min - minute)) best = p;
+    return best?.v ?? 0;
+  })();
 
   return (
     <div className="timeline">
@@ -59,7 +103,7 @@ export function BottomDock() {
             <Icon.stepBack />
           </button>
           <button className="tbtn play" onClick={() => setPlaying(!playing)}>
-            <Icon.play />
+            {playing ? <Icon.pause /> : <Icon.play />}
           </button>
           <button className="tbtn" onClick={() => setScrubber(Math.min(TIMELINE.endMin, minute + TIMELINE.step))}>
             <Icon.stepFwd />
@@ -68,13 +112,37 @@ export function BottomDock() {
             <Icon.jumpEnd />
           </button>
         </div>
+
         <div className="tl-clock">
           <span className="t">{fmtClock(minute)}</span>
-          <span className="frame">f {frame}</span>
-          <span className="dow">{TIMELINE.dow}</span>
+          <span className="dow">{dateLabel(dayOfYear)}</span>
         </div>
+
+        <div className="day-control">
+          <Icon.calendar />
+          <input
+            type="range"
+            className="range-mini"
+            min={1}
+            max={365}
+            value={dayOfYear}
+            onChange={(e) => setDayOfYear(Number(e.target.value))}
+            title="Day of year"
+          />
+        </div>
+
         <div className="tl-right">
-          <span className="dow">{minute >= TIMELINE.fulltime ? "Full-time · egress" : "Matchday replay"}</span>
+          <span className="cong-readout">
+            <Icon.chart />
+            <span className="cr-tx">
+              {selSeg ? selSeg.road_name ?? "Selected road" : "Network"} · {(nowV * 100).toFixed(0)}%
+            </span>
+            {selSeg && (
+              <button className="cr-clear" onClick={() => selectRoad(null)} title="Clear selection">
+                ×
+              </button>
+            )}
+          </span>
           <div className="tl-speed">
             {[0.5, 1, 2, 4].map((s) => (
               <button key={s} className={speed === s ? "on" : ""} onClick={() => setSpeed(s)}>
@@ -94,49 +162,15 @@ export function BottomDock() {
           ))}
         </div>
 
-        <div className="tl-kfrow">
-          <div className="tl-kf filled" style={{ left: `${pct(TIMELINE.kickoff)}%` }} onClick={() => setScrubber(TIMELINE.kickoff)} title="Kickoff" />
-          <div className="tl-kf event" style={{ left: `${pct(TIMELINE.fulltime)}%` }} onClick={() => setScrubber(TIMELINE.fulltime)} title="Full-time" />
-        </div>
-
         <div className="tl-playzone">
-          <div className="tl-tracks">
-            <div className="tl-track">
-              <span className="trk-name">Congest</span>
-              <div className="trk-lane">
-                <div className="trk-fill">
-                  <div
-                    className="heat"
-                    style={{
-                      background:
-                        "linear-gradient(90deg, var(--c-free), var(--c-light) 45%, var(--c-mod) 62%, var(--c-sev) 78%, var(--c-heavy))",
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="tl-track">
-              <span className="trk-name">Demand</span>
-              <div className="trk-lane">
-                <div className="trk-clip" style={{ left: `${pct(TIMELINE.kickoff)}%`, width: `${pct(TIMELINE.fulltime) - pct(TIMELINE.kickoff)}%` }}>
-                  <span className="cl">MATCH 90'</span>
-                </div>
-                <div className="trk-clip evt" style={{ left: `${pct(TIMELINE.fulltime)}%`, width: "16%" }}>
-                  <span className="cl">EGRESS 45k</span>
-                </div>
-              </div>
-            </div>
-            <div className="tl-track">
-              <span className="trk-name">Plan</span>
-              <div className="trk-lane">
-                {modelled === "mit" ? (
-                  <div className="trk-clip transit" style={{ left: `${pct(TIMELINE.fulltime)}%`, width: "26%" }}>
-                    <span className="cl">CONTRAFLOW + 509/511</span>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          <svg className="cong-chart" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polyline
+              points={`0,100 ${polyline} 100,100`}
+              fill="var(--cobalt-wash)"
+              stroke="none"
+            />
+            <polyline points={polyline} fill="none" stroke="var(--cobalt)" strokeWidth={0.8} vectorEffect="non-scaling-stroke" />
+          </svg>
 
           <div className="tl-playhead" style={{ left: `${pct(minute)}%` }}>
             <div className="ph-grip" />

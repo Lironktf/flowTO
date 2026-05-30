@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"INTERSECTION_ID": 100, "INTERSECTION_DESC": "Yonge St / College St", "CLASSIFICATION": "Single Level", "ELEVATION": 0, "NUMBER_OF_ELEVATIONS": 1},
+      "geometry": {"type": "Point", "coordinates": [-79.385, 43.670]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"INTERSECTION_ID": 200, "INTERSECTION_DESC": "Yonge St / King St W", "CLASSIFICATION": "Single Level", "ELEVATION": 0, "NUMBER_OF_ELEVATIONS": 1},
+      "geometry": {"type": "Point", "coordinates": [-79.384, 43.672]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"INTERSECTION_ID": 300, "INTERSECTION_DESC": "King St W / Bay St", "CLASSIFICATION": "Single Level", "ELEVATION": 0, "NUMBER_OF_ELEVATIONS": 1},
+      "geometry": {"type": "Point", "coordinates": [-79.382, 43.673]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"INTERSECTION_ID": 300, "INTERSECTION_DESC": "King St W / Bay St (upper)", "CLASSIFICATION": "Multi Level", "ELEVATION": 1, "NUMBER_OF_ELEVATIONS": 2},
+      "geometry": {"type": "Point", "coordinates": [-79.382, 43.673]}
+    }
+  ]
+}

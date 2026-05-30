@@ -81,11 +81,11 @@ def _strengths(node_demands, static, tc):
         o = demand * rank_factor
         d = demand * rank_factor
         if morning:
-            o *= 0.5 + _outer_pull(dist)        # commuters start outside
+            o *= 0.5 + _outer_pull(dist)  # commuters start outside
             d *= 0.5 + 2.0 * _downtown_pull(dist)  # heading downtown
         elif evening:
             o *= 0.5 + 2.0 * _downtown_pull(dist)  # leaving downtown
-            d *= 0.5 + _outer_pull(dist)        # heading home
+            d *= 0.5 + _outer_pull(dist)  # heading home
         elif weekend_pm:
             d *= 0.6 + 1.5 * _downtown_pull(dist)  # nightlife/venues pull
         origin_strength[node] = o
@@ -110,7 +110,6 @@ def generate_od_matrix(
 
     origins = sorted(origin_strength, key=lambda n: -origin_strength[n])[:TOP_ORIGINS]
     dests = sorted(dest_strength, key=lambda n: -dest_strength[n])[:TOP_DESTS]
-    dest_set = set(dests)
 
     pairs = []
     for i in origins:
@@ -136,7 +135,4 @@ def generate_od_matrix(
     total_val = sum(v for _, _, v in pairs)
     scale = (nominal_total / total_val) if total_val > 0 else 0.0
 
-    return [
-        {"origin": i, "destination": j, "trips": v * scale}
-        for (i, j, v) in pairs
-    ]
+    return [{"origin": i, "destination": j, "trips": v * scale} for (i, j, v) in pairs]

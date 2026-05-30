@@ -29,9 +29,9 @@ export function FirstRun() {
           A live digital twin of <b>Toronto</b>.
         </h1>
         <div className="fr-lede">
-          Two modes: <b>Simulate</b> the matchday on a video-editor timeline, or <b>Edit</b> the
-          network top-down — drop closures, lane reductions, one-ways, and signal retiming, and watch
-          the twin recompute. 100% on-device.
+          Two modes: <b>Simulate</b> the day on a timeline with time-of-day lighting, or <b>Edit</b>{" "}
+          the network top-down — seal a corridor between two intersections or inject a demand surge,
+          and watch the twin recompute. 100% on-device.
         </div>
         <div className="fr-meta">
           <div className="m">

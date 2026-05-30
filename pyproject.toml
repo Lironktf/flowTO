@@ -7,7 +7,7 @@ name = "torontosim"
 version = "0.1.0"
 description = "TorontoSim — local-first 3-D Toronto traffic digital twin (DGX Spark)"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 license = { text = "MIT" }
 authors = [{ name = "FlowTo" }]
 dependencies = [
@@ -33,6 +33,9 @@ gpu = ["cudf-cu13", "cugraph-cu13"]
 ai = ["ollama>=0.3", "sentence-transformers>=3.0", "chromadb>=0.5"]
 # Backend API.
 api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "websockets>=12.0", "pydantic>=2.0"]
+# Real GTFS transit (P08): production accelerator for shape geometrization. The
+# stdlib reader in transit.gtfs_reader keeps tests hermetic without this.
+transit = ["gtfs_kit>=6.0"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }

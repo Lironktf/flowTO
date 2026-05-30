@@ -1,0 +1,5 @@
+CENTRELINE_ID,LINEAR_NAME_FULL,FROM_INTERSECTION_ID,TO_INTERSECTION_ID,ONEWAY_DIR_CODE,FEATURE_CODE,FEATURE_CODE_DESC,geometry
+13466414,Yonge St,100,200,0,201100,Major Arterial,"{""type"":""LineString"",""coordinates"":[[-79.385,43.670],[-79.3845,43.671],[-79.384,43.672]]}"
+13466500,King St W,200,300,1,201200,Minor Arterial,"{""type"":""LineString"",""coordinates"":[[-79.384,43.672],[-79.382,43.673]]}"
+13466600,Adelaide St,300,100,0,201300,Collector,"{""type"":""LineString"",""coordinates"":[[-79.382,43.673],[-79.3835,43.6715],[-79.385,43.670]]}"
+99999999,Humber River,400,500,0,500100,River,"{""type"":""LineString"",""coordinates"":[[-79.5,43.6],[-79.5,43.61]]}"

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import networkx as nx
 
@@ -31,6 +31,7 @@ EdgeKey = Tuple[object, object, int]
 # ---------------------------------------------------------------------------
 # Edge-id index
 # ---------------------------------------------------------------------------
+
 
 def build_edge_index(graph: nx.MultiDiGraph) -> Dict[str, EdgeKey]:
     """(Re)build and cache the edge_id -> (u, v, key) lookup on the graph.
@@ -83,6 +84,7 @@ def get_edge_data(graph: nx.MultiDiGraph, edge_id: str) -> dict:
 # ---------------------------------------------------------------------------
 # Nearest node / edge (pure-python, haversine based)
 # ---------------------------------------------------------------------------
+
 
 def _node_lat(data: dict) -> Optional[float]:
     if "y" in data:
@@ -175,6 +177,7 @@ def get_nearest_edge(graph: nx.MultiDiGraph, lat: float, lon: float) -> str:
 # Shortest path
 # ---------------------------------------------------------------------------
 
+
 def _weight_func(weight: str):
     """Build a networkx weight callable that skips closed/impassable edges.
 
@@ -242,9 +245,7 @@ def find_shortest_path(
     }
 
     try:
-        nodes = nx.shortest_path(
-            graph, origin_node, destination_node, weight=_weight_func(weight)
-        )
+        nodes = nx.shortest_path(graph, origin_node, destination_node, weight=_weight_func(weight))
     except (nx.NetworkXNoPath, nx.NodeNotFound):
         return result
 
@@ -302,6 +303,7 @@ def _cheapest_edge(graph: nx.MultiDiGraph, u, v, weight: str):
 # Summary
 # ---------------------------------------------------------------------------
 
+
 def summarize_graph(graph: nx.MultiDiGraph) -> dict:
     """Return (and print) a small summary of the graph's state."""
     num_nodes = graph.number_of_nodes()
@@ -342,6 +344,7 @@ def summarize_graph(graph: nx.MultiDiGraph) -> dict:
 # ---------------------------------------------------------------------------
 # JSON import / export
 # ---------------------------------------------------------------------------
+
 
 def export_graph_json(graph: nx.MultiDiGraph, path: Optional[str] = None) -> dict:
     """Serialise the graph into the clean simulation JSON format.

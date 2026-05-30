@@ -1,0 +1,4 @@
+route_id,service_id,trip_id,shape_id
+509,WKDY,509_A,shp_509
+509,WKDY,509_LATE,shp_509
+7,WKDY,7_A,shp_7

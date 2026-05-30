@@ -105,7 +105,7 @@ def build_nodes(intersection_records) -> dict:
         iid = int(iid) if str(iid).isdigit() else iid
         if iid in nodes:
             continue  # multi-level intersection -> keep first (planar dedupe)
-        geom = _get(rec, "geometry", "geom")
+        geom = _get(rec, "geometry", "geometry_wkt", "geom")
         ll = _coords_latlon(geom)
         if ll:
             lat, lon = ll[0][0], ll[0][1]
@@ -164,7 +164,7 @@ def build_centreline_graph(
         if a not in node_xy or b not in node_xy:
             continue  # endpoint not in intersection file — skip (honest)
 
-        geom = _coords_latlon(_get(rec, "geometry", "geom"))
+        geom = _coords_latlon(_get(rec, "geometry", "geometry_wkt", "geom"))
         if geom and len(geom) >= 2:
             length_m = _polyline_length_m(geom)
         else:

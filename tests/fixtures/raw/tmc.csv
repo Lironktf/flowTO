@@ -1,0 +1,4 @@
+_id,count_id,count_date,location_name,longitude,latitude,centreline_type,centreline_id,px,start_time,end_time,n_appr_cars_r,n_appr_cars_t,n_appr_cars_l,s_appr_cars_t,e_appr_cars_t,w_appr_cars_t,n_appr_truck_t,n_appr_bus_t,n_appr_peds,n_appr_bike
+1,5001,2022-06-01,YONGE ST AT KING ST,-79.384,43.672,2,13466414,42,2022-06-01T08:00:00,2022-06-01T08:15:00,10,120,8,90,40,35,5,3,12,4
+2,5001,2022-06-01,YONGE ST AT KING ST,-79.384,43.672,2,13466414,42,2022-06-01T08:15:00,2022-06-01T08:30:00,12,140,9,95,42,33,6,4,15,2
+3,5002,2022-06-01,KING ST AT BAY ST,-79.382,43.673,2,13466500,7,2022-06-01T08:00:00,2022-06-01T08:15:00,5,88,6,70,30,28,3,2,9,1

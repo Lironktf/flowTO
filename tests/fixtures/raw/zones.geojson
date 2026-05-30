@@ -1,0 +1,15 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"AREA_SHORT_CODE": "75", "AREA_NAME": "Church-Yonge Corridor", "CLASSIFICATION": "Neighbourhood"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-79.386, 43.668], [-79.382, 43.668], [-79.382, 43.674], [-79.386, 43.674], [-79.386, 43.668]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"AREA_SHORT_CODE": "76", "AREA_NAME": "Bay Street Corridor", "CLASSIFICATION": "Neighbourhood"},
+      "geometry": {"type": "Polygon", "coordinates": [[[-79.390, 43.650], [-79.378, 43.650], [-79.378, 43.660], [-79.390, 43.660], [-79.390, 43.650]]]}
+    }
+  ]
+}

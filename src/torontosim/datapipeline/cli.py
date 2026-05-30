@@ -24,9 +24,7 @@ CKAN_DATASETS = {
     "zones": ("neighbourhoods", "geojson"),
 }
 
-DEFAULT_DATA = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data"
-)
+DEFAULT_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data")
 
 
 def _resolve_data_dir(arg: str | None) -> str:
@@ -81,18 +79,49 @@ def cmd_fetch(args) -> int:
 
 
 def cmd_bake(args) -> int:
-    """Normalize the raw cache to Parquet + DuckDB catalog (offline)."""
+    """Normalize the raw cache to Parquet + DuckDB catalog + manifest (offline)."""
     from . import bake
 
     data_dir = _resolve_data_dir(args.data_dir)
+    raw_dir = os.path.join(data_dir, "raw")
     pq_dir = os.path.join(data_dir, "parquet")
     os.makedirs(pq_dir, exist_ok=True)
     db_path = os.path.join(data_dir, "catalog.duckdb")
-    # Bake is dataset-specific; the CKAN CSV/GeoJSON readers land per-dataset in
-    # follow-up work. Here we (re)build the catalog over whatever parquet exists.
-    bake.build_catalog(pq_dir, db_path)
+    manifest_path = os.path.join(data_dir, "manifest.json")
+
+    # Per-dataset CKAN CSV/GeoJSON normalizers -> parquet; then build the catalog
+    # + lineage manifest over whatever was baked.
+    report = bake.bake_all(raw_dir, pq_dir, db_path=db_path, manifest_path=manifest_path)
+    for name, r in sorted(report.items()):
+        print(f"[bake] {name:14} rows={r['rows']:>8} -> {r['parquet']}")
+    if not report:
+        print(f"[bake] no raw datasets under {raw_dir}; run `fetch` first", file=sys.stderr)
     print(f"[bake] catalog -> {db_path}")
+    print(f"[bake] manifest -> {manifest_path}")
+
+    # Bake fetched GTFS zips (raw/gtfs_{agency}_{date}.zip) -> real transit feeds
+    # cached at data/transit/{agency}_{date}.json for the overlay.
+    _bake_transit(raw_dir, data_dir)
     return 0
+
+
+def _bake_transit(raw_dir: str, data_dir: str) -> None:
+    """Cache each fetched GTFS zip to data/transit/{agency}_{date}.json."""
+    import glob
+
+    from ..transit import gtfs_reader
+
+    for zpath in sorted(glob.glob(os.path.join(raw_dir, "gtfs_*.zip"))):
+        stem = os.path.splitext(os.path.basename(zpath))[0]  # gtfs_<agency>_<date>
+        parts = stem.split("_", 2)
+        if len(parts) < 3:
+            continue
+        _, agency, date = parts
+        try:
+            out = gtfs_reader.build_feed_cache(zpath, agency=agency, date=date, data_dir=data_dir)
+            print(f"[bake] transit/{agency}: {out}")
+        except Exception as exc:  # noqa: BLE001 — a bad feed shouldn't fail the bake.
+            print(f"[bake] transit/{agency} FAILED: {exc!r}", file=sys.stderr)
 
 
 def cmd_verify(args) -> int:

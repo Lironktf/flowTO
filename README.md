@@ -1,1 +1,121 @@
-# flowTO
+# FlowTO — a live digital twin of Toronto
+
+> NVIDIA Spark Hack submission · **100% on-device** on a DGX Spark (GB10).
+> A city-scale traffic + transit digital twin: simulate the network, apply
+> interventions, and watch it recompute — driven by a principled equilibrium
+> engine, an adaptive blast-radius recompute, and an on-device Nemotron copilot.
+> **Hero scenario:** FIFA WC 2026 post-match egress at BMO Field.
+
+The web app is a two-mode planner's instrument:
+
+- **Simulate** — a 3-D camera + a non-linear-editor timeline; scrub the matchday,
+  cross full-time, watch the egress surge, and compare Before / After.
+- **Edit** — a top-down workspace with a tool rail; click the map to drop
+  closures / lane reductions / one-ways / signal retiming, snapped to real roads,
+  recomputed via blast-radius.
+
+Everything on the map is **real engine output** — the actual 18,190-edge Toronto
+graph recolored by the assignment engine, not canned data.
+
+---
+
+## Quick start
+
+```bash
+# 1. Python env + tests (CPU)
+make install          # venv + pip install -e .[dev,...]
+make test             # pytest -q  → 104 passed, 2 skipped (spark-gated)
+
+# 2. Run the API (loads the real graph, warms the demo cache)
+scripts/run_api.sh                         # http://localhost:8000  (OpenAPI at /docs)
+
+# 3. Run the frontend (proxies /api → :8000)
+cd frontend && npm install && npm run dev  # http://localhost:5173
+
+# 4. Headless demo + perf evidence
+python -m torontosim.demo.wc_surge --scenario all   # baseline → surge → fix (deterministic)
+python -m torontosim.perf.bench                     # full-city vs blast-radius (~15× speedup)
+```
+
+Then open **:5173**, click **Load the twin**, and use the **Simulate / Edit**
+switch. The 90-second run-of-show is in [`demo/RUNBOOK.md`](demo/RUNBOOK.md);
+phase-by-phase test commands in [`docs/specs/TESTING.md`](docs/specs/TESTING.md);
+browser QA in [`docs/specs/VISUAL_TESTING.md`](docs/specs/VISUAL_TESTING.md).
+
+---
+
+## Architecture
+
+```
+ Toronto open data ─► datapipeline ─► graph (OSMnx baseline + Centreline loader)
+                                         │
+                          demand & OD (ML node-demand + IPF/ODME)
+                                         │
+                 simulation engine ──────┴───────────────────────────┐
+                 BPR + Frank-Wolfe user equilibrium                   │
+                 (oracle-validated vs SiouxFalls; CPU + cuGraph)      │
+                 blast-radius adaptive recompute ──────────► FastAPI ─┼─► deck.gl + MapLibre
+                                                              REST +  │   two-view IDE
+                 copilot (Nemotron via Ollama) ─────────────► WS      │   (Simulate · Edit)
+                 optimizer (heuristic, sim-as-verifier; cuOpt-ready)  │
+```
+
+**The CPU path is the demo path.** GPU (cuGraph) and LLM (Nemotron) live behind
+flags and are validated on the Spark via an SSH smoke harness — they upgrade the
+demo but never block it.
+
+### Python package — `src/torontosim/`
+| Module | What it does |
+|---|---|
+| `datapipeline/` | Fetch (CKAN/GTFS/weather/restrictions) → Parquet + DuckDB + manifest |
+| `graph/` | Canonical road graph: OSMnx baseline + Centreline loader, capacity calibration, per-field confidence |
+| `model/` | Weather-aware ML node-demand → gravity OD + **IPF/Furness** + pragmatic **ODME** + TTS/Census seed |
+| `simulation/` | **BPR + Frank-Wolfe / Conjugate-FW user equilibrium**; CPU (Dijkstra) + GPU (cuGraph SSSP) backends; TNTP oracle |
+| `blastradius/` | Affected-OD detection + bounded cones + adaptive subgraph recompute |
+| `api/` | FastAPI: scenario CRUD, run/preview/compare, binary WS tick frames, `/demo/run`, copilot/optimize |
+| `copilot/` | Nemotron NL → validated tool calls (preview-first, re-ask), bylaw constraint checker, local RAG |
+| `optimizer/` | Heuristic proposals scored by **running the sim** (sim-as-verifier); cuOpt client (Spark add-on) |
+| `transit/` | GTFS → route lines + scheduled vehicle trajectories (visual overlay) |
+| `perf/` | Timing harness + benchmark CLI (full-city vs blast-radius) |
+| `demo/` | FIFA WC match-day surge + the three deterministic demo scenarios |
+
+`frontend/` — React + Vite + TypeScript, deck.gl + MapLibre, Zustand; design
+system in `frontend/src/styles/flowto.css` (recreated from `design/`).
+
+---
+
+## What's verified (not just asserted)
+- **Engine correctness** — Conjugate-Frank-Wolfe link flows match the **published
+  SiouxFalls user-equilibrium to ~0.1%**; assignment is byte-for-byte deterministic.
+- **Blast-radius** — equals a full recompute exactly at the all-or-nothing layer;
+  **15.2× measured speedup** (11.6 s → 766 ms) on the full graph.
+- **On the DGX Spark** — cuGraph SSSP backend matches CPU (`RAPIDS_OK`, cuDF/cuGraph
+  26.04 on GB10); live `nemotron3:33b` parses NL → a valid, cited tool call (`OLLAMA_OK`).
+- **Determinism** — the three demo scenarios (`baseline → wc_surge → wc_fix`) reproduce
+  identical numbers every run; the egress-area congestion melts red→green.
+- **Tests** — backend `pytest -q` = 104 passed / 2 skipped (the 2 are Spark GPU + LLM,
+  both run green on the Spark); frontend `npm run build` + 12 vitest.
+
+## Status & honest deferrals
+The MVP (all 13 phases P00–P12) is complete and green. Deferred items are
+network-/hardware-bound and each has a working fallback (see
+[`docs/specs/HANDOFF.md`](docs/specs/HANDOFF.md)):
+- Real full data fetch (Centreline 118 MB, TMC, GTFS) — runs pre-event/on the Spark;
+  the committed OSMnx graph + demand model carry the demo.
+- cuOpt not installed on the Spark → the heuristic optimizer is the path.
+- 3-D extruded buildings need the 3D-massing dataset (basemap is a flat ground for now).
+- The interactive demo runs on the fast k-path engine with the equilibrium engine
+  behind a flag (the equilibrium solve is seconds on the full graph).
+
+## Docs
+- [`docs/specs/ROADMAP.md`](docs/specs/ROADMAP.md) — phases, locked decisions, dependency graph
+- [`docs/specs/BUILD_STATUS.md`](docs/specs/BUILD_STATUS.md) — per-phase status dashboard
+- [`docs/specs/HANDOFF.md`](docs/specs/HANDOFF.md) — what's done/deferred + exact run commands
+- [`docs/specs/TESTING.md`](docs/specs/TESTING.md) · [`docs/specs/VISUAL_TESTING.md`](docs/specs/VISUAL_TESTING.md) — how to test
+- [`infra/README-spark.md`](infra/README-spark.md) — the DGX Spark harness + gating verdicts
+- `docs/00-…05-…` — original planning briefs · `README_MODEL_SIMULATION.md` — Liron's prototype
+
+## Attribution
+Contains information licensed under the **Open Government Licence – Toronto**
+(City of Toronto open data) and **Open Government Licence – Ontario** (Metrolinx
+GTFS); weather from Environment and Climate Change Canada.

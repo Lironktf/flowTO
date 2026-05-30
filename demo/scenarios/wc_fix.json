@@ -1,0 +1,13 @@
+{
+  "id": "wc_fix",
+  "name": "FIFA WC26 egress — mitigated (road-side plan)",
+  "time_context": { "hour": 17, "day_of_week": 4, "month": 6, "weather": "clear" },
+  "surge": { "generator": "BMO Field / Exhibition Place", "coord": [-79.4185, 43.6332], "egress_trips": 45000, "k_dest": 40, "full_time": "17:05" },
+  "mitigation": { "transit_shift": 0.30, "capacity_uplift": 1.4, "radius_m": 1500 },
+  "interventions": [
+    { "plan": "Eastbound contraflow on Lake Shore Blvd W (Strachan → Bathurst), 17:00–18:30" },
+    { "plan": "Retime Dufferin & Strachan signals — 110 s cycle, egress-biased splits" },
+    { "plan": "Close Princes' Blvd to general traffic (pedestrian egress); hold 509/511 transit priority" }
+  ],
+  "note": "Models contraflow + signal retiming as capacity uplift near the stadium, plus a 30% transit/pedestrian shift off the road OD. Egress congestion eases; zero hard-constraint conflicts."
+}

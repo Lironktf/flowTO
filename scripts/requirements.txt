@@ -1,0 +1,18 @@
+# FlowTO Spark backend deps (verified on GB10 / aarch64 / CUDA 13, 2026-05-29)
+# Backend / API
+fastapi
+uvicorn
+websockets
+requests
+numpy
+pandas
+# GPU compute (sees GB10, sm_121) -- mesoscopic sim kernels
+warp-lang
+# Geospatial / network graph
+osmnx
+geopandas
+shapely
+networkx
+# Transit feeds
+gtfs_kit
+# LLM copilot talks to local Ollama over HTTP (no python client dep needed)

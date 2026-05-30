@@ -193,16 +193,25 @@ def load_tmc(raw_dir: str = RAW_DIR) -> pd.DataFrame:
     Resolves the real open-data column names and derives time parts from
     `start_time` (ISO, e.g. '2020-03-10T13:30:00').
     """
-    files = sorted(glob.glob(os.path.join(raw_dir, "tmc_raw_data_*.csv")))
-    if not files:
-        raise FileNotFoundError(
-            f"no tmc_raw_data_*.csv in {raw_dir} — see scripts/fetch_data.sh")
-    frames = []
-    for f in files:
-        df = pd.read_csv(f, low_memory=False)
-        frames.append(df)
-        print(f"[tmc] {os.path.basename(f)}: {len(df):,} rows")
-    df = pd.concat(frames, ignore_index=True)
+    # Prefer the P01 baked Parquet store when present (data/parquet/tmc.parquet);
+    # fall back to Liron's raw CSVs so this stays runnable before a `bake`.
+    parquet = os.path.join(_REPO_ROOT, "data", "parquet", "tmc.parquet")
+    if os.path.exists(parquet):
+        df = pd.read_parquet(parquet)
+        print(f"[tmc] parquet store: {len(df):,} rows ({parquet})")
+    else:
+        files = sorted(glob.glob(os.path.join(raw_dir, "tmc_raw_data_*.csv")))
+        if not files:
+            raise FileNotFoundError(
+                f"no tmc_raw_data_*.csv in {raw_dir} — see scripts/fetch_data.sh "
+                "(or run `python -m torontosim.datapipeline fetch --only tmc && … bake`)"
+            )
+        frames = []
+        for f in files:
+            df = pd.read_csv(f, low_memory=False)
+            frames.append(df)
+            print(f"[tmc] {os.path.basename(f)}: {len(df):,} rows")
+        df = pd.concat(frames, ignore_index=True)
 
     c_lat = _first_col(df, "latitude", "lat")
     c_lon = _first_col(df, "longitude", "lng", "lon")

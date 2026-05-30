@@ -9,7 +9,7 @@
 | Phase | Title | Status | Notes |
 |---|---|---|---|
 | P00 | Repo restructure, env, Spark harness | done ✅ | `torontosim` pkg + shims; pyproject/Makefile/CI; Spark harness verified end-to-end. PR: FLO-6. |
-| P01 | Data pipeline → Parquet feature store | todo | |
+| P01 | Data pipeline → Parquet feature store | done ✅ | `datapipeline` module (ckan/restrictions/gtfs/weather/bake/manifest/cli); mocked tests + offline bake/verify. Real full fetch deferred to pre-event/Spark (network). PR: FLO-7. |
 | P02 | Road graph (OSMnx + Centreline) | todo | |
 | P03 | Demand & OD (ML + IPF + TTS seed) | todo | |
 | P04 | Simulation engine (BPR + Frank-Wolfe + oracle) | todo | |
@@ -39,6 +39,7 @@
 | 2026-05-30 | P00 T00.5 | done ✅ | Spark harness (`scripts/spark/*`) + smokes; verified RAPIDS_OK + OLLAMA_OK on gx10-4f5f. |
 | 2026-05-30 | P00 T00.6 | done ✅ | GitHub Actions CI (py3.12, ruff+black+pytest, spark tests skipped). |
 | 2026-05-30 | P00 T00.7 | done ✅ | Local verify green (5 passed, lint clean); Spark round-trip + both smokes green. |
+| 2026-05-30 | P01 T01.1–T01.7 | done ✅ | `datapipeline`: CKAN resolve-by-name+paginate, live CART restrictions parse, GTFS TTC/GO/UP feeds, ECCC weather + filename fix, parquet+DuckDB bake/verify, manifest+attribution, CLI. 12 mocked/fixture tests green; `ingest_real_data` now prefers parquet w/ raw fallback. Full network fetch (TCL 118MB etc.) deferred to pre-event/Spark. |
 
 ## Blocked / deferred (surface for the human)
 _(none yet)_

@@ -6,6 +6,14 @@
 #
 # Everything lands under data/raw/ where `ingest_real_data.py` expects it.
 #
+# NOTE (P01): the canonical, reproducible ingest is now the Python CLI
+#   python -m torontosim.datapipeline fetch [--only ttc,tmc,centreline,...]
+#   python -m torontosim.datapipeline bake
+#   python -m torontosim.datapipeline verify
+# which also fetches Centreline/intersections/signals/bridges/GTFS and writes a
+# provenance manifest. This script remains for the TMC+weather quick path that
+# the demand model trains from (weather uses the ECCC bulk endpoint, not CKAN).
+#
 # Usage:
 #   scripts/fetch_data.sh                 # counts (2020-2029) + weather 2020-2024
 #   YEARS="2018 2019 2020 2021 2022 2023 2024" scripts/fetch_data.sh

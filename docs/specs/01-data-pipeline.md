@@ -53,13 +53,13 @@ All IDs/URLs/gotchas: **`research/01-toronto-datasets.md`** (CKAN API, exact UUI
 **On Spark:** run full `fetch+bake` over SSH (the Spark has the disk + may be the air-gapped runtime) and `pull.sh` the manifest back; confirm reproducible sha256s.
 
 ## Tasks
-- [ ] T01.1 `ckan.py` fetcher + resolve-by-name + pagination — *1d*
-- [ ] T01.2 `restrictions.py` live CART feed (UA, epoch ms, polyline) — *0.5d*
-- [ ] T01.3 `gtfs.py` TTC/GO/UP fetch + tagging — *0.5d*
-- [ ] T01.4 `weather.py` ECCC + filename fix — *0.5d*
-- [ ] T01.5 `bake.py` → GeoParquet + DuckDB catalog — *1d*
-- [ ] T01.6 `manifest.py` lineage + attribution; CLI wiring — *0.5d*
-- [ ] T01.7 Schema/contract tests + verify; point `ingest_real_data` at parquet — *0.5d*
+- [x] T01.1 `ckan.py` fetcher + resolve-by-name + pagination — *1d*
+- [x] T01.2 `restrictions.py` live CART feed (UA, epoch ms, polyline) — *0.5d*
+- [x] T01.3 `gtfs.py` TTC/GO/UP fetch + tagging — *0.5d*
+- [x] T01.4 `weather.py` ECCC + filename fix — *0.5d*
+- [x] T01.5 `bake.py` → GeoParquet + DuckDB catalog — *1d*
+- [x] T01.6 `manifest.py` lineage + attribution; CLI wiring — *0.5d*
+- [x] T01.7 Schema/contract tests + verify; point `ingest_real_data` at parquet — *0.5d*
 
 ## Risks / fallbacks
 - **Air-gapped runtime** → run `fetch` before the event; the manifest + cached raw make `bake` offline-repeatable.

@@ -18,6 +18,11 @@ Requires-Dist: pytest>=8.0; extra == "dev"
 Requires-Dist: ruff>=0.5; extra == "dev"
 Requires-Dist: black>=24.0; extra == "dev"
 Requires-Dist: pre-commit>=3.7; extra == "dev"
+Provides-Extra: data
+Requires-Dist: requests>=2.31; extra == "data"
+Requires-Dist: pyarrow>=15.0; extra == "data"
+Requires-Dist: duckdb>=1.0; extra == "data"
+Requires-Dist: shapely>=2.0; extra == "data"
 Provides-Extra: sim
 Requires-Dist: aequilibrae>=1.0; extra == "sim"
 Provides-Extra: gpu

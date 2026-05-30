@@ -8,648 +8,257 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-<style>
-/* ============================================================
-   FlowTO — Live Digital Twin of Toronto
-   Design tokens + layout. Drafting-paper light + dark ops.
-   ============================================================ */
-
-/* ---- Fonts loaded via <link> in <head> ---- */
-
-/* ---- Tokens: light "drafting paper" ---- */
-:root {
-  --paper:        #efeadd;   /* drafting board */
-  --paper-2:      #e7e1d1;
-  --surface:      #faf8f1;   /* floating panels */
-  --surface-2:    #f2eee3;
-  --ink:          #1b1a16;   /* near-black */
-  --ink-2:        #4f4b40;   /* secondary */
-  --ink-3:        #837d6e;   /* muted */
-  --hair:         rgba(27,26,22,.13);
-  --hair-2:       rgba(27,26,22,.07);
-  --blueprint:    rgba(36,85,214,.10);  /* grid lines */
-  --cobalt:       #2455d6;   /* THE TOOL — single confident accent */
-  --cobalt-ink:   #1c46b4;
-  --cobalt-wash:  rgba(36,85,214,.10);
-  --cobalt-line:  rgba(36,85,214,.34);
-  --shadow:       0 1px 2px rgba(27,26,22,.06), 0 8px 26px rgba(27,26,22,.11);
-  --shadow-lg:    0 2px 6px rgba(27,26,22,.08), 0 20px 54px rgba(27,26,22,.18);
-
-  /* congestion — the ONLY place color carries meaning */
-  --c-free:   #1f9d57;
-  --c-light:  #8aaf1f;
-  --c-mod:    #e0a21a;
-  --c-heavy:  #e0701b;
-  --c-sev:    #d23a32;
-
-  --map-bg:   #e9e3d4;
-  --r:        12px;
-  --r-sm:     8px;
-
-  /* density (overridden by [data-density=compact]) */
-  --pad:      16px;
-  --pad-sm:   12px;
-  --row-gap:  12px;
-  --fs-body:  13px;
-  --fs-label: 11px;
-}
-
-[data-density="compact"] {
-  --pad:      11px;
-  --pad-sm:   8px;
-  --row-gap:  8px;
-  --fs-body:  12px;
-  --fs-label: 10px;
-}
-
-/* ---- Tokens: dark "ops" ---- */
-[data-theme="dark"] {
-  --paper:        #0d1014;
-  --paper-2:      #0a0c10;
-  --surface:      #161b22;
-  --surface-2:    #1d242d;
-  --ink:          #e9ecf1;
-  --ink-2:        #aab2bf;
-  --ink-3:        #707a88;
-  --hair:         rgba(233,236,241,.12);
-  --hair-2:       rgba(233,236,241,.06);
-  --blueprint:    rgba(120,160,255,.09);
-  --cobalt:       #6f9bff;
-  --cobalt-ink:   #9ab8ff;
-  --cobalt-wash:  rgba(111,155,255,.14);
-  --cobalt-line:  rgba(111,155,255,.45);
-  --shadow:       0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.5);
-  --shadow-lg:    0 2px 8px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.6);
-  --c-free:   #2ec46e;
-  --c-light:  #a7c43a;
-  --c-mod:    #f0b73a;
-  --c-heavy:  #f08840;
-  --c-sev:    #f0524a;
-  --map-bg:   #0b0e13;
-}
-
-* { box-sizing: border-box; }
-html, body {
-  margin: 0; height: 100%; overflow: hidden;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: 'Public Sans', system-ui, sans-serif;
-  font-size: var(--fs-body);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-body { transition: background .5s ease, color .5s ease; }
-
-/* numerals */
-.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.serif { font-family: 'Fraunces', Georgia, serif; }
-
-/* ============================================================ MAP */
-#map { position: fixed; inset: 0; background: var(--map-bg); }
-.maplibregl-map { font-family: 'Public Sans', sans-serif; }
-.maplibregl-ctrl-attrib { font-size: 9px !important; opacity: .5; }
-.maplibregl-ctrl-bottom-right { display: none; }  /* hide default, we attribute in perf strip */
-
-/* drafting-paper grain behind everything (visible pre-load / margins) */
-#map::before {
-  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 0;
-  background-image:
-    linear-gradient(var(--blueprint) 1px, transparent 1px),
-    linear-gradient(90deg, var(--blueprint) 1px, transparent 1px);
-  background-size: 28px 28px;
-  opacity: 0; transition: opacity .6s;
-}
-body.map-pending #map::before { opacity: 1; }
-
-/* ============================================================ CHROME SHELL */
-.chrome { position: fixed; z-index: 5; }
-
-/* faint blueprint grid inside floating panels */
-.panel {
-  background:
-    linear-gradient(var(--blueprint) 1px, transparent 1px) 0 0 / 22px 22px,
-    linear-gradient(90deg, var(--blueprint) 1px, transparent 1px) 0 0 / 22px 22px,
-    var(--surface);
-  border: 1px solid var(--hair);
-  border-radius: var(--r);
-  box-shadow: var(--shadow);
-  color: var(--ink);
-  transition: background .5s, border-color .5s, box-shadow .5s;
-}
-
-.panel-hd {
-  display: flex; align-items: center; gap: 8px;
-  padding: var(--pad-sm) var(--pad);
-  border-bottom: 1px solid var(--hair);
-}
-.panel-hd .eyebrow {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
-  color: var(--ink-3); font-weight: 500; white-space: nowrap;
-}
-.panel-hd .title {
-  font-family: 'Fraunces', serif; font-weight: 600;
-  font-size: 16px; letter-spacing: -.01em; color: var(--ink); white-space: nowrap;
-}
-.panel-hd .spacer { flex: 1; }
-.panel-body { padding: var(--pad); }
-
-/* ---- Header / top bar ---- */
-#topbar {
-  top: 0; left: 0; right: 0; height: 54px;
-  display: flex; align-items: center; gap: 18px;
-  padding: 0 16px;
-  background:
-    linear-gradient(var(--blueprint) 1px, transparent 1px) 0 0 / 22px 22px,
-    linear-gradient(90deg, var(--blueprint) 1px, transparent 1px) 0 0 / 22px 22px,
-    var(--surface);
-  border-bottom: 1px solid var(--hair);
-  box-shadow: var(--shadow);
-}
-.brand { display: flex; align-items: baseline; gap: 9px; }
-.brand .mark {
-  font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px;
-  letter-spacing: -.02em; color: var(--ink);
-}
-.brand .mark b { color: var(--cobalt); font-weight: 600; }
-.brand .sub {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-  letter-spacing: .06em; color: var(--ink-3); text-transform: uppercase;
-  white-space: nowrap;
-}
-.topbar-divider { width: 1px; height: 26px; background: var(--hair); }
-.scenario-tag {
-  display: flex; flex-direction: column; line-height: 1.25; min-width: 0;
-}
-.scenario-tag .k {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
-  letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3);
-}
-.scenario-tag .v {
-  font-weight: 600; font-size: 13px; color: var(--ink);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-
-/* status chip in header */
-.statuschip {
-  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
-  padding: 5px 11px 5px 9px; border-radius: 999px;
-  border: 1px solid var(--hair); background: var(--surface-2);
-  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
-  letter-spacing: .04em; color: var(--ink-2); text-transform: uppercase;
-}
-.statuschip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-free); }
-.statuschip[data-state="recomputing"] .dot { background: var(--cobalt); animation: pulse 1s infinite; }
-.statuschip[data-state="surge"] .dot { background: var(--c-sev); }
-.statuschip[data-state="blocked"] .dot { background: var(--c-heavy); }
-@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.7)} }
-
-/* ---- Buttons ---- */
-.btn {
-  appearance: none; font-family: 'Public Sans', sans-serif; font-weight: 600;
-  font-size: 12.5px; line-height: 1; cursor: pointer;
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 13px; border-radius: var(--r-sm);
-  border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink);
-  transition: background .15s, border-color .15s, transform .05s, color .15s;
-}
-.btn:hover { border-color: var(--ink-3); }
-.btn:active { transform: translateY(.5px); }
-.btn.primary { background: var(--cobalt); border-color: var(--cobalt); color: #fff; }
-.btn.primary:hover { background: var(--cobalt-ink); border-color: var(--cobalt-ink); }
-.btn.ghost { background: transparent; }
-.btn.icon { padding: 8px; }
-.btn:disabled { opacity: .42; cursor: not-allowed; }
-.btn svg { width: 15px; height: 15px; }
-.btn-sm { padding: 6px 10px; font-size: 11.5px; }
-
-.iconbtn {
-  appearance: none; cursor: pointer; display: inline-grid; place-items: center;
-  width: 32px; height: 32px; border-radius: var(--r-sm);
-  border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink-2);
-  transition: background .15s, color .15s, border-color .15s;
-}
-.iconbtn:hover { color: var(--ink); border-color: var(--ink-3); }
-.iconbtn.on { background: var(--cobalt-wash); border-color: var(--cobalt-line); color: var(--cobalt-ink); }
-.iconbtn svg { width: 16px; height: 16px; }
-
-/* ============================================================ LEFT PANEL */
-#panel-left {
-  top: 66px; left: 14px; width: 318px;
-  max-height: calc(100vh - 82px);
-  display: flex; flex-direction: column;
-}
-.panel-scroll { overflow-y: auto; overflow-x: hidden; min-height: 0; }
-.panel-scroll::-webkit-scrollbar { width: 9px; }
-.panel-scroll::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
-
-/* intervention type grid */
-.iv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.iv-tool {
-  appearance: none; cursor: pointer; text-align: left;
-  display: flex; flex-direction: column; gap: 7px;
-  padding: 11px; border-radius: var(--r-sm);
-  border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink);
-  transition: border-color .14s, background .14s, transform .05s;
-}
-.iv-tool:hover { border-color: var(--cobalt-line); }
-.iv-tool:active { transform: translateY(.5px); }
-.iv-tool.active { border-color: var(--cobalt); background: var(--cobalt-wash); box-shadow: inset 0 0 0 1px var(--cobalt-line); }
-.iv-tool .ico { width: 26px; height: 26px; color: var(--cobalt-ink); }
-.iv-tool .ico svg { width: 100%; height: 100%; }
-.iv-tool .nm { font-weight: 600; font-size: 12px; letter-spacing: -.005em; }
-.iv-tool .ds { font-size: 10.5px; color: var(--ink-3); line-height: 1.35; }
-
-.section-label {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10px;
-  letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3);
-  font-weight: 500; margin: 0 0 9px;
-  display: flex; align-items: center; gap: 8px;
-}
-.section-label::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
-
-/* scenario list */
-.scn { display: flex; flex-direction: column; gap: 7px; }
-.scn-item {
-  display: flex; align-items: center; gap: 10px; cursor: pointer;
-  padding: 9px 10px; border-radius: var(--r-sm);
-  border: 1px solid var(--hair); background: var(--surface-2);
-  transition: border-color .14s, background .14s;
-}
-.scn-item:hover { border-color: var(--cobalt-line); }
-.scn-item.active { border-color: var(--cobalt); background: var(--cobalt-wash); }
-.scn-item .badge {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 600;
-  padding: 3px 6px; border-radius: 5px; background: var(--surface);
-  border: 1px solid var(--hair); color: var(--ink-2); letter-spacing: .04em;
-}
-.scn-item .nm { font-weight: 600; font-size: 12.5px; line-height: 1.2; }
-.scn-item .mt { font-size: 10.5px; color: var(--ink-3); }
-.scn-item .grow { flex: 1; min-width: 0; }
-
-/* preview action card */
-.preview-card {
-  margin-top: 12px; border: 1px dashed var(--cobalt-line);
-  border-radius: var(--r-sm); background: var(--cobalt-wash);
-  padding: 12px; display: none;
-}
-.preview-card.show { display: block; }
-.preview-card .ttl { font-weight: 600; font-size: 12.5px; margin-bottom: 6px; display:flex; align-items:center; gap:7px; }
-.preview-card .ttl .pico { width: 15px; height: 15px; color: var(--cobalt-ink); }
-.preview-card ul { margin: 6px 0 0; padding-left: 16px; }
-.preview-card li { font-size: 11.5px; color: var(--ink-2); line-height: 1.5; }
-.preview-actions { display: flex; gap: 7px; margin-top: 11px; }
-
-/* ============================================================ RIGHT — BEFORE/AFTER */
-#panel-metrics {
-  top: 66px; right: 14px; width: 360px;
-  max-height: calc(52vh - 28px); display: flex; flex-direction: column;
-}
-.metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.metric {
-  border: 1px solid var(--hair); border-radius: var(--r-sm);
-  background: var(--surface-2); padding: 8px 10px;
-}
-.metric .lab {
-  font-family: 'IBM Plex Mono', monospace; font-size: 9.5px;
-  letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3);
-  display: flex; align-items: center; justify-content: space-between;
-}
-.metric .val {
-  font-family: 'Fraunces', serif; font-weight: 600; font-size: 22px;
-  letter-spacing: -.02em; margin-top: 4px; line-height: 1;
-  display: flex; align-items: baseline; gap: 4px;
-}
-.metric .val .u { font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
-.metric .delta {
-  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600;
-  margin-top: 6px; display: inline-flex; align-items: center; gap: 4px;
-}
-.metric .delta.good { color: var(--c-free); }
-.metric .delta.bad  { color: var(--c-sev); }
-.metric .delta.flat { color: var(--ink-3); }
-
-.metric.wide { grid-column: 1 / -1; }
-.barpair { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
-.barrow { display: grid; grid-template-columns: 52px 1fr 64px; align-items: center; gap: 8px; }
-.barrow .bl { font-family:'IBM Plex Mono',monospace; font-size: 10px; color: var(--ink-3); }
-.bartrack { height: 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hair); overflow: hidden; }
-.barfill { height: 100%; border-radius: 999px; transition: width .9s cubic-bezier(.4,0,.1,1), background .6s; }
-.barrow .bv { font-family:'IBM Plex Mono',monospace; font-size: 10.5px; text-align: right; color: var(--ink-2); }
-
-.warn-row {
-  display: flex; gap: 8px; align-items: flex-start; margin-top: 11px;
-  padding: 9px 11px; border-radius: var(--r-sm);
-  border: 1px solid color-mix(in oklab, var(--c-heavy) 40%, var(--hair));
-  background: color-mix(in oklab, var(--c-heavy) 10%, var(--surface));
-}
-.warn-row svg { width: 15px; height: 15px; color: var(--c-heavy); flex-shrink: 0; margin-top: 1px; }
-.warn-row .wt { font-size: 11.5px; color: var(--ink); line-height: 1.4; }
-.warn-row .wt b { color: var(--c-heavy); }
-.warn-row.ok { border-color: color-mix(in oklab, var(--c-free) 40%, var(--hair)); background: color-mix(in oklab, var(--c-free) 10%, var(--surface)); }
-.warn-row.ok svg { color: var(--c-free); }
-.warn-row.ok .wt b { color: var(--c-free); }
-
-/* empty hint inside metrics before a scenario runs */
-.metrics-empty { text-align: center; padding: 18px 10px; color: var(--ink-3); }
-.metrics-empty .big { font-family:'Fraunces',serif; font-size: 15px; color: var(--ink-2); margin-bottom: 4px; }
-.metrics-empty .sm { font-size: 11.5px; line-height: 1.5; }
-
-/* ============================================================ COPILOT */
-#panel-copilot {
-  bottom: 14px; right: 14px; width: 360px; height: 372px;
-  display: flex; flex-direction: column;
-}
-.copilot-log { flex: 1; overflow-y: auto; padding: var(--pad); display: flex; flex-direction: column; gap: 12px; }
-.copilot-log::-webkit-scrollbar { width: 9px; }
-.copilot-log::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
-.msg { display: flex; flex-direction: column; gap: 4px; max-width: 96%; }
-.msg .who { font-family:'IBM Plex Mono',monospace; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-.msg .bub { font-size: 12.5px; line-height: 1.5; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--hair); }
-.msg.user { align-self: flex-end; align-items: flex-end; }
-.msg.user .bub { background: var(--cobalt); color: #fff; border-color: var(--cobalt); border-bottom-right-radius: 4px; }
-.msg.bot .bub { background: var(--surface-2); color: var(--ink); border-bottom-left-radius: 4px; }
-.msg.bot .bub b { color: var(--cobalt-ink); }
-.msg .cite {
-  font-family:'IBM Plex Mono',monospace; font-size: 10px; color: var(--ink-3);
-  margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--hair);
-  display: flex; flex-direction: column; gap: 3px;
-}
-.msg .cite a, .msg .cite span.ref { color: var(--cobalt-ink); text-decoration: none; }
-.msg .cite .ref::before { content: "§ "; color: var(--ink-3); }
-
-.typing { display: inline-flex; gap: 4px; padding: 3px 0; }
-.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); animation: typedot 1.1s infinite; }
-.typing i:nth-child(2){ animation-delay:.18s } .typing i:nth-child(3){ animation-delay:.36s }
-@keyframes typedot { 0%,60%,100%{opacity:.25;transform:translateY(0)} 30%{opacity:1;transform:translateY(-3px)} }
-
-.copilot-input { border-top: 1px solid var(--hair); padding: 10px; display: flex; gap: 8px; align-items: center; }
-.copilot-input input {
-  flex: 1; min-width: 0; appearance: none; border: 1px solid var(--hair);
-  background: var(--surface-2); color: var(--ink); border-radius: var(--r-sm);
-  padding: 9px 11px; font-family: 'Public Sans', sans-serif; font-size: 12.5px; outline: none;
-}
-.copilot-input input:focus { border-color: var(--cobalt-line); }
-.copilot-input input::placeholder { color: var(--ink-3); }
-.copilot-send { width: 34px; height: 34px; flex-shrink: 0; }
-.copilot-chips { display: flex; gap: 6px; padding: 0 10px 10px; flex-wrap: wrap; }
-.chip {
-  appearance: none; cursor: pointer; font-size: 10.5px; font-weight: 500;
-  padding: 5px 9px; border-radius: 999px; border: 1px solid var(--hair);
-  background: var(--surface-2); color: var(--ink-2); transition: border-color .14s, color .14s;
-}
-.chip:hover { border-color: var(--cobalt-line); color: var(--cobalt-ink); }
-
-/* ============================================================ TIME SCRUBBER */
-#scrubber {
-  bottom: 14px; left: 50%; transform: translateX(-50%);
-  width: min(560px, calc(100vw - 760px));
-}
-.scrub-row { display: flex; align-items: center; gap: 12px; padding: 10px var(--pad); }
-.scrub-clock { display: flex; flex-direction: column; line-height: 1.1; min-width: 92px; }
-.scrub-clock .t { font-family:'IBM Plex Mono',monospace; font-weight: 600; font-size: 19px; letter-spacing: -.01em; }
-.scrub-clock .d { font-family:'IBM Plex Mono',monospace; font-size: 10px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; }
-.scrub-track-wrap { flex: 1; }
-.scrub-ticks { display: flex; justify-content: space-between; margin-bottom: 5px; }
-.scrub-ticks span { font-family:'IBM Plex Mono',monospace; font-size: 8.5px; color: var(--ink-3); }
-.scrub-track { position: relative; height: 22px; cursor: pointer; }
-.scrub-rail { position: absolute; top: 9px; left: 0; right: 0; height: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--hair); overflow: hidden; }
-.scrub-rail .heat { position: absolute; inset: 0; opacity: .85; }
-.scrub-kf { position: absolute; top: 4px; width: 2px; height: 14px; background: var(--cobalt-line); border-radius: 2px; }
-.scrub-kf.match { background: var(--c-sev); width: 3px; }
-.scrub-handle { position: absolute; top: 0; width: 14px; height: 22px; margin-left: -7px; cursor: grab; }
-.scrub-handle::after { content:""; position:absolute; left:50%; top:0; transform:translateX(-50%); width: 3px; height: 22px; background: var(--cobalt); border-radius: 3px; box-shadow: 0 0 0 3px var(--cobalt-wash); }
-.scrub-ctrls { display: flex; gap: 5px; }
-
-/* ============================================================ PERF STRIP */
-#perf {
-  bottom: 14px; left: 14px;
-  font-family: 'IBM Plex Mono', monospace;
-}
-.perf-inner { display: flex; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
-.perf-cell { padding: 8px 13px; border-right: 1px solid var(--hair); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.perf-cell:last-child { border-right: 0; }
-.perf-cell .pk { font-size: 8.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
-.perf-cell .pv { font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; white-space: nowrap; }
-.perf-cell .pv.cobalt { color: var(--cobalt); }
-.perf-cell .pv .pu { font-size: 9.5px; color: var(--ink-3); font-weight: 500; }
-.perf-cell.device { background: var(--surface-2); }
-.perf-cell.device .pv { color: var(--c-free); }
-.spark { display: flex; align-items: flex-end; gap: 1.5px; height: 14px; margin-top: 1px; }
-.spark i { width: 2.5px; background: var(--cobalt-line); border-radius: 1px; transition: height .2s; }
-
-/* ============================================================ LEGEND */
-#legend { bottom: 14px; left: 50%; transform: translateX(-50%) translateY(-58px); }
-.legend-inner { display: flex; align-items: center; gap: 10px; padding: 7px 12px; }
-.legend-inner .lt { font-family:'IBM Plex Mono',monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-.legend-ramp { width: 130px; height: 7px; border-radius: 999px;
-  background: linear-gradient(90deg, var(--c-free), var(--c-light), var(--c-mod), var(--c-heavy), var(--c-sev)); }
-.legend-ends { font-family:'IBM Plex Mono',monospace; font-size: 9px; color: var(--ink-3); }
-
-/* ============================================================ RECOMPUTE OVERLAY (HERO) */
-#recompute {
-  position: fixed; inset: 0; z-index: 8; pointer-events: none;
-  display: none; align-items: flex-end; justify-content: center;
-}
-#recompute.show { display: flex; }
-.recompute-card {
-  pointer-events: auto; margin-bottom: 92px;
-  background: var(--surface); border: 1px solid var(--cobalt-line);
-  border-radius: var(--r); box-shadow: var(--shadow-lg);
-  padding: 14px 18px; min-width: 380px;
-}
-.recompute-card .rc-hd { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.recompute-card .rc-spin { width: 16px; height: 16px; border: 2px solid var(--cobalt-wash); border-top-color: var(--cobalt); border-radius: 50%; animation: spin .7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.recompute-card .rc-t { font-weight: 600; font-size: 13px; }
-.recompute-card .rc-sub { font-family:'IBM Plex Mono',monospace; font-size: 10.5px; color: var(--ink-3); margin-left: auto; }
-.rc-track { height: 5px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--hair); overflow: hidden; }
-.rc-bar { height: 100%; width: 0%; background: var(--cobalt); border-radius: 999px; transition: width .2s linear; }
-.rc-steps { display: flex; justify-content: space-between; margin-top: 9px; }
-.rc-step { font-family:'IBM Plex Mono',monospace; font-size: 9.5px; color: var(--ink-3); display: flex; align-items: center; gap: 5px; }
-.rc-step .sd { width: 6px; height: 6px; border-radius: 50%; background: var(--hair); }
-.rc-step.done .sd { background: var(--c-free); }
-.rc-step.active { color: var(--cobalt); } .rc-step.active .sd { background: var(--cobalt); animation: pulse 1s infinite; }
-
-/* ============================================================ FIRST-RUN */
-#firstrun {
-  position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
-  background:
-    linear-gradient(var(--blueprint) 1px, transparent 1px) 0 0 / 30px 30px,
-    linear-gradient(90deg, var(--blueprint) 1px, transparent 1px) 0 0 / 30px 30px,
-    var(--paper);
-  transition: opacity .6s; 
-}
-#firstrun.hide { opacity: 0; pointer-events: none; }
-.fr-card { max-width: 560px; text-align: left; padding: 40px; }
-.fr-eyebrow { font-family:'IBM Plex Mono',monospace; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--cobalt); margin-bottom: 18px; }
-.fr-title { font-family:'Fraunces',serif; font-weight: 600; font-size: 46px; line-height: 1.02; letter-spacing: -.02em; margin: 0 0 16px; }
-.fr-title b { color: var(--cobalt); font-weight: 600; }
-.fr-lede { font-size: 15px; line-height: 1.55; color: var(--ink-2); max-width: 460px; margin-bottom: 26px; text-wrap: pretty; }
-.fr-meta { display: flex; gap: 26px; margin-bottom: 30px; }
-.fr-meta .m .k { font-family:'IBM Plex Mono',monospace; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
-.fr-meta .m .v { font-family:'Fraunces',serif; font-size: 19px; font-weight: 600; margin-top: 3px; }
-.fr-loadline { font-family:'IBM Plex Mono',monospace; font-size: 11px; color: var(--ink-3); margin-top: 18px; min-height: 16px; }
-.fr-loadline b { color: var(--c-free); }
-
-/* small caption tag floating on map */
-.map-tag {
-  position: absolute; z-index: 4; pointer-events: none;
-  font-family:'IBM Plex Mono',monospace; font-size: 10px;
-  background: var(--surface); border: 1px solid var(--hair); border-radius: 6px;
-  padding: 4px 8px; color: var(--ink-2); box-shadow: var(--shadow); white-space: nowrap;
-}
-.map-tag .dot { display:inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-
-.hide { display: none !important; }
-
-</style>
+<link rel="stylesheet" href="css/flowto.css" />
 </head>
-<body>
+<body data-view="sim">
 
-<!-- ===================== MAP (hero) ===================== -->
-<div id="map"></div>
+<!-- ============================================================ SHELL -->
+<div id="shell">
 
-<!-- ===================== TOP BAR ===================== -->
-<header id="topbar" class="chrome">
-  <div class="brand">
-    <span class="mark">Flow<b>TO</b></span>
-    <span class="sub">Digital Twin · Toronto</span>
-  </div>
-  <div class="topbar-divider"></div>
-  <div class="scenario-tag">
-    <span class="k">Active scenario</span>
-    <span class="v" id="tb-scenario">FIFA WC26 — Post-match egress</span>
-  </div>
-  <div class="topbar-right">
-    <div class="statuschip" id="statuschip" data-state="nominal">
-      <span class="dot"></span><span id="status-text">Baseline · nominal</span>
+  <!-- ===================== TOP BAR ===================== -->
+  <header id="topbar">
+    <div class="brand">
+      <span class="mark">Flow<b>TO</b></span>
+      <span class="sub">Toronto · Digital Twin</span>
     </div>
-    <button class="iconbtn" id="btn-recenter" title="Recenter on Toronto Stadium" aria-label="Recenter">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-    </button>
-    <button class="iconbtn" id="btn-theme" title="Toggle light / dark ops" aria-label="Toggle theme">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
-    </button>
-    <button class="btn ghost btn-sm" id="btn-reset">Reset</button>
-  </div>
-</header>
+    <div class="tb-div"></div>
 
-<!-- ===================== LEFT — INTERVENTIONS + SCENARIOS ===================== -->
-<section id="panel-left" class="panel chrome" aria-label="Interventions">
-  <div class="panel-hd">
-    <div>
-      <div class="eyebrow">Workspace</div>
-      <div class="title">Interventions</div>
+    <!-- VIEW SWITCH -->
+    <div class="viewseg" id="viewseg" role="tablist">
+      <button data-view="sim" class="on" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/></svg>
+        Simulate
+      </button>
+      <button data-view="edit" role="tab">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Edit
+      </button>
     </div>
-  </div>
-  <div class="panel-body panel-scroll">
-    <div class="section-label">Create intervention</div>
-    <div class="iv-grid" id="iv-grid"></div>
 
-    <div class="preview-card" id="preview-card">
-      <div class="ttl"><span class="pico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m5 12 5 5L20 6"/></svg></span><span id="preview-ttl">Recommended plan</span></div>
-      <ul id="preview-list"></ul>
-      <div class="preview-actions">
+    <div class="tb-div"></div>
+    <div class="scenario-tag">
+      <span class="k">Active scenario</span>
+      <span class="v" id="tb-scenario">FIFA WC26 — Post-match egress</span>
+    </div>
+
+    <div class="tb-right">
+      <div class="statuschip" id="statuschip" data-state="nominal">
+        <span class="dot"></span><span id="status-text">Baseline · nominal</span>
+      </div>
+      <div class="dock-toggles" id="dock-toggles">
+        <button class="iconbtn on" data-dock="left" title="Toggle left panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+        </button>
+        <button class="iconbtn on" data-dock="bottom" title="Toggle timeline / bottom panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 15h18"/></svg>
+        </button>
+        <button class="iconbtn on" data-dock="right" title="Toggle right panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+        </button>
+      </div>
+      <button class="iconbtn" id="btn-theme" title="Toggle light / dark ops">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+      <button class="btn ghost btn-sm" id="btn-reset">Reset</button>
+    </div>
+  </header>
+
+  <!-- ===================== TOOL RAIL (editor) ===================== -->
+  <nav id="rail" aria-label="Tools"></nav>
+
+  <!-- ===================== LEFT DOCK ===================== -->
+  <aside id="dock-left" class="dock">
+    <!-- SIM: scenarios -->
+    <section class="region grow v-sim" data-region="scenarios">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Scenarios</span>
+        <span class="spacer"></span>
+        <span class="meta" id="scn-count">4 saved</span>
+      </div>
+      <div class="region-body">
+        <div class="scn" id="scn-list"></div>
+      </div>
+    </section>
+
+    <!-- EDIT: toolbox + scene outliner -->
+    <section class="region v-edit" data-region="toolbox">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Interventions</span>
+      </div>
+      <div class="region-body">
+        <div class="tool-list" id="tool-list"></div>
+      </div>
+    </section>
+    <section class="region grow v-edit" data-region="outliner">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Scene</span>
+        <span class="spacer"></span>
+        <span class="meta" id="out-count">0 objects</span>
+      </div>
+      <div class="region-body">
+        <div class="outliner" id="outliner"></div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ===================== VIEWPORT ===================== -->
+  <main id="viewport">
+    <div id="map"></div>
+
+    <!-- mode banner -->
+    <div class="vp-hud tl">
+      <div class="mode-banner" id="mode-banner">
+        <span class="ico" id="mb-ico"></span>
+        <span class="tx"><span class="a" id="mb-title">Simulation</span><span class="b" id="mb-sub">3-D camera · replay</span></span>
+      </div>
+    </div>
+
+    <!-- camera controls -->
+    <div class="vp-hud tr">
+      <button class="iconbtn" id="btn-recenter" title="Recenter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      </button>
+      <button class="iconbtn" id="btn-tilt" title="Toggle 3-D tilt / top-down">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 8l9-5 9 5-9 5-9-5Z"/><path d="M3 8v8l9 5 9-5V8"/></svg>
+      </button>
+    </div>
+
+    <!-- legend -->
+    <div class="vp-hud bl">
+      <div class="vp-chip legend-inner">
+        <span class="lt">Edge pressure</span>
+        <span class="legend-ends">free</span>
+        <span class="legend-ramp"></span>
+        <span class="legend-ends">gridlock</span>
+      </div>
+    </div>
+
+    <!-- placement ghost (editor) -->
+    <div id="place-ghost"><div class="place-ghost-ring" id="place-ghost-ring"></div></div>
+
+    <!-- staged plan action bar (both views) -->
+    <div class="vp-hud bc" id="plan-hud" style="display:none">
+      <div class="plan-bar">
+        <span class="pb-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 6"/></svg></span>
+        <div class="pb-tx"><div class="pb-t" id="preview-ttl">Recommended plan</div><div class="pb-s" id="preview-sub">3 bylaw-valid actions</div></div>
         <button class="btn primary btn-sm" id="btn-apply">Apply &amp; recompute</button>
         <button class="btn ghost btn-sm" id="btn-discard">Discard</button>
       </div>
     </div>
 
-    <div class="section-label" style="margin-top:18px">Scenarios</div>
-    <div class="scn" id="scn-list"></div>
-  </div>
-</section>
-
-<!-- ===================== RIGHT TOP — BEFORE / AFTER ===================== -->
-<section id="panel-metrics" class="panel chrome" aria-label="Before and after">
-  <div class="panel-hd">
-    <div>
-      <div class="eyebrow">Impact</div>
-      <div class="title">Before / After</div>
-    </div>
-    <div class="spacer"></div>
-    <span class="statuschip" id="ba-compare" style="font-size:9.5px;padding:4px 9px">baseline → live</span>
-  </div>
-  <div class="panel-body panel-scroll" id="metrics-body"></div>
-</section>
-
-<!-- ===================== RIGHT BOTTOM — COPILOT ===================== -->
-<section id="panel-copilot" class="panel chrome" aria-label="Copilot">
-  <div class="panel-hd">
-    <div>
-      <div class="eyebrow">Nemotron · on-device</div>
-      <div class="title">Copilot</div>
-    </div>
-    <div class="spacer"></div>
-    <span class="statuschip" style="font-size:9.5px;padding:4px 9px"><span class="dot"></span>local</span>
-  </div>
-  <div class="copilot-log" id="copilot-log"></div>
-  <div class="copilot-chips" id="copilot-chips"></div>
-  <div class="copilot-input">
-    <input id="copilot-input" type="text" placeholder="Ask in plain English…" autocomplete="off" />
-    <button class="btn primary copilot-send icon" id="copilot-send" aria-label="Send">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 12 16-7-7 16-2.5-6.5L4 12Z"/></svg>
-    </button>
-  </div>
-</section>
-
-<!-- ===================== TIME SCRUBBER ===================== -->
-<section id="scrubber" class="panel chrome" aria-label="Time scrubber">
-  <div class="scrub-row">
-    <div class="scrub-clock">
-      <span class="t mono" id="scrub-time">17:05</span>
-      <span class="d" id="scrub-dow">FRI · 12 JUN 2026</span>
-    </div>
-    <div class="scrub-track-wrap">
-      <div class="scrub-ticks" id="scrub-ticks"></div>
-      <div class="scrub-track" id="scrub-track">
-        <div class="scrub-rail"><div class="heat" id="scrub-heat"></div></div>
-        <div id="scrub-kfs"></div>
-        <div class="scrub-handle" id="scrub-handle"></div>
+    <!-- recompute overlay -->
+    <div id="recompute">
+      <div class="recompute-card">
+        <div class="rc-hd">
+          <span class="rc-spin"></span>
+          <span class="rc-t" id="rc-title">Recomputing assignment…</span>
+          <span class="rc-sub" id="rc-sub">0%</span>
+        </div>
+        <div class="rc-track"><div class="rc-bar" id="rc-bar"></div></div>
+        <div class="rc-steps" id="rc-steps"></div>
       </div>
     </div>
-    <div class="scrub-ctrls">
-      <button class="iconbtn" id="btn-play" title="Play matchday replay" aria-label="Play">
-        <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5v14l11-7z"/></svg>
-      </button>
+  </main>
+
+  <!-- ===================== BOTTOM DOCK — TIMELINE ===================== -->
+  <section id="dock-bottom" class="dock">
+    <div class="timeline">
+      <div class="tl-bar">
+        <div class="tl-transport">
+          <button class="tbtn" id="tl-start" title="Jump to start"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5 9 12l11 7z"/></svg></button>
+          <button class="tbtn" id="tl-back" title="Step back"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5 7 12l11 7zM7 5h-2v14h2z" /></svg></button>
+          <button class="tbtn play" id="tl-play" title="Play replay"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+          <button class="tbtn" id="tl-fwd" title="Step forward"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5l11 7-11 7zM17 5h2v14h-2z"/></svg></button>
+          <button class="tbtn" id="tl-end" title="Jump to end"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5l11 7L4 19z"/></svg></button>
+        </div>
+        <div class="tl-clock">
+          <span class="t" id="tl-time">17:05</span>
+          <span class="frame" id="tl-frame">f 740</span>
+          <span class="dow" id="tl-dow">FRI · 12 JUN 2026</span>
+        </div>
+        <div class="tl-right">
+          <span class="meta mono" id="tl-event" style="font-size:9.5px;color:var(--ink-3)">FULL-TIME · egress release</span>
+          <div class="tl-speed" id="tl-speed">
+            <button data-spd="0.5">0.5×</button>
+            <button data-spd="1" class="on">1×</button>
+            <button data-spd="2">2×</button>
+            <button data-spd="4">4×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tl-stage">
+        <div class="tl-ruler" id="tl-ruler"></div>
+        <div class="tl-kfrow" id="tl-kfrow"></div>
+        <div class="tl-playzone" id="tl-playzone">
+          <div class="tl-scrub" id="tl-scrub"></div>
+          <div class="tl-tracks" id="tl-tracks"></div>
+          <div class="tl-playhead" id="tl-playhead">
+            <div class="ph-grip" id="tl-grip"></div>
+            <div class="ph-line"></div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ===================== LEGEND ===================== -->
-<section id="legend" class="panel chrome" aria-label="Congestion legend">
-  <div class="legend-inner">
-    <span class="lt">Edge pressure</span>
-    <span class="legend-ends">free</span>
-    <span class="legend-ramp"></span>
-    <span class="legend-ends">gridlock</span>
-  </div>
-</section>
+  <!-- ===================== RIGHT DOCK ===================== -->
+  <aside id="dock-right" class="dock">
+    <!-- SIM: before/after -->
+    <section class="region v-sim" data-region="impact">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Before / After</span>
+        <span class="spacer"></span>
+        <div class="ba-toggle" id="ba-toggle">
+          <button data-ba="before">Before</button>
+          <button data-ba="after" class="on">After</button>
+        </div>
+      </div>
+      <div class="region-body" id="metrics-body"></div>
+    </section>
 
-<!-- ===================== PERF / TELEMETRY STRIP ===================== -->
-<section id="perf" class="panel chrome" aria-label="Performance telemetry">
-  <div class="perf-inner">
-    <div class="perf-cell"><span class="pk">Recompute</span><span class="pv" id="pf-recompute">— <span class="pu">ms</span></span></div>
-    <div class="perf-cell"><span class="pk">Affected subgraph</span><span class="pv" id="pf-sub">— <span class="pu">edges</span></span></div>
-    <div class="perf-cell"><span class="pk">LLM latency</span><span class="pv cobalt" id="pf-llm">— <span class="pu">ms</span></span></div>
-    <div class="perf-cell"><span class="pk">Frame rate</span><span class="pv" id="pf-fps">60 <span class="pu">fps</span></span><div class="spark" id="pf-spark"></div></div>
-    <div class="perf-cell device"><span class="pk">Compute</span><span class="pv" id="pf-device">DGX Spark · GB10</span></div>
-  </div>
-</section>
+    <!-- EDIT: inspector -->
+    <section class="region v-edit" data-region="inspector">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Inspector</span>
+      </div>
+      <div class="region-body" id="inspector-body"></div>
+    </section>
 
-<!-- ===================== RECOMPUTE OVERLAY (HERO) ===================== -->
-<div id="recompute">
-  <div class="recompute-card">
-    <div class="rc-hd">
-      <span class="rc-spin"></span>
-      <span class="rc-t" id="rc-title">Recomputing assignment…</span>
-      <span class="rc-sub mono" id="rc-sub">0%</span>
-    </div>
-    <div class="rc-track"><div class="rc-bar" id="rc-bar"></div></div>
-    <div class="rc-steps" id="rc-steps"></div>
-  </div>
+    <!-- BOTH: copilot -->
+    <section class="region grow" id="copilot-region" data-region="copilot">
+      <div class="region-hd">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+        <span class="lbl">Copilot</span>
+        <span class="spacer"></span>
+        <span class="meta">Nemotron · on-device</span>
+      </div>
+      <div class="copilot-log" id="copilot-log"></div>
+      <div class="copilot-chips" id="copilot-chips"></div>
+      <div class="copilot-input">
+        <input id="copilot-input" type="text" placeholder="Ask in plain English…" autocomplete="off" />
+        <button class="btn primary copilot-send" id="copilot-send" aria-label="Send">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 12 16-7-7 16-2.5-6.5L4 12Z"/></svg>
+        </button>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ===================== STATUS BAR ===================== -->
+  <footer id="statusbar">
+    <div class="sb-cell"><span class="k">Network</span><span class="v" id="sb-net">1,284 edges · 612 nodes</span></div>
+    <div class="sb-cell"><span class="k">Recompute</span><span class="v" id="sb-recompute">12 ms</span></div>
+    <div class="sb-cell"><span class="k">Subgraph</span><span class="v" id="sb-sub">0 edges</span></div>
+    <div class="sb-cell"><span class="k">LLM</span><span class="v cobalt" id="sb-llm">—</span></div>
+    <div class="sb-cell right"><span class="k">FPS</span><span class="v" id="sb-fps">60</span><span class="sb-spark" id="sb-spark"></span></div>
+    <div class="sb-cell device"><span class="k">Compute</span><span class="v good" id="sb-device">DGX Spark · GB10</span></div>
+  </footer>
+
 </div>
 
 <!-- ===================== FIRST RUN ===================== -->
@@ -657,7 +266,7 @@ body.map-pending #map::before { opacity: 1; }
   <div class="fr-card">
     <div class="fr-eyebrow">Spark Hack Series · 100% on-device</div>
     <h1 class="fr-title">A live digital twin of <b>Toronto</b>.</h1>
-    <p class="fr-lede">Simulate how traffic and transit flow across the city, then toggle closures, reroutes, construction and demand surges — and watch the impact recompute in real time. Drive it in plain English; let the optimizer propose bylaw-valid plans.</p>
+    <p class="fr-lede"><b>Simulate</b> how traffic and transit flow across the city and scrub the matchday like a replay — then switch to <b>Edit</b> to drop closures, reroutes and signal changes top-down, and watch the impact recompute. Drive it in plain English; the optimizer proposes bylaw-valid plans.</p>
     <div class="fr-meta">
       <div class="m"><div class="k">Scenario</div><div class="v">FIFA WC26 egress</div></div>
       <div class="m"><div class="k">Network</div><div class="v">1,284 edges</div></div>

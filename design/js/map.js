@@ -21,6 +21,10 @@ FlowTO.map = (function () {
   let stadiumMarker = null;
   let actionMarkers = [];
   let onReady = null;
+  let view = 'sim';            // sim (3-D camera) | edit (top-down)
+  let pins = {};               // id -> { marker, data }
+  let selectedPinId = null;
+  let clickHandler = null;     // editor placement
 
   // ---- congestion color ramp (the ONLY semantic color) ----
   const STOPS = [
@@ -211,10 +215,54 @@ FlowTO.map = (function () {
     map.on('style.load', () => { setup(); fireReady(); });
     map.on('load', () => { document.body.classList.remove('map-pending'); setup(); fireReady(); });
     map.on('idle', () => document.body.classList.remove('map-pending'));
+    map.on('click', e => { if (clickHandler && view==='edit') clickHandler([e.lngLat.lng, e.lngLat.lat], e.originalEvent); });
     map.on('error', () => {}); // swallow tile errors; UI stays usable
     // network fallback: bring the workspace up even if the basemap is slow/blocked
     setTimeout(fireReady, 1600);
     return map;
+  }
+
+  /* ---- view mode: 3-D camera (sim) vs top-down (edit) ---- */
+  function setView(v) {
+    view = v;
+    if (!map) return;
+    if (v === 'edit') {
+      map.easeTo({ pitch: 0, bearing: 0, duration: 700 });
+      if (map.getLayer('flowto-buildings')) map.setPaintProperty('flowto-buildings','fill-extrusion-opacity', 0);
+    } else {
+      map.easeTo({ pitch: 52, bearing: -18, duration: 700 });
+      if (map.getLayer('flowto-buildings')) map.setPaintProperty('flowto-buildings','fill-extrusion-opacity', theme==='dark'?0.82:0.72);
+    }
+  }
+
+  /* ---- editor placement: click → lng/lat ---- */
+  function setClickHandler(fn){ clickHandler = fn; }
+  function unprojectClient(clientX, clientY){
+    if (!map) return null;
+    const r = map.getContainer().getBoundingClientRect();
+    const ll = map.unproject([clientX - r.left, clientY - r.top]);
+    return [ll.lng, ll.lat];
+  }
+
+  /* ---- scene pins (editor objects + applied plan) ---- */
+  const TYPE_COLOR = { closure:'var(--c-heavy)', lane:'var(--c-mod)', oneway:'var(--cobalt)',
+                       signal:'var(--cobalt)', surge:'var(--c-sev)', transit:'var(--c-free)' };
+  function addPin(d){
+    if (!map || pins[d.id]) return;
+    const el = document.createElement('div');
+    el.className = 'map-pin' + (d.id===selectedPinId?' sel':'');
+    el.innerHTML = `<span class="nub" style="background:${TYPE_COLOR[d.type]||'var(--cobalt)'}">${d.n||''}</span>`+
+      `<span class="lbl"><b>${d.name||''}</b>${d.sub?' · '+d.sub:''}</span>`;
+    el.style.animation = 'fadeUp .35s both';
+    el.onclick = (e)=>{ e.stopPropagation(); if (FlowTO.app && FlowTO.app.selectObject) FlowTO.app.selectObject(d.id); };
+    const m = new maplibregl.Marker({ element: el, anchor:'left' }).setLngLat(d.coord).addTo(map);
+    pins[d.id] = { marker: m, data: d, el };
+  }
+  function removePin(id){ if (pins[id]){ pins[id].marker.remove(); delete pins[id]; } }
+  function clearPins(){ Object.keys(pins).forEach(removePin); selectedPinId = null; }
+  function selectPin(id){
+    selectedPinId = id;
+    Object.entries(pins).forEach(([k,p])=> p.el.classList.toggle('sel', k===id));
   }
 
   function setState(s){ state = s; refresh(); }
@@ -232,8 +280,12 @@ FlowTO.map = (function () {
   function setHighlight(on){ highlightOn = on; refresh(); }
   function flyTo(o){ if (map) map.flyTo(o); }
 
+  function resize(){ if (map){ try { map.resize(); } catch(e){} } setTimeout(()=>{ resizeCanvas(); refresh(); }, 60); }
+
   return { init, setState, setTheme, setIntensity, setExtrude, setTilt, setHighlight,
-           showActions, refresh, flyTo, rampCSS, get pressureState(){ return state; } };
+           showActions, refresh, flyTo, rampCSS, resize,
+           setView, setClickHandler, unprojectClient, addPin, removePin, clearPins, selectPin,
+           get pressureState(){ return state; }, get view(){ return view; } };
 })();
 
 /* fade-up keyframe for markers (injected once) */

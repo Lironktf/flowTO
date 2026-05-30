@@ -35,3 +35,19 @@ def test_demo_surge_worse_than_baseline_and_fix_better():
 
 def test_demo_run_unknown_scenario_422():
     assert _client().get("/demo/run?scenario=nope").status_code == 422
+
+
+def test_scenario_records_after_run():
+    c = _client()
+    sid = c.post(
+        "/scenarios",
+        json={"name": "edit", "interventions": [{"op": "close_edge", "edge_id": "e0"}]},
+    ).json()["id"]
+    # Records before a run → 409.
+    assert c.get(f"/scenarios/{sid}/records").status_code == 409
+    c.post(f"/scenarios/{sid}/run", json={"recompute": "blast"})
+    r = c.get(f"/scenarios/{sid}/records")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["records"]) == len(c.get("/edges").json()["edges"])
+    assert all(len(rec) == 5 for rec in body["records"])

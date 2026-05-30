@@ -53,11 +53,27 @@ async function jpost<T>(path: string, body: unknown): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+async function jpatch<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`PATCH ${path} → ${r.status}`);
+  return r.json() as Promise<T>;
+}
+
 export const api = {
   health: () => jget<{ status: string; edges: number }>("/healthz"),
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string) => jpost<CopilotResponse>("/copilot/plan", { prompt }),
+  // Edit-mode scenario flow (real engine, blast-radius recompute).
+  createScenario: (payload: unknown) => jpost<{ id: string }>("/scenarios", payload),
+  patchScenario: (id: string, payload: unknown) => jpatch<unknown>(`/scenarios/${id}`, payload),
+  run: (id: string, req: unknown) => jpost<unknown>(`/scenarios/${id}/run`, req),
+  scenarioRecords: (id: string) =>
+    jget<{ records: Record5[]; summary: Record<string, number> }>(`/scenarios/${id}/records`),
   transitRoutes: (agencies = "ttc") =>
     jget<{ routes: { route_id: string; mode: string; path: [number, number][] }[] }>(
       `/transit/routes?agencies=${agencies}`,

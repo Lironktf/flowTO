@@ -70,3 +70,12 @@ export const LOWER_IS_BETTER = new Set([
 ]);
 
 export const DEMO_DEVICE = "DGX Spark · GB10";
+
+// Recompute overlay stepper labels.
+export const RECOMPUTE_STEPS_LABEL = [
+  "Demand",
+  "Assign",
+  "Pressure",
+  "Bylaw",
+  "Render",
+];

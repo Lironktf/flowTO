@@ -170,6 +170,17 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             most_impacted_edges=diff.get("most_impacted_edges", []),
         )
 
+    @app.get("/scenarios/{sid}/records")
+    def scenario_records(sid: str):
+        """Per-edge tick records of a scenario's last run (Edit-mode repaint)."""
+        sc = store.get(sid)
+        if sc is None:
+            raise HTTPException(404, "scenario not found")
+        result = sc.get("_last_result")
+        if result is None:
+            raise HTTPException(409, "scenario has not been run yet")
+        return {"records": edge_records(state, result["graph"]), "summary": result["summary"]}
+
     # ---- copilot / optimizer placeholders (P09/P10 fill in) ------------- #
     @app.post("/copilot/plan")
     def copilot_plan(payload: dict):

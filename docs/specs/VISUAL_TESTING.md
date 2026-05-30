@@ -1,118 +1,87 @@
-# VISUAL TESTING — click-through QA for the FlowTO web app
+# VISUAL TESTING — click-through QA for the FlowTO web app (v2 two-view IDE)
 
-How to verify the frontend **by eye in the browser**, screen by screen. Each
-step lists what to do, what you should see, and the ✅ pass criteria. The 6
-states below were confirmed in-browser on 2026-05-30.
+How to verify the frontend **by eye in the browser**. The app is now a
+two-mode IDE (Blender/Unity-style flush docks): **Simulate** (3-D + NLE
+timeline) and **Edit** (top-down + tool rail + click-to-place). All traffic
+numbers are **real engine output** from the live backend.
 
-## Launch (the API is REQUIRED — the app renders real engine data)
+## Launch (the API is REQUIRED)
 ```bash
-# terminal 1 — backend (loads the real 18,190-edge graph; first start ~30–60s)
-cd ~/flowTO-build && scripts/run_api.sh           # http://localhost:8000  (warms the demo cache)
+# terminal 1 — backend (loads the real 18,190-edge graph; warms the demo cache)
+cd ~/flowTO-build && scripts/run_api.sh           # http://localhost:8000
 # terminal 2 — frontend dev server (proxies /api → :8000)
 cd ~/flowTO-build/frontend && npm run dev          # http://localhost:5173
 ```
-Open **:5173** in a desktop browser (designed at **1440×900** — use a wide window).
-> The frontend talks to the live backend: real graph (`/edges`), real engine
-> pressures (`/demo/run`), real before/after, real copilot (`/copilot/plan`).
-> `npm run preview` (static, no proxy) shows "Could not reach the API" on **Load
-> the twin** — use `npm run dev` with the API up, or set `VITE_API_BASE`.
->
-> **First surge run is slow (~tens of seconds)** — a full-graph solve. The server
-> **warms the cache at startup**, so after ~a minute the surge/fix clicks are
-> fast. The Recompute perf cell shows the real measured latency.
+Open **:5173** in a wide desktop window (designed at 1440×900). `npm run preview`
+(no proxy) will show "Could not reach the API" — use `npm run dev` with the API
+up. Give the server ~a minute after boot so the demo cache warms (first surge is
+otherwise a ~tens-of-seconds full-graph solve).
 
-> **Note on the map:** the basemap is a flat "drafting-paper" background by
-> design (offline-safe — no street tiles needed). The colored **road corridors**
-> drawn on top are the map content. That's expected, not a broken tile layer.
+> Basemap is a flat paper/near-black ground by design (offline-safe). The
+> colored lines on top are the **real road graph** recolored by engine pressure.
 
----
+## First-run → load
+**Do:** open the page → click **Load the twin**.
+**See:** paper splash (eyebrow, "A live digital twin of **Toronto**.", three
+stats, boot log) fades out; the IDE shell appears with the real road network
+drawn on the map.
+**✅** top bar shows `FlowTO`, a **Simulate / Edit** segmented switch, scenario
+tag, green **"Baseline · nominal"** status; status bar shows the real edge count
++ `DGX Spark · GB10`.
 
-## State 1 — First-run splash
-**Do:** load the page.
-**See:** full-screen paper background with a faint blueprint grid; small mono
-eyebrow "SPARK HACK · NVIDIA · LOCAL-FIRST"; large serif headline **"A live
-digital twin of Toronto."** (the word *Toronto* in cobalt blue); a lede
-paragraph; three stats (**18,190** road edges · **~45,000** egress · **<100ms**
-blast-radius); a cobalt **"Load the twin"** button; typed boot lines underneath.
-**✅ Pass:** headline + 3 stats + button render; fonts are serif (headline) /
-mono (stats labels), not default Times/Arial.
+## Simulate view (default)
+1. **Baseline** — left dock = *Scenarios*; right dock = *Before / After*
+   ("Network nominal"); bottom = **NLE timeline** (transport, clock `14:00`,
+   ruler, **kickoff** + **full-time** diamonds, Congest/Demand/Plan tracks with
+   `MATCH 90'` + red `EGRESS 45k` clips); Copilot region below the metrics.
+2. **Scrub / play** — drag the playhead or hit **play**; crossing **17:05**
+   (full-time) auto-fires the surge. Speed selector 0.5–4×.
+3. **Surge** — recompute overlay (5 stepper dots) → corridors recolor toward
+   **red**, status red **"Post-match surge · gridlock"**, Before/After flips to
+   **"Baseline → Event"** with real ↑ deltas (avg pressure / severe / high-risk
+   / loaded edges) + a red "cut-through risk" row; a **plan bar** appears
+   bottom-center of the map.
+4. **A·B toggle** — the *Before / After* header toggle repaints the map between
+   the two real snapshots.
+5. **Apply & recompute** (plan bar) → recompute → corridors ease back, status
+   green **"Mitigated · plan applied"**, Before/After = **"Event → Mitigated"**,
+   Plan track gets a **CONTRAFLOW + 509/511** clip, "Plan valid" row.
 
-## State 2 — Baseline / nominal
-**Do:** click **Load the twin**.
-**See:** the map canvas with road corridors in mostly **green/amber**; floating panels:
-- **Top bar**: `Flow` + cobalt `TO`, "DIGITAL TWIN · TORONTO", a "FIFA WC26" tag,
-  a **green** status chip **"Baseline · nominal"**, and `Transit` / `Dark` / `Reset` buttons.
-- **Left** "Interventions": a 2-col grid of 5 tools (Full closure, Lane reduction,
-  Temporary one-way, Signal retiming, Demand surge) + a Scenarios list.
-- **Right** "Before / After": the hint *"Network nominal — apply an intervention…"*.
-- **Bottom-right** "Copilot · Nemotron · on-device" with an intro line, 3 chips, input.
-- **Centered bottom** time scrubber (clock `14:00`, `FRI · 12 JUN 2026`, a heat rail).
-- **Bottom-left** perf strip (Recompute / Affected subgraph / LLM / fps / `DGX Spark · GB10`).
-- **Legend** "Edge pressure" green→red ramp.
-**✅ Pass:** all panels visible and non-overlapping; status chip dot is green.
+## Edit view (click the **Edit** segment)
+**See:** camera flattens to **top-down**; the **tool rail** appears (left edge:
+Select + 5 interventions, keys **1–5**, **Esc**); left dock = *Interventions* +
+*Scene*; right dock = *Inspector*; the timeline hides.
+1. **Place** — click a rail tool (or press 1–5), cursor becomes a crosshair,
+   click the map → a numbered **pin** drops, the **Scene** outliner gains a row,
+   the **Inspector** fills (it snaps to the nearest real road — e.g. "Lake Shore
+   Boulevard West" — and shows lat/lng + edge id), and a short **blast-radius**
+   recompute repaints the network. Status → "Edited · recomputed".
+2. **Select / delete** — click a pin or Scene row to select (Inspector updates);
+   Delete removes it. Eye icon toggles visibility.
 
-## State 3 — Recomputing (the HERO moment)
-**Do:** scrub the time slider past **17:05**, OR click any intervention tool, OR
-send the hero copilot chip.
-**See:** a centered **recompute overlay** above the scrubber — eyebrow
-"RECOMPUTING NETWORK", a step name (Demand model → Trip assignment → Edge
-pressure → Bylaw check → Render), a progress bar, and **5 step pips** filling
-cobalt; the top status chip turns cobalt **"Recomputing…"**; perf strip numbers
-animate up. Lasts ~1.7s.
-**✅ Pass:** overlay appears, pips fill left→right, then it disappears.
+## Copilot (both views)
+- **Hero**: chip *"Ease post-match gridlock…"* → real `/copilot/plan` reply with
+  the 3-step plan + **bylaw citations** (§ Ch. 950, King St, Ch. 880, AODA);
+  stages the plan bar (models the surge first if needed).
+- **Blocked**: chip *"Just close Lake Shore both ways."* → refusal citing Ch. 880
+  + TTC; status briefly amber **"Action blocked"**; network unchanged.
 
-## State 4 — Surge (gridlock)
-**Do:** (after State 3 fires from the surge trigger.)
-**See:** corridors turn **deep red**, a translucent **cobalt blast-radius halo**
-underlays the affected corridors; status chip **red "Post-match surge ·
-gridlock"**; Before/After flips to **"Baseline → Event"** with worsening numbers
-(**Total network delay 4,180 veh·h**, etc.) and a **red** warning row
-*"34% local-road infiltration…"*.
-**✅ Pass:** red corridors + cobalt halo + red status + 4,180 veh·h shown.
+## Cross-cutting
+- **Theme** (moon icon): light "paper" ↔ dark "ops" — whole shell + ramp flip.
+- **Dock toggles** (top-right cluster): collapse left/bottom/right docks (grid
+  animates closed).
+- **Recenter / Tilt** (map top-right): fly back to downtown / toggle 3-D pitch.
+- **Reset** (top bar): back to baseline, scene cleared.
 
-## State 5 — Mitigated (the fix)
-**Do:** click an intervention tool to reveal the **Recommended plan** card (3
-steps), then click **"Apply & recompute"**.
-**See:** another recompute, then corridors recolor **red→green/amber**; **5
-numbered cobalt markers** drop on the map; status chip **green "Mitigated · plan
-applied"**; Before/After shows **"Event → Mitigated"** with improving (green ↓)
-deltas (**delay 2,590 veh·h**) and a **green** row *"Plan valid. No
-hard-constraint conflicts."*.
-**✅ Pass:** status green "Mitigated", numbers move 4,180 → 2,590, green "Plan valid" row.
+## ✅ Green looks like
+- Real road network renders; surge recolors it; A·B repaints; Edit placement
+  drops pins on real roads and recomputes; copilot cites real bylaws.
+- Backend `pytest -q` green; `npm run build` + `npm run test` (12) green.
 
-## State 6 — Constraint-blocked (the guardrail)
-**Do:** in the copilot, click the chip **"Just close Lake Shore both ways."**
-**See:** the copilot **refuses** — a bot message listing the two hard-constraint
-breaches with citations **"§ Toronto Municipal Code Ch. 880 — designated fire
-route…"** and **"§ TTC service bylaw — streetcar-replacement bus lane…"**, plus
-the contraflow-alternative offer; status chip turns **amber "Action blocked ·
-bylaw conflict"**; **the network does not change** (no recompute, corridors stay
-as they were).
-**✅ Pass:** amber status, two § citations, network unchanged.
-
----
-
-## Cross-cutting checks
-- **Copilot hero** (chip *"Ease post-match gridlock…"*): bot replies with a
-  3-step plan + **4** citations (Ch. 950, King St, Ch. 880, AODA 2005) and reveals
-  the preview card. ✅ if all 4 § lines show.
-- **Transit toggle** (top bar **Transit**, on by default): faint dashed
-  streetcar routes (509/511); move the scrubber and vehicle dots animate along
-  them. Toggle off → they disappear. ✅ if toggling shows/hides them.
-- **Theme** (top bar **Dark**): the whole UI + basemap flip to the dark "ops"
-  palette; congestion colors brighten. ✅ if light↔dark with no unreadable text.
-- **Scrubber**: dragging changes the clock and (with Transit on) moves vehicles;
-  crossing 17:05 from baseline auto-triggers the surge.
-- **Reset** (top bar): returns to a calm baseline.
-- **Performance**: while streaming/animating, the dev DebugPanel (top-left, dev
-  build only) should hold ~60 fps. ✅ if it doesn't crater.
-
-## If something looks wrong
-- **Blank white page** → open devtools console; a red error usually means the
-  build didn't run (`npm run build`) or a dep is missing (`npm install`).
-- **No panels, only map** → you're likely on the first-run screen; click "Load the twin".
-- **404 favicon.ico** in the console → harmless, ignore.
-- **Map is just a flat color** → expected (no street tiles by design); confirm the
-  colored corridors render on top.
-- **Live mode shows nothing** → the API isn't running; start `scripts/run_api.sh`
-  or use `npm run preview` (deterministic demo, no API needed).
+## If something's off
+- **"Could not reach the API"** → API not running, or you used `preview`. Start
+  `scripts/run_api.sh` and use `npm run dev`.
+- **404 on `/scenarios/.../records`** → a stale API server (predates the
+  endpoint) is still bound to :8000 — kill it and restart `run_api.sh`.
+- **First surge slow** → cache still warming; wait ~a minute after boot.
+- **Blank page** → check the devtools console; usually a missing `npm install`.

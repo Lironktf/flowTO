@@ -15,6 +15,8 @@ from .encoding import pack_frame
 from .jobs import JobManager
 from .schemas import (
     CompareResult,
+    CopilotConfirm,
+    CopilotConfirmResult,
     RunRequest,
     RunResult,
     Scenario,
@@ -112,7 +114,10 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
 
     @app.get("/scenarios")
     def list_scenarios():
-        return {"scenarios": store.list()}
+        # Strip internal keys (e.g. _last_result holds a full graph) — they are
+        # not part of a scenario's public shape and aren't JSON-serializable.
+        public = [{k: v for k, v in sc.items() if not k.startswith("_")} for sc in store.list()]
+        return {"scenarios": public}
 
     @app.get("/scenarios/{sid}", response_model=Scenario)
     def get_scenario(sid: str):
@@ -223,6 +228,37 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 payload.get("summary_delta", {}), top_edges=payload.get("most_impacted_edges")
             )
         }
+
+    @app.post("/copilot/confirm", response_model=CopilotConfirmResult)
+    def copilot_confirm(payload: CopilotConfirm):
+        """Apply a previewed tool call → create scenario → run → compare → explain.
+
+        The copilot never mutates the sim directly; this is the explicit
+        user-confirmed apply step. Auto-runs so the planner sees results at once.
+        """
+        try:
+            from ..copilot.explain import explain_compare
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+
+        interventions = [iv.to_op() for iv in payload.interventions]
+        if not interventions:
+            raise HTTPException(422, "no interventions to apply")
+        _validate_edges(interventions)
+
+        sc = store.create({"name": payload.name, "interventions": interventions})
+        sid = sc["id"]
+        result = store.run(sid, payload.run.model_dump())
+        diff = store.compare(sid)
+        delta = diff.get("summary_delta", {})
+        edges = diff.get("most_impacted_edges", [])
+        return CopilotConfirmResult(
+            scenario_id=sid,
+            summary=result["summary"],
+            summary_delta=delta,
+            most_impacted_edges=edges,
+            explanation=explain_compare(delta, top_edges=edges),
+        )
 
     @app.post("/optimize")
     def optimize(payload: dict):

@@ -28,13 +28,29 @@ export interface DemoRun {
   records: Record5[];
 }
 
+export interface Intervention {
+  op: string;
+  edge_id?: string;
+  multiplier?: number;
+  [k: string]: unknown;
+}
+
 export interface CopilotResponse {
   tool: string;
   rationale: string;
+  interventions: Intervention[];
   citations: { ref: string; note: string }[];
   requires_user_confirmation: boolean;
   blocked: boolean;
   retrieved_policy?: { doc_id: string; title: string; source: string }[];
+}
+
+export interface CopilotConfirmResult {
+  scenario_id: string;
+  summary: Record<string, number>;
+  summary_delta: Record<string, number>;
+  most_impacted_edges: { edge_id: string; road_name?: string | null; [k: string]: unknown }[];
+  explanation: string;
 }
 
 async function jget<T>(path: string): Promise<T> {
@@ -68,6 +84,8 @@ export const api = {
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string) => jpost<CopilotResponse>("/copilot/plan", { prompt }),
+  copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>
+    jpost<CopilotConfirmResult>("/copilot/confirm", { interventions, name }),
   // Edit-mode scenario flow (real engine, blast-radius recompute).
   createScenario: (payload: unknown) => jpost<{ id: string }>("/scenarios", payload),
   patchScenario: (id: string, payload: unknown) => jpatch<unknown>(`/scenarios/${id}`, payload),

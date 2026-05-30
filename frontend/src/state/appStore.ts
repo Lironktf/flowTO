@@ -11,7 +11,13 @@
  * bumped pressureSeq drives the deck.gl recolor.
  */
 import { create } from "zustand";
-import { api, type CopilotResponse, type EdgeMeta, type Record5 } from "../api/client";
+import {
+  api,
+  type CopilotResponse,
+  type EdgeMeta,
+  type Intervention,
+  type Record5,
+} from "../api/client";
 import { TIMELINE } from "../config";
 import { resizeTickStore, writeRecords } from "./tickStore";
 
@@ -46,6 +52,9 @@ interface CopilotMessage {
   steps?: string[];
   citations?: { ref: string; note: string }[];
   blocked?: boolean;
+  // A previewed, confirmable plan (preview-before-apply): the ops to apply.
+  interventions?: Intervention[];
+  applied?: boolean;
 }
 
 interface Telemetry {
@@ -110,6 +119,7 @@ interface AppState {
   discardPlan: () => void;
   setCompare: (c: Compare) => void;
   copilotAsk: (text: string) => Promise<void>;
+  copilotConfirm: (msgIndex: number) => Promise<void>;
   selectTool: (id: string) => void;
   placeAt: (coord: [number, number]) => Promise<void>;
   selectObject: (id: string) => void;
@@ -338,10 +348,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: `Copilot unavailable: ${msg}` }] }));
       return;
     }
+    const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
     set((s) => ({
       copilotLog: [
         ...s.copilotLog,
-        { role: "bot", text: resp.rationale, citations: resp.citations, blocked: resp.blocked },
+        {
+          role: "bot",
+          text: resp.rationale,
+          citations: resp.citations,
+          blocked: resp.blocked,
+          interventions: confirmable ? resp.interventions : undefined,
+        },
       ],
     }));
     if (resp.blocked) {
@@ -354,6 +371,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     if (get().modelled === "base") await get().triggerSurge(false);
     set({ planStaged: true });
+  },
+
+  copilotConfirm: async (msgIndex) => {
+    const msg = get().copilotLog[msgIndex];
+    const interventions = msg?.interventions;
+    if (!interventions || !interventions.length) return;
+    set({ status: { state: "recomputing", label: "Applying plan · running sim" } });
+    try {
+      const res = await api.copilotConfirm(interventions as Intervention[]);
+      // Mark this plan applied + post the grounded result summary.
+      set((s) => ({
+        copilotLog: s.copilotLog
+          .map((m, i) => (i === msgIndex ? { ...m, applied: true } : m))
+          .concat({ role: "bot", text: res.explanation }),
+        scenarioId: res.scenario_id,
+        status: { state: "surge", label: "Plan applied · results updated" },
+      }));
+    } catch (e) {
+      const emsg = e instanceof Error ? e.message : String(e);
+      set((s) => ({
+        copilotLog: [...s.copilotLog, { role: "bot", text: `Apply failed: ${emsg}` }],
+        status: { state: "nominal", label: "Baseline · nominal" },
+      }));
+    }
   },
 
   selectTool: (id) => {

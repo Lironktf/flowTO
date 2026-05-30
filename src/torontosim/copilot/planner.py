@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 
+from ..api.schemas import Intervention
 from . import rag
 from .constraints import check_request
 from .tools import Citation, ToolCall
@@ -28,9 +29,37 @@ _HERO_CITATIONS = [
 ]
 
 
-def _hero_call() -> ToolCall:
+def _resolve_edges(state, name_substr: str, limit: int = 2) -> list[str]:
+    """Edge ids whose road name contains ``name_substr`` (live graph only)."""
+    out: list[str] = []
+    if state is None or not hasattr(state, "graph"):
+        return out
+    sub = name_substr.lower()
+    for _u, _v, d in state.graph.edges(data=True):
+        if sub in (d.get("road_name") or "").lower():
+            eid = d.get("edge_id") or d.get("id")
+            if eid is not None:
+                out.append(eid)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _hero_interventions(state) -> list[Intervention]:
+    """The rehearsed mitigation as concrete, applyable ops (resolved on the graph)."""
+    ivs: list[Intervention] = []
+    for name, mult in (("Dufferin", 0.7), ("Strachan", 0.7)):
+        for eid in _resolve_edges(state, name):
+            ivs.append(Intervention(op="change_capacity", edge_id=eid, multiplier=mult))
+    for eid in _resolve_edges(state, "Princes"):
+        ivs.append(Intervention(op="close_edge", edge_id=eid))
+    return ivs
+
+
+def _hero_call(state=None) -> ToolCall:
     return ToolCall(
         tool="preview_intervention",
+        interventions=_hero_interventions(state),
         rationale=(
             "Full-time releases ~45,000 over 25 minutes onto the Lake Shore / Strachan / "
             "Dufferin spine with severe spill-over into local streets. A bylaw-valid mitigation: "
@@ -85,7 +114,7 @@ def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> di
         call = _blocked_call(prompt, state)
     # 2) Hero mitigation intent (ease/mitigate gridlock / post-match egress).
     elif any(kw in text for kw in ("ease", "mitigat", "gridlock", "post-match", "egress")):
-        call = _hero_call()
+        call = _hero_call(state)
     elif live:
         from .plan import PlanError, plan
 

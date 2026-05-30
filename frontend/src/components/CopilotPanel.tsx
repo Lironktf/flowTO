@@ -6,6 +6,7 @@ import { Icon } from "./Icons";
 export function CopilotRegion() {
   const log = useAppStore((s) => s.copilotLog);
   const ask = useAppStore((s) => s.copilotAsk);
+  const confirm = useAppStore((s) => s.copilotConfirm);
   const [text, setText] = useState("");
 
   const submit = (value: string) => {
@@ -48,6 +49,21 @@ export function CopilotRegion() {
                       <span className="ref">{c.ref}</span> — {c.note}
                     </span>
                   ))}
+                </div>
+              )}
+              {m.interventions && m.interventions.length > 0 && (
+                <div className="copilot-confirm" style={{ marginTop: 8 }}>
+                  <button
+                    className="btn primary"
+                    disabled={m.applied}
+                    onClick={() => void confirm(i)}
+                  >
+                    {m.applied
+                      ? "✓ Applied"
+                      : `Confirm & run (${m.interventions.length} change${
+                          m.interventions.length > 1 ? "s" : ""
+                        })`}
+                  </button>
                 </div>
               )}
             </div>

@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torontosim"
+version = "0.1.0"
+description = "TorontoSim — local-first 3-D Toronto traffic digital twin (DGX Spark)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "FlowTo" }]
+dependencies = [
+    "osmnx>=1.9",
+    "networkx>=3.0",
+    "scikit-learn>=1.3",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5", "black>=24.0", "pre-commit>=3.7"]
+# Principled assignment oracle (CPU, installable locally).
+sim = ["aequilibrae>=1.0"]
+# GPU acceleration — installed ONLY on the Spark, never locally.
+gpu = ["cudf-cu13", "cugraph-cu13"]
+# Local AI stack — Spark only.
+ai = ["ollama>=0.3", "sentence-transformers>=3.0", "chromadb>=0.5"]
+# Backend API.
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "websockets>=12.0", "pydantic>=2.0"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["torontosim*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "spark: GPU/LLM tests that run only on the DGX Spark over SSH (skipped in CI)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv", "data", "models", "frontend", "design"]
+
+[tool.ruff.lint]
+# Scoped to real-error + import-hygiene rules. Modernization (UP) and bugbear
+# (B) rewrites are intentionally excluded so the P00 restructure does not alter
+# Liron's baseline logic; they can be enabled in a later cleanup pass.
+select = ["E", "F", "I", "W"]
+# E402: deliberate sys.path bootstrap before imports in tests/scripts.
+# E501: long lines in legacy modules are out of P00 scope.
+ignore = ["E402", "E501"]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+extend-exclude = "(\\.venv|data|models|frontend|design)"

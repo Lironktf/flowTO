@@ -110,10 +110,7 @@ def test_graph_mutation():
         "Distance delta: "
         f"{(after['total_distance_m'] - before['total_distance_m']) / 1000:+.2f} km"
     )
-    print(
-        "Travel-time delta: "
-        f"{after['total_time_min'] - before['total_time_min']:+.2f} min"
-    )
+    print("Travel-time delta: " f"{after['total_time_min'] - before['total_time_min']:+.2f} min")
 
     # Closing an edge on the optimal path can only keep or worsen the route.
     assert after["total_time_min"] >= before["total_time_min"] - 1e-6

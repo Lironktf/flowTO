@@ -38,7 +38,6 @@ import pandas as pd
 
 from .features import (
     FEATURE_ORDER,
-    ROAD_CLASS_RANK,
     compute_static_node_features,
     rush_factor,
     weather_code,
@@ -59,6 +58,7 @@ WEATHERS = ["clear", "cloud", "rain", "snow", "fog"]
 # Synthetic, Toronto-plausible training data (fallback when no real counts).
 # ---------------------------------------------------------------------------
 
+
 def _synthetic_count(static_feat: dict, tc: dict, rng: np.random.Generator) -> float:
     """A realistic-looking vehicle count as a function of the features.
 
@@ -76,8 +76,15 @@ def _synthetic_count(static_feat: dict, tc: dict, rng: np.random.Generator) -> f
     rush = rush_factor(tc["hour"], tc["is_weekend"])
     weather_factor = {0: 1.0, 1: 1.0, 2: 0.92, 3: 0.8}.get(weather_code(tc["weather"]), 1.0)
 
-    mean = (base * class_factor * downtown_factor * highway_factor
-            * degree_factor * rush * weather_factor)
+    mean = (
+        base
+        * class_factor
+        * downtown_factor
+        * highway_factor
+        * degree_factor
+        * rush
+        * weather_factor
+    )
     noise = rng.lognormal(mean=0.0, sigma=0.18)
     return max(0.0, mean * noise)
 
@@ -104,37 +111,47 @@ def generate_synthetic_training_data(
         month = int(rng.integers(1, 13))
         is_weekend = 1 if dow >= 5 else 0
         weather = WEATHERS[rng.integers(0, len(WEATHERS))]
-        tc = {"hour": hour, "day_of_week": dow, "month": month,
-              "is_weekend": is_weekend, "weather": weather}
-        count = _synthetic_count(sf, tc, rng)
-        rows.append({
-            "node_id": node,
-            "lat": sf["lat"],
-            "lon": sf["lon"],
+        tc = {
             "hour": hour,
             "day_of_week": dow,
             "month": month,
             "is_weekend": is_weekend,
             "weather": weather,
-            "weather_code": weather_code(weather),
-            "road_degree": sf["road_degree"],
-            "distance_to_downtown": sf["distance_to_downtown"],
-            "near_highway": sf["near_highway"],
-            "road_class_rank": sf["road_class_rank"],
-            "vehicle_count": round(count, 1),
-        })
+        }
+        count = _synthetic_count(sf, tc, rng)
+        rows.append(
+            {
+                "node_id": node,
+                "lat": sf["lat"],
+                "lon": sf["lon"],
+                "hour": hour,
+                "day_of_week": dow,
+                "month": month,
+                "is_weekend": is_weekend,
+                "weather": weather,
+                "weather_code": weather_code(weather),
+                "road_degree": sf["road_degree"],
+                "distance_to_downtown": sf["distance_to_downtown"],
+                "near_highway": sf["near_highway"],
+                "road_class_rank": sf["road_class_rank"],
+                "vehicle_count": round(count, 1),
+            }
+        )
 
     df = pd.DataFrame(rows)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     df.to_csv(out_path, index=False)
-    print(f"  wrote {out_path}  ({len(df):,} rows, "
-          f"vehicle_count mean={df['vehicle_count'].mean():.0f})")
+    print(
+        f"  wrote {out_path}  ({len(df):,} rows, "
+        f"vehicle_count mean={df['vehicle_count'].mean():.0f})"
+    )
     return out_path
 
 
 # ---------------------------------------------------------------------------
 # Data loading shared by train + sweep
 # ---------------------------------------------------------------------------
+
 
 def _load_xy(path: str):
     df = pd.read_csv(path)
@@ -159,12 +176,14 @@ def _train_val_arrays(training_data_path: str, val_path: Optional[str]):
         print(f"  using explicit validation set: {len(X_te):,} rows ({val_path})")
         return X, X_te, y, y_te
     from sklearn.model_selection import train_test_split
+
     return train_test_split(X, y, test_size=0.2, random_state=42)
 
 
 # ---------------------------------------------------------------------------
 # Estimators
 # ---------------------------------------------------------------------------
+
 
 def _make_estimator(backend: str, params: Optional[dict] = None):
     """Return (estimator, kind). backend: 'sklearn' or 'xgboost'.
@@ -181,20 +200,31 @@ def _make_estimator(backend: str, params: Optional[dict] = None):
             print("  [backend] xgboost not installed; falling back to sklearn")
         else:
             device = "cpu" if backend == "xgboost-cpu" else "cuda"
-            defaults = dict(n_estimators=600, learning_rate=0.05, max_depth=8,
-                            subsample=0.9, colsample_bytree=0.9, reg_lambda=1.0,
-                            tree_method="hist", device=device, random_state=42)
+            defaults = dict(
+                n_estimators=600,
+                learning_rate=0.05,
+                max_depth=8,
+                subsample=0.9,
+                colsample_bytree=0.9,
+                reg_lambda=1.0,
+                tree_method="hist",
+                device=device,
+                random_state=42,
+            )
             defaults.update(params)
             return XGBRegressor(**defaults), f"XGBRegressor(device={device})"
     from sklearn.ensemble import HistGradientBoostingRegressor
-    defaults = dict(max_iter=400, learning_rate=0.06, max_depth=8,
-                    l2_regularization=1.0, random_state=42)
+
+    defaults = dict(
+        max_iter=400, learning_rate=0.06, max_depth=8, l2_regularization=1.0, random_state=42
+    )
     defaults.update(params)
     return HistGradientBoostingRegressor(**defaults), "HistGradientBoostingRegressor"
 
 
 def _save(model, kind, mae, r2, model_path, extra=None):
     import joblib
+
     payload = {
         "model": model,
         "feature_order": FEATURE_ORDER,
@@ -212,6 +242,7 @@ def _save(model, kind, mae, r2, model_path, extra=None):
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
+
 
 def train_demand_model(
     training_data_path: str = TRAINING_CSV,
@@ -282,6 +313,7 @@ def train_with_sweep(
     if backend.startswith("xgboost") or backend == "gpu":
         try:
             import xgboost  # noqa: F401
+
             have_xgb = True
         except ImportError:
             print("  [sweep] xgboost missing; sweeping sklearn instead")
@@ -317,19 +349,30 @@ def train_with_sweep(
         results.append({"trial": t, "mae": mae, "r2": r2, "params": params})
         marker = ""
         if mae < best["mae"]:
-            best = {"mae": mae, "r2": r2, "params": params,
-                    "model": model, "kind": kind}
+            best = {"mae": mae, "r2": r2, "params": params, "model": model, "kind": kind}
             marker = "  <-- best"
-            _save(model, kind, mae, r2, model_path,
-                  extra={"hyperparameters": params, "sweep_trial": t})
+            _save(
+                model,
+                kind,
+                mae,
+                r2,
+                model_path,
+                extra={"hyperparameters": params, "sweep_trial": t},
+            )
         print(f"   trial {t:>3}: MAE={mae:8.1f}  R^2={r2:.3f}{marker}")
 
         # Persist the running log after each trial (resumable / inspectable).
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         with open(log_path, "w", encoding="utf-8") as fh:
-            json.dump({"backend": backend, "trials": results,
-                       "best": {k: best[k] for k in ("mae", "r2", "params")
-                                if k in best}}, fh, indent=1)
+            json.dump(
+                {
+                    "backend": backend,
+                    "trials": results,
+                    "best": {k: best[k] for k in ("mae", "r2", "params") if k in best},
+                },
+                fh,
+                indent=1,
+            )
 
     print(f"\n  BEST: MAE={best['mae']:.1f}  R^2={best.get('r2', float('nan')):.3f}")
     print(f"  best params: {best.get('params')}")
@@ -345,26 +388,38 @@ def _pick(rng, choices):
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _load_graph():
     from ..graph.routing import import_graph_json
+
     return import_graph_json(GRAPH_JSON)
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="Train the Toronto demand model.")
-    p.add_argument("--generate", action="store_true",
-                   help="(Re)generate the synthetic training CSV from the graph.")
+    p.add_argument(
+        "--generate",
+        action="store_true",
+        help="(Re)generate the synthetic training CSV from the graph.",
+    )
     p.add_argument("--train", action="store_true", help="Train from the CSV.")
-    p.add_argument("--sweep", action="store_true",
-                   help="Run an overnight hyper-parameter sweep (GX10/GPU friendly).")
+    p.add_argument(
+        "--sweep",
+        action="store_true",
+        help="Run an overnight hyper-parameter sweep (GX10/GPU friendly).",
+    )
     p.add_argument("--trials", type=int, default=60, help="Sweep trial count.")
     p.add_argument("--rows", type=int, default=40000, help="Synthetic row count.")
     p.add_argument("--csv", default=TRAINING_CSV)
-    p.add_argument("--val", default=None,
-                   help="Validation CSV (default: validation_dataset.csv if present).")
+    p.add_argument(
+        "--val", default=None, help="Validation CSV (default: validation_dataset.csv if present)."
+    )
     p.add_argument("--out", default=MODEL_PATH)
-    p.add_argument("--backend", default=None,
-                   help="Learner: 'sklearn' (default) or 'xgboost' (GPU if available).")
+    p.add_argument(
+        "--backend",
+        default=None,
+        help="Learner: 'sklearn' (default) or 'xgboost' (GPU if available).",
+    )
     args = p.parse_args(argv)
 
     val = args.val
@@ -377,8 +432,13 @@ def main(argv=None):
 
     if args.sweep:
         print("Running hyper-parameter sweep ...")
-        train_with_sweep(args.csv, val_path=val, model_path=args.out,
-                         backend=(args.backend or "xgboost"), trials=args.trials)
+        train_with_sweep(
+            args.csv,
+            val_path=val,
+            model_path=args.out,
+            backend=(args.backend or "xgboost"),
+            trials=args.trials,
+        )
         return
 
     # Default with no action flags: generate-if-missing then train.

@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 import math
 import os
-from typing import Optional
 
 INF = float("inf")
 
@@ -43,20 +42,22 @@ def build_result_json(
 
     edges_out = []
     for u, v, d in graph.edges(data=True):
-        edges_out.append({
-            "edge_id": d.get("edge_id"),
-            "from_node": u,
-            "to_node": v,
-            "road_name": d.get("road_name"),
-            "road_class": d.get("road_class"),
-            "load": round(d.get("load", 0.0) or 0.0, 1),
-            "capacity": d.get("capacity"),
-            "pressure": _num(d.get("pressure")),
-            "base_time_min": d.get("base_time_min"),
-            "current_time_min": _num(d.get("current_time_min")),
-            "risk": d.get("risk", "low"),
-            "status": d.get("status", "open"),
-        })
+        edges_out.append(
+            {
+                "edge_id": d.get("edge_id"),
+                "from_node": u,
+                "to_node": v,
+                "road_name": d.get("road_name"),
+                "road_class": d.get("road_class"),
+                "load": round(d.get("load", 0.0) or 0.0, 1),
+                "capacity": d.get("capacity"),
+                "pressure": _num(d.get("pressure")),
+                "base_time_min": d.get("base_time_min"),
+                "current_time_min": _num(d.get("current_time_min")),
+                "risk": d.get("risk", "low"),
+                "status": d.get("status", "open"),
+            }
+        )
 
     nodes_out = []
     demands = result.get("node_demands") or {}
@@ -65,26 +66,28 @@ def build_result_json(
         if node_sample and node_sample > 0:
             items = items[:node_sample]
         for node, dem in items:
-            nodes_out.append({
-                "node_id": node,
-                "name": graph.nodes[node].get("name") if node in graph else None,
-                "predicted_demand": round(float(dem), 1),
-            })
+            nodes_out.append(
+                {
+                    "node_id": node,
+                    "name": graph.nodes[node].get("name") if node in graph else None,
+                    "predicted_demand": round(float(dem), 1),
+                }
+            )
 
     od = result.get("od_matrix", [])
     od_sorted = sorted(od, key=lambda o: -o["trips"])
-    od_out = [{"origin": o["origin"], "destination": o["destination"],
-               "trips": round(o["trips"], 1)} for o in od_sorted[:od_sample]]
+    od_out = [
+        {"origin": o["origin"], "destination": o["destination"], "trips": round(o["trips"], 1)}
+        for o in od_sorted[:od_sample]
+    ]
 
     frames_out = []
     if include_frames:
         for fr in result.get("frames", []):
             states = fr["edge_states"]
             if frame_high_pressure_only:
-                states = [s for s in states
-                          if s.get("risk") in ("high", "severe")]
-            frames_out.append({"step": fr["step"], "label": fr["label"],
-                               "edge_states": states})
+                states = [s for s in states if s.get("risk") in ("high", "severe")]
+            frames_out.append({"step": fr["step"], "label": fr["label"], "edge_states": states})
 
     return {
         "time_context": tc,

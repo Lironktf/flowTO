@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 import os
-from typing import Dict, Optional
+from typing import Dict
 
 import numpy as np
 
@@ -24,7 +24,6 @@ from .features import (
     compute_static_node_features,
     normalize_time_context,
     rush_factor,
-    weather_code,
 )
 from .train_demand_model import MODEL_PATH
 
@@ -67,19 +66,31 @@ class HeuristicDemandModel:
         degree_factor = 1.0 + 0.05 * max(0, degree - 2)
         rush = rush_factor(hour, is_weekend)
         weather_factor = {0: 1.0, 1: 1.0, 2: 0.92, 3: 0.8}.get(wcode, 1.0)
-        return max(0.0, base * class_factor * downtown_factor * highway_factor
-                   * degree_factor * rush * weather_factor)
+        return max(
+            0.0,
+            base
+            * class_factor
+            * downtown_factor
+            * highway_factor
+            * degree_factor
+            * rush
+            * weather_factor,
+        )
 
 
 def load_demand_model(model_path: str = MODEL_PATH):
     """Load the trained model payload, or fall back to the heuristic model."""
     if os.path.exists(model_path):
         import joblib
+
         payload = joblib.load(model_path)
         return payload
     print(f"[predict] no trained model at {model_path}; using HeuristicDemandModel")
-    return {"model": HeuristicDemandModel(), "feature_order": FEATURE_ORDER,
-            "kind": "HeuristicDemandModel"}
+    return {
+        "model": HeuristicDemandModel(),
+        "feature_order": FEATURE_ORDER,
+        "kind": "HeuristicDemandModel",
+    }
 
 
 def _estimator_and_order(model):
@@ -123,8 +134,9 @@ if __name__ == "__main__":
 
     g = import_graph_json(GRAPH_JSON)
     m = load_demand_model()
-    demand = predict_node_demand(g, m, {"hour": 17, "day_of_week": 4, "month": 6,
-                                        "weather": "clear"})
+    demand = predict_node_demand(
+        g, m, {"hour": 17, "day_of_week": 4, "month": 6, "weather": "clear"}
+    )
     top = sorted(demand.items(), key=lambda kv: -kv[1])[:10]
     print(f"model: {m.get('kind')}  nodes: {len(demand):,}")
     print("top demand nodes:")

@@ -22,8 +22,8 @@ from typing import Dict, List
 import networkx as nx
 
 INF = float("inf")
-CLOSED_WEIGHT = 1e12          # effectively-infinite weight for closed edges
-PENALTY = 3.0                 # multiplier applied to used edges to find alternates
+CLOSED_WEIGHT = 1e12  # effectively-infinite weight for closed edges
+PENALTY = 3.0  # multiplier applied to used edges to find alternates
 
 
 def _set_eff_weights(graph):
@@ -74,8 +74,7 @@ def _add_load(graph, path, trips):
     for u, v in zip(path[:-1], path[1:]):
         k = _cheapest_edge_key(graph, u, v)
         if k is not None:
-            graph.edges[u, v, k]["load"] = (
-                graph.edges[u, v, k].get("load", 0.0) or 0.0) + trips
+            graph.edges[u, v, k]["load"] = (graph.edges[u, v, k].get("load", 0.0) or 0.0) + trips
 
 
 def k_paths_from_origin(graph, origin, targets, k):

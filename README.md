@@ -35,6 +35,10 @@ cd frontend && npm install && npm run dev  # http://localhost:5173
 # 4. Headless demo + perf evidence
 python -m torontosim.demo.wc_surge --scenario all   # baseline → surge → fix (deterministic)
 python -m torontosim.perf.bench                     # full-city vs blast-radius (~15× speedup)
+
+# 5. Run + test on the DGX Spark from your dev box (real data; no ngrok)
+scripts/spark/fetch_and_bake.sh                     # real Centreline/TMC/GTFS → parquet store
+TS_GRAPH_SOURCE=centreline scripts/spark/serve.sh   # API+Vite on the Spark; prints the ssh -L line
 ```
 
 Then open **:5173**, click **Load the twin**, and use the **Simulate / Edit**

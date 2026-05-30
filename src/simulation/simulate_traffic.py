@@ -75,13 +75,15 @@ def _frame(graph, step, label, only_active=True):
         load = d.get("load", 0.0) or 0.0
         if only_active and load <= 0 and d.get("status") != "closed":
             continue
-        states.append({
-            "edge_id": d.get("edge_id"),
-            "load": round(load, 1),
-            "pressure": _num(d.get("pressure")),
-            "current_time_min": _num(d.get("current_time_min")),
-            "risk": d.get("risk", "low"),
-        })
+        states.append(
+            {
+                "edge_id": d.get("edge_id"),
+                "load": round(load, 1),
+                "pressure": _num(d.get("pressure")),
+                "current_time_min": _num(d.get("current_time_min")),
+                "risk": d.get("risk", "low"),
+            }
+        )
     return {"step": step, "label": label, "edge_states": states}
 
 
@@ -95,8 +97,12 @@ def _num(v):
     return "Infinity" if math.isinf(f) else round(f, 4)
 
 
-_LABELS = ["initial assignment", "first congestion update",
-           "secondary rerouting", "stabilized baseline"]
+_LABELS = [
+    "initial assignment",
+    "first congestion update",
+    "secondary rerouting",
+    "stabilized baseline",
+]
 
 
 def _label_for(step, iterations):
@@ -199,6 +205,7 @@ def summarize(graph, od_matrix) -> dict:
 # Scenario simulation + comparison
 # ---------------------------------------------------------------------------
 
+
 def apply_scenario(graph, scenario: List[dict]):
     """Apply a list of mutation ops to `graph` in place. Returns the graph.
 
@@ -212,7 +219,11 @@ def apply_scenario(graph, scenario: List[dict]):
                           "speed_kmh": .., "lanes": .., "capacity": ..}
     """
     from ..graph.mutations import (
-        add_edge, change_capacity, close_edge, close_node, remove_edge,
+        add_edge,
+        change_capacity,
+        close_edge,
+        close_node,
+        remove_edge,
         reopen_edge,
     )
 
@@ -229,8 +240,15 @@ def apply_scenario(graph, scenario: List[dict]):
         elif kind == "close_node":
             close_node(graph, op["node_id"])
         elif kind == "add_edge":
-            add_edge(graph, op["from_node"], op["to_node"], op["road_name"],
-                     op["speed_kmh"], op["lanes"], op["capacity"])
+            add_edge(
+                graph,
+                op["from_node"],
+                op["to_node"],
+                op["road_name"],
+                op["speed_kmh"],
+                op["lanes"],
+                op["capacity"],
+            )
         else:
             raise ValueError(f"unknown scenario op: {kind!r}")
     return graph
@@ -253,12 +271,19 @@ def simulate_scenario(
     """
     G = graph.copy()
     from ..graph.routing import build_edge_index
+
     build_edge_index(G)
     apply_scenario(G, scenario)
     result = simulate_traffic(
-        G, od_matrix, iterations=iterations, k_paths=k_paths, weather=weather,
-        time_context=time_context, auto_calibrate=False,
-        capture_frames=capture_frames, copy_graph=False,
+        G,
+        od_matrix,
+        iterations=iterations,
+        k_paths=k_paths,
+        weather=weather,
+        time_context=time_context,
+        auto_calibrate=False,
+        capture_frames=capture_frames,
+        copy_graph=False,
     )
     result["scenario"] = scenario
     return result
@@ -286,19 +311,21 @@ def compare_simulations(baseline_result: dict, scenario_result: dict) -> dict:
         s_press = _finite(sd.get("pressure"))
         dload = s_load - b_load
         dpress = (s_press - b_press) if (b_press is not None and s_press is not None) else None
-        changes.append({
-            "edge_id": eid,
-            "road_name": sd.get("road_name"),
-            "load_before": round(b_load, 1),
-            "load_after": round(s_load, 1),
-            "load_delta": round(dload, 1),
-            "pressure_before": _r(b_press),
-            "pressure_after": _r(s_press),
-            "pressure_delta": _r(dpress),
-            "time_before": _r(b_time),
-            "time_after": _r(s_time),
-            "status_after": sd.get("status"),
-        })
+        changes.append(
+            {
+                "edge_id": eid,
+                "road_name": sd.get("road_name"),
+                "load_before": round(b_load, 1),
+                "load_after": round(s_load, 1),
+                "load_delta": round(dload, 1),
+                "pressure_before": _r(b_press),
+                "pressure_after": _r(s_press),
+                "pressure_delta": _r(dpress),
+                "time_before": _r(b_time),
+                "time_after": _r(s_time),
+                "status_after": sd.get("status"),
+            }
+        )
 
     # Most-impacted edges by absolute load change.
     changes.sort(key=lambda c: -abs(c["load_delta"]))

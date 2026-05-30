@@ -30,9 +30,16 @@
 
 ## 3. What's deferred (and why it doesn't block the demo)
 All deferrals are **network- or install-bound**, each with a working fallback:
-- **Real full data fetch** (Centreline 118 MB, TMC 346k, live restrictions, real GTFS): network-bound → run `datapipeline fetch` pre-event/on Spark. Committed `toronto_drive_graph.json` + `demand_model.pkl` carry the demo; mocked tests cover the pipeline logic.
+- **Real full data fetch** (Centreline 118 MB, TMC 346k, live restrictions, real GTFS): network-bound → the **bake is now implemented** (FLO-7: `bake_{centreline,intersections,tmc,signals,bridges,zones}` + `cmd_bake`), so `datapipeline fetch && bake && verify` on the Spark (`scripts/spark/fetch_and_bake.sh`) produces the real parquet store + catalog + manifest. The actual bytes are still fetched pre-event (gitignored); fixture + `@pytest.mark.network` tests cover the pipeline. Committed `toronto_drive_graph.json` + `demand_model.pkl` carry the demo offline.
 - **cuOpt**: not installed on the Spark → the heuristic optimizer always returns an improving, sim-verified plan.
-- **Live ODME against TMC counts in the assignment loop**: the `odme` module is tested standalone; wiring into the live loop is a follow-up.
+
+### Now real (FLO-7) vs still fallback
+| Input | Real path (flag) | Default / fallback |
+|---|---|---|
+| Road graph | Centreline parquet → graph (`TS_GRAPH_SOURCE=centreline`) | OSMnx `toronto_drive_graph.json` (default, baseline-safe) |
+| Demand / OD | ODME vs real TMC peaks (`calibration=ipf_counts`, `tmc_records`) | gravity + Furness (`calibration=none`, default) |
+| Transit | cached real GTFS at `data/transit/{agency}_{date}.json` (auto-preferred) | hand-authored 509/511 demo set |
+| Feature store | baked `data/parquet/*.parquet` + `catalog.duckdb` + `manifest.json` | n/a (bake on Spark) |
 - **Nsight `.nsys-rep` capture**: scripts present; the in-app counters + the 15.19× bench already give the perf evidence.
 - **Demand-model retrain on full data (XGBoost CUDA)**: the committed `.pkl` is used; retrain script targets the Spark.
 

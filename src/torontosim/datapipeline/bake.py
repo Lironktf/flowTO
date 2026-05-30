@@ -241,9 +241,14 @@ def _read_geojson(path) -> list[dict]:
 
 def _read_csv(path) -> list[dict]:
     import csv
+    import sys
+
+    # CKAN CSVs carry geometry as one cell; a neighbourhood MultiPolygon blows
+    # past csv's default 131072-char field cap. Lift it to the platform max.
+    csv.field_size_limit(sys.maxsize)
 
     out: list[dict] = []
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8-sig") as fh:
         for row in csv.DictReader(fh):
             r = dict(row)
             if "geometry" in r:

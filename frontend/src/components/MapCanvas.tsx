@@ -33,10 +33,10 @@ import { RECOMPUTE_STEPS, useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
 
-function DeckOverlay(props: { layers: unknown[] }) {
+function DeckOverlay(props: { layers: unknown[]; onClick?: (info: { layer?: { id?: string } | null }) => void }) {
   const overlay = useControl(() => new MapboxOverlay({ interleaved: true, layers: [] }));
   // @ts-expect-error deck layer typing is loose here
-  overlay.setProps({ layers: props.layers });
+  overlay.setProps({ layers: props.layers, onClick: props.onClick });
   return null;
 }
 
@@ -97,7 +97,13 @@ export function MapCanvas() {
   const discardPlan = useAppStore((s) => s.discardPlan);
   const dark = theme === "dark";
   const placing = view === "edit" && activeTool !== "select";
+  // Mirror `placing` into a ref so the deck click handler reads the *pre-click*
+  // value (effects commit after click handlers run) — a placement click then
+  // can't be misread as a deselect.
+  const placingRef = useRef(placing);
+  useEffect(() => { placingRef.current = placing; }, [placing]);
   const [hoverStreet, setHoverStreet] = useState(false);
+  const [hoverPinId, setHoverPinId] = useState<string | null>(null);
   const [overlays, setOverlays] = useState({ poi: true, transit: true, roadLabels: true, placeLabels: true, buildings3d: true });
   const [layersOpen, setLayersOpen] = useState(false);
 
@@ -333,17 +339,20 @@ export function MapCanvas() {
         new ScatterplotLayer({
           id: "pins", data: visible, pickable: true,
           getPosition: (o: (typeof visible)[number]) => o.coord,
-          getRadius: (o: (typeof visible)[number]) => (o.id === selectedId ? 20 : 14),
+          getRadius: (o: (typeof visible)[number]) =>
+            o.id === selectedId ? 20 : o.id === hoverPinId ? 17 : 14,
           radiusUnits: "meters", radiusMinPixels: 5, radiusMaxPixels: 16,
           getFillColor: (o: (typeof visible)[number]) =>
             o.type === "surge" && o.surge?.kind === "relief"
               ? [245, 184, 122]
               : PIN_COLOR[o.type] ?? [36, 85, 214],
           stroked: true,
-          getLineColor: (o: (typeof visible)[number]) => (o.id === selectedId ? [36, 85, 214] : [255, 255, 255]),
-          lineWidthMinPixels: 2,
-          updateTriggers: { getRadius: [selectedId], getLineColor: [selectedId] },
+          getLineColor: (o: (typeof visible)[number]) =>
+            o.id === selectedId || o.id === hoverPinId ? [36, 85, 214] : [255, 255, 255],
+          lineWidthMinPixels: 2.5,
+          updateTriggers: { getRadius: [selectedId, hoverPinId], getLineColor: [selectedId, hoverPinId] },
           onClick: (info: { object?: (typeof visible)[number] }) => info.object && selectObject(info.object.id),
+          onHover: (info: { object?: (typeof visible)[number] }) => setHoverPinId(info.object?.id ?? null),
         }),
         new TextLayer({
           id: "pin-labels", data: visible,
@@ -354,7 +363,7 @@ export function MapCanvas() {
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (
@@ -391,7 +400,17 @@ export function MapCanvas() {
           }}
           style={{ position: "absolute", inset: 0 }}
         >
-          <DeckOverlay layers={layers} />
+          <DeckOverlay
+            layers={layers}
+            onClick={(info) => {
+              // Click-away deselect: any non-pin click while not placing clears the
+              // current object selection. Placement clicks are handled by <Map onClick>.
+              if (placingRef.current) return;
+              if (info.layer?.id === "pins") return;
+              const st = useAppStore.getState();
+              if (st.selectedId != null) st.selectObject(null);
+            }}
+          />
         </Map>
       </div>
 

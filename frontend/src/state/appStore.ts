@@ -166,7 +166,7 @@ interface AppState {
   // editor
   selectTool: (id: EditTool) => void;
   placeAt: (coord: [number, number]) => Promise<void>;
-  selectObject: (id: string) => void;
+  selectObject: (id: string | null) => void;
   deleteObject: (id: string) => void;
   toggleObjectVis: (id: string) => void;
   setSurgeParams: (id: string, patch: Partial<SurgeParams>) => void;

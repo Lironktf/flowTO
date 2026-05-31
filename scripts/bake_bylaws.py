@@ -46,6 +46,24 @@ MANIFEST = [
         "url": "https://www.toronto.ca/legdocs/municode/1184_950.pdf",
         "source": "City of Toronto Municipal Code, Ch. 950 (Traffic and Parking)",
     },
+    {
+        "chapter": "937",
+        "title": "Temporary Closing of Highways",
+        "url": "https://www.toronto.ca/legdocs/municode/1184_937.pdf",
+        "source": "City of Toronto Municipal Code, Ch. 937 (Temporary Closing of Highways)",
+    },
+    {
+        "chapter": "886",
+        "title": "Footpaths, Pedestrian Ways, Bicycle Paths, Bicycle Lanes and Cycle Tracks",
+        "url": "https://www.toronto.ca/legdocs/municode/1184_886.pdf",
+        "source": "City of Toronto Municipal Code, Ch. 886 (Bicycle Lanes and Cycle Tracks)",
+    },
+    {
+        "chapter": "743",
+        "title": "Streets and Sidewalks, Use of",
+        "url": "https://www.toronto.ca/legdocs/municode/1184_743.pdf",
+        "source": "City of Toronto Municipal Code, Ch. 743 (Use of Streets and Sidewalks)",
+    },
 ]
 
 # A section is kept in the corpus when its text touches an intervention concept
@@ -54,7 +72,8 @@ MANIFEST = [
 RELEVANT = re.compile(
     r"\b(clos|reopen|contraflow|one-way|one way|two-way|reserved lane|transit|streetcar|"
     r"bus lane|through|turn|entry prohibit|emergency|fire route|access|detour|lane|"
-    r"speed|signal|pedestrian|event|temporary|highway|stop)\b",
+    r"speed|signal|pedestrian|event|temporary|highway|stop|bicycle|cycle|bike|sidewalk|"
+    r"footpath|occupanc|construction|permit|parade|festival|hoarding)\b",
     re.IGNORECASE,
 )
 

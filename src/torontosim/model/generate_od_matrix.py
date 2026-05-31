@@ -49,11 +49,27 @@ def _largest_scc(graph) -> set:
     return cached
 
 
-# Candidate-set sizes: we only consider the top-N strongest origins and
-# destinations to keep the pair enumeration O(N^2) instead of O(nodes^2). Wider
-# pools spread trips across more of the city so the map isn't a sparse backbone.
-TOP_ORIGINS = 1500
-TOP_DESTS = 1500
+# Candidate-set sizes: cap on how many origins / destinations we enumerate, to
+# keep the pair build O(pool^2) instead of O(nodes^2). The pools are drawn
+# geographically (see ``_stratified_pool``), not as a flat global top-N — a flat
+# top-N by strength collapses entirely onto the downtown core and leaves ~99% of
+# the city with no trips (and therefore a dead, all-green map).
+TOP_ORIGINS = 3000
+TOP_DESTS = 3000
+
+# Geographic stratification: draw the strongest origins/destinations from EVERY
+# cell of a GRID_SIZE×GRID_SIZE grid over the network's bounding box, so every
+# region of the city contributes trip endpoints. This is what spreads congestion
+# across the whole map instead of a downtown backbone.
+GRID_SIZE = 8
+PER_CELL_ORIGINS = 80
+PER_CELL_DESTS = 80
+
+# Per-origin trip fan-out: each selected origin keeps its DESTS_PER_ORIGIN
+# strongest destinations. A single global top-K truncation re-collapses onto the
+# few highest-demand (downtown) pairs; keeping K per origin guarantees that every
+# region that has an origin actually emits trips that traverse its arterials.
+DESTS_PER_ORIGIN = 10
 
 # Geographic sanity bounds on a trip (km). Skip pairs outside this range.
 MIN_TRIP_KM = 0.4
@@ -116,6 +132,39 @@ def _strengths(node_demands, static, tc):
     return origin_strength, dest_strength
 
 
+def _stratified_pool(strength, static, scc, per_cell: int, cap: int) -> list:
+    """Candidate endpoints drawn from every cell of a spatial grid.
+
+    Bins eligible nodes into a ``GRID_SIZE × GRID_SIZE`` grid over their bounding
+    box and keeps the top ``per_cell`` (by strength) in each cell, so outer-city
+    regions contribute endpoints even though their absolute demand is far below
+    downtown's. Returns up to ``cap`` nodes in a deterministic strength order
+    (ties broken by ``str(node)``). A flat global top-N would instead keep only
+    downtown — the root cause of the sparse-backbone map.
+    """
+    nodes = [n for n in strength if (scc is None or n in scc) and n in static]
+    if not nodes:
+        return []
+    lats = [static[n]["lat"] for n in nodes]
+    lons = [static[n]["lon"] for n in nodes]
+    lat0, lon0 = min(lats), min(lons)
+    dlat = (max(lats) - lat0) or 1e-9
+    dlon = (max(lons) - lon0) or 1e-9
+
+    cells: Dict[tuple, list] = {}
+    for n in nodes:
+        r = min(GRID_SIZE - 1, int((static[n]["lat"] - lat0) / dlat * GRID_SIZE))
+        c = min(GRID_SIZE - 1, int((static[n]["lon"] - lon0) / dlon * GRID_SIZE))
+        cells.setdefault((r, c), []).append(n)
+
+    pool: list = []
+    for cell in sorted(cells):
+        ranked = sorted(cells[cell], key=lambda n: (-strength[n], str(n)))
+        pool.extend(ranked[:per_cell])
+    pool.sort(key=lambda n: (-strength[n], str(n)))
+    return pool[:cap]
+
+
 def generate_od_matrix(
     graph,
     node_demands: Dict[object, float],
@@ -125,6 +174,7 @@ def generate_od_matrix(
     calibration: str = "none",
     tmc_records=None,
     restrict_to_scc: bool = True,
+    dests_per_origin: int = DESTS_PER_ORIGIN,
 ) -> List[dict]:
     """Build the OD trip list. See module docstring for the model.
 
@@ -150,21 +200,21 @@ def generate_od_matrix(
 
     # Only draw trip endpoints from the largest strongly-connected component, so
     # every (origin, destination) is guaranteed a legal route — no trips stranded
-    # on one-way pocket nodes at baseline.
+    # on one-way pocket nodes at baseline. Endpoints are drawn from every grid
+    # cell (see ``_stratified_pool``) so trips — and congestion — spread citywide
+    # instead of collapsing onto the downtown core.
     scc = _largest_scc(graph) if restrict_to_scc else None
-    origins = sorted(
-        (n for n in origin_strength if scc is None or n in scc),
-        key=lambda n: -origin_strength[n],
-    )[:TOP_ORIGINS]
-    dests = sorted(
-        (n for n in dest_strength if scc is None or n in scc),
-        key=lambda n: -dest_strength[n],
-    )[:TOP_DESTS]
+    origins = _stratified_pool(origin_strength, static, scc, PER_CELL_ORIGINS, TOP_ORIGINS)
+    dests = _stratified_pool(dest_strength, static, scc, PER_CELL_DESTS, TOP_DESTS)
 
+    # Per-origin gravity fan-out: each origin keeps its ``dests_per_origin``
+    # strongest destinations, so every region that has an origin emits trips.
+    # The global ``max_pairs`` cap still bounds the total routed below.
     pairs = []
     for i in origins:
         oi = origin_strength[i]
         ilat, ilon = static[i]["lat"], static[i]["lon"]
+        cand = []
         for j in dests:
             if i == j:
                 continue
@@ -174,13 +224,18 @@ def generate_od_matrix(
                 continue
             val = oi * dest_strength[j] / (1.0 + dist_km)
             if val > 0:
-                pairs.append((i, j, val))
+                cand.append((i, j, val))
+        if dests_per_origin and len(cand) > dests_per_origin:
+            cand.sort(key=lambda t: (-t[2], str(t[1])))
+            cand = cand[:dests_per_origin]
+        pairs.extend(cand)
 
     if not pairs:
         return []
 
     # Keep the strongest max_pairs, then scale so the total is `nominal_total`.
-    pairs.sort(key=lambda t: -t[2])
+    # Deterministic tie-break on (origin, dest) ids so the cut is reproducible.
+    pairs.sort(key=lambda t: (-t[2], str(t[0]), str(t[1])))
     pairs = pairs[:max_pairs]
 
     if calibration in ("ipf", "ipf_counts"):

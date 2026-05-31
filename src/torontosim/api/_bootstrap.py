@@ -16,14 +16,24 @@ DEFAULT_GRAPH = os.path.join(_REPO_ROOT, "data", "graph", "toronto_drive_graph.j
 DEFAULT_PARQUET = os.path.join(_REPO_ROOT, "data", "parquet")
 
 
-def resolve_graph_source(source: str | None, *, env: dict | None = None) -> str:
-    """Pick the graph backend. Defaults to OSMnx (baseline-safe); Centreline opt-in.
+def resolve_graph_source(
+    source: str | None = None, *, env: dict | None = None, parquet_dir: str | None = None
+) -> str:
+    """Pick the graph backend.
 
-    Precedence: explicit ``source`` arg > ``TS_GRAPH_SOURCE`` env > ``osmnx``.
+    Precedence: explicit ``source`` arg > ``TS_GRAPH_SOURCE`` env > **auto**.
+    Auto prefers the real **Centreline** graph when its baked parquet store is
+    present (the fidelity default on a baked host like the Spark), else falls back
+    to the baseline-safe **OSMnx** JSON (always committed — so CI, fresh clones,
+    and local dev without a parquet store keep booting).
     """
     env = os.environ if env is None else env
-    chosen = (source or env.get("TS_GRAPH_SOURCE") or "osmnx").strip().lower()
-    return "centreline" if chosen == "centreline" else "osmnx"
+    chosen = (source or env.get("TS_GRAPH_SOURCE") or "").strip().lower()
+    if chosen:
+        return "centreline" if chosen == "centreline" else "osmnx"
+    pq = parquet_dir or env.get("TS_PARQUET_DIR", DEFAULT_PARQUET)
+    has_centreline = bool(pq) and os.path.exists(os.path.join(pq, "centreline.parquet"))
+    return "centreline" if has_centreline else "osmnx"
 
 
 def load_graph(
@@ -41,7 +51,7 @@ def load_graph(
     """
     from ..graph.routing import import_graph_json
 
-    source = resolve_graph_source(graph_source, env=env)
+    source = resolve_graph_source(graph_source, env=env, parquet_dir=parquet_dir)
     if source == "centreline":
         from ..graph import calibrate_capacity
         from ..graph.centreline_loader import load_from_parquet

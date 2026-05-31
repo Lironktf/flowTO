@@ -5,13 +5,11 @@ import { congestionSeries } from "../lib/congestion";
 import { describeSegmentAsync } from "../lib/mapboxCrossStreet";
 import {
   MONTHS,
-  ORDINALS,
-  WEEKDAYS,
   dateLabel,
-  dayOfYearToParts,
+  dayOfYearToMD,
+  daysInMonth,
   fmtClock,
   mdToDayOfYear,
-  nthWeekdayOfMonth,
 } from "../lib/time";
 import { useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
@@ -160,16 +158,17 @@ export function BottomDock() {
         <div className="day-control">
           <Icon.calendar />
           {(() => {
-            const { month, nth, weekday } = dayOfYearToParts(dayOfYear);
-            const apply = (m: number, n: number, w: number) =>
-              setDayOfYear(mdToDayOfYear(m, nthWeekdayOfMonth(m, n, w)));
+            const { month, day } = dayOfYearToMD(dayOfYear); // month 0–11, day 1–31
+            // Month + day-of-month. Clamp the day when the month changes (e.g. 31 → Feb).
+            const setMD = (m: number, d: number) =>
+              setDayOfYear(mdToDayOfYear(m, Math.min(d, daysInMonth(m))));
             return (
               <>
                 <select
                   className="date-select"
                   value={month}
                   title="Month"
-                  onChange={(e) => apply(Number(e.target.value), nth, weekday)}
+                  onChange={(e) => setMD(Number(e.target.value), day)}
                 >
                   {MONTHS.map((label, i) => (
                     <option key={i} value={i}>
@@ -179,25 +178,13 @@ export function BottomDock() {
                 </select>
                 <select
                   className="date-select"
-                  value={nth}
-                  title="Week of month"
-                  onChange={(e) => apply(month, Number(e.target.value), weekday)}
+                  value={day}
+                  title="Day of month"
+                  onChange={(e) => setMD(month, Number(e.target.value))}
                 >
-                  {ORDINALS.map((label, i) => (
-                    <option key={i} value={i + 1}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="date-select"
-                  value={weekday}
-                  title="Day of week"
-                  onChange={(e) => apply(month, nth, Number(e.target.value))}
-                >
-                  {WEEKDAYS.map((label, i) => (
-                    <option key={i} value={i}>
-                      {label}
+                  {Array.from({ length: daysInMonth(month) }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
                     </option>
                   ))}
                 </select>

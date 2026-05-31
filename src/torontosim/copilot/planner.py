@@ -410,9 +410,7 @@ def _focus_call(state, cls) -> ToolCall:
             return ToolCall(
                 tool="answer",
                 rationale=f"Showing {info['name']} on the map.",
-                view=ViewDirective(
-                    action="fit", road_name=info["name"], edge_ids=info["edge_ids"]
-                ),
+                view=ViewDirective(action="fit", road_name=info["name"], edge_ids=info["edge_ids"]),
                 requires_user_confirmation=False,
             )
     # No confident road match → best-effort camera move by name; the frontend
@@ -435,7 +433,8 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
     # fails or lands on a nonsense road. This works with no conversation history.
     if (
         cls is not None
-        and intent in {"close_road", "reopen_road", "change_capacity", "explain", "inspect", "focus"}
+        and intent
+        in {"close_road", "reopen_road", "change_capacity", "explain", "inspect", "focus"}
         and _is_superlative_ref(cls.road_name)
     ):
         worst = _worst_congested_road_name(state)

@@ -78,8 +78,36 @@ class HeuristicDemandModel:
         )
 
 
-def load_demand_model(model_path: str = MODEL_PATH):
-    """Load the trained model payload, or fall back to the heuristic model."""
+# GNN artifacts (repo-root-relative). The GNN is an interchangeable demand
+# source: like xgboost it answers ``predict_node_demand`` — it predicts per-edge
+# congestion, which we aggregate into per-node demand below.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+GNN_MODEL_PATH = os.path.join(_REPO_ROOT, "models", "gnn", "gnn_edge_congestion.pt")
+GNN_DATASET_PATH = os.path.join(_REPO_ROOT, "data", "gnn", "gnn_dataset.pt")
+GNN_GRAPH_PATH = os.path.join(_REPO_ROOT, "data", "graph", "toronto_drive_graph.json")
+
+
+def load_demand_model(model_path: str = MODEL_PATH, kind: str = "auto"):
+    """Load a demand model payload.
+
+    ``kind``: ``auto``/``xgboost`` loads the trained tabular model (or the
+    heuristic fallback); ``gnn`` selects the GraphSAGE edge model so it can be
+    used *anywhere xgboost is* — ``predict_node_demand`` dispatches on the
+    payload's ``kind`` and falls back to xgboost if torch/PyG is unavailable.
+    """
+    # One-switch override: FLOWTO_DEMAND_MODEL=gnn flips every call site to the
+    # GNN without code changes (same as xgboost, everywhere). Explicit kind wins.
+    if kind == "auto":
+        kind = os.environ.get("FLOWTO_DEMAND_MODEL", "xgboost").lower()
+
+    if kind == "gnn":
+        return {
+            "kind": "gnn",
+            "model_path": GNN_MODEL_PATH,
+            "dataset_path": GNN_DATASET_PATH,
+            "graph_path": GNN_GRAPH_PATH,
+            "feature_order": FEATURE_ORDER,
+        }
     if os.path.exists(model_path):
         import joblib
 
@@ -91,6 +119,36 @@ def load_demand_model(model_path: str = MODEL_PATH):
         "feature_order": FEATURE_ORDER,
         "kind": "HeuristicDemandModel",
     }
+
+
+def _predict_node_demand_gnn(graph, model, time_context: dict) -> Dict[object, float]:
+    """Run the GraphSAGE edge model and aggregate to per-node demand.
+
+    The GNN predicts per-edge load; node demand is the throughput leaving each
+    node = sum of its outgoing edges' predicted load (matching the ``outgoing``
+    label strategy the model was trained with). Requires torch + PyG; raises if
+    unavailable so the caller can fall back to xgboost.
+    """
+    import sys
+
+    if _REPO_ROOT not in sys.path:
+        sys.path.insert(0, _REPO_ROOT)
+    from models.gnn.gnn_to_sim_adapter import predict_gnn_edge_state
+
+    edge_state = predict_gnn_edge_state(
+        graph=graph,
+        time_context=time_context,
+        model_path=model["model_path"],
+        dataset_path=model["dataset_path"],
+        graph_path=model["graph_path"],
+    )
+
+    demand: Dict[object, float] = {}
+    for u, _v, data in graph.edges(data=True):
+        st = edge_state.get(str(data.get("edge_id")))
+        if st:
+            demand[u] = demand.get(u, 0.0) + max(float(st.get("predicted_load", 0.0)), 0.0)
+    return demand
 
 
 def _estimator_and_order(model):
@@ -106,8 +164,22 @@ def predict_node_demand(graph, model, time_context: dict) -> Dict[object, float]
     """Return {node_id: predicted vehicle demand} for every featurisable node.
 
     `model` may be the payload from `load_demand_model`/`train_demand_model`, a
-    bare sklearn estimator, or a `HeuristicDemandModel`.
+    bare sklearn estimator, a `HeuristicDemandModel`, or the GNN payload
+    (``kind="gnn"``) — in which case the GraphSAGE edge model drives demand.
     """
+    if isinstance(model, dict) and str(model.get("kind", "")).lower() == "gnn":
+        try:
+            return _predict_node_demand_gnn(graph, model, time_context)
+        except Exception as exc:  # noqa: BLE001 — torch/PyG unavailable, etc.
+            import warnings
+
+            warnings.warn(
+                f"GNN demand unavailable ({exc!r}); falling back to xgboost.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            model = load_demand_model()
+
     estimator, order = _estimator_and_order(model)
     if order != FEATURE_ORDER:
         # Defensive: we only know how to build FEATURE_ORDER rows here.

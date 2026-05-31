@@ -66,6 +66,15 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 gb.warm_default(state)
             except Exception:  # noqa: BLE001 — warmup is best-effort
                 pass
+            # Warm the xgboost equilibrium path (the day-stream behind edits): load
+            # the demand model + run one hour so the first "Apply & recompute"
+            # doesn't pay the one-time model load on the user's click.
+            try:
+                _app.state.daycompute.compute_hour(
+                    "xgboost", base_time_context({"day_of_week": 2, "month": 5}), [], 8
+                )
+            except Exception:  # noqa: BLE001 — warmup is best-effort
+                pass
             # Pre-warm the copilot's compare baselines so congestion queries,
             # /confirm comparisons and the agent's scratch sims don't cold-compute
             # a full ~80k-edge baseline on first use (paid once here, in the bg).
@@ -392,15 +401,45 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
 
         dc = app.state.daycompute
         loop = asyncio.get_running_loop()
-        futures = [
-            loop.run_in_executor(
-                dc.pool, dc.compute_hour, model_kind, base_tc, interventions, hour, iterations
-            )
-            for hour in hour_order(current_hour)
-        ]
+        order = hour_order(current_hour)  # current hour first
 
         sent_meta = False
+        futures: list = []
         try:
+            # Compute the on-screen hour FIRST and ALONE, then stream it before
+            # fanning out the rest. Each hour's equilibrium sim is largely
+            # GIL-bound, so submitting all 24 at once makes them time-slice one
+            # core and finish together in a late wave — starving the very hour the
+            # user is looking at (measured: ~120s to first frame vs the front-end's
+            # 45s watchdog). Running the visible hour solo lands its frame in one
+            # hour's worth of compute (~10s); the other 23 then backfill in the
+            # pool for free scrubbing/playback.
+            done_hours: set = set()
+            try:
+                h0, res0 = await loop.run_in_executor(
+                    dc.pool, dc.compute_hour, model_kind, base_tc, interventions, order[0], iterations
+                )
+                await ws.send_json(
+                    {
+                        "type": "meta",
+                        "total": 24,
+                        "epoch": epoch,
+                        "model_actual": res0.get("model_actual", ""),
+                    }
+                )
+                sent_meta = True
+                await ws.send_bytes(pack_day_frame(h0, epoch, res0["records"]))
+                done_hours.add(h0)
+            except Exception:  # noqa: BLE001 — visible hour failed; let the backfill cover it
+                pass
+
+            futures = [
+                loop.run_in_executor(
+                    dc.pool, dc.compute_hour, model_kind, base_tc, interventions, hour, iterations
+                )
+                for hour in order
+                if hour not in done_hours
+            ]
             for fut in asyncio.as_completed(futures):
                 try:
                     hour, res = await fut

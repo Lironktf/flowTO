@@ -104,7 +104,7 @@ export function MapCanvas() {
   useEffect(() => { placingRef.current = placing; }, [placing]);
   const [hoverStreet, setHoverStreet] = useState(false);
   const [hoverPinId, setHoverPinId] = useState<string | null>(null);
-  const [overlays, setOverlays] = useState({ poi: true, transit: true, roadLabels: true, placeLabels: true, buildings3d: true });
+  const [overlays, setOverlays] = useState({ poi: true, transit: false, roadLabels: true, placeLabels: true, buildings3d: true });
   const [layersOpen, setLayersOpen] = useState(false);
 
   const edgePaths: EdgePath[] = useMemo(() => {

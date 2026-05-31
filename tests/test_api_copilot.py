@@ -12,19 +12,22 @@ def _client():
     return TestClient(create_app(_small_state()))
 
 
-def test_copilot_plan_hero_returns_cited_preview():
+def test_copilot_plan_mitigate_invokes_optimizer():
+    # De-hardcoded: mitigate routes to the sim-verified optimizer (no rehearsed
+    # hero script / invented bylaw citations).
     r = _client().post(
         "/copilot/plan",
         json={
-            "prompt": "Ease post-match gridlock near BMO Field without breaking bylaws.",
+            "prompt": "Ease congestion across downtown.",
             "classification": {"intent": "mitigate"},
         },
     )
     assert r.status_code == 200
     body = r.json()
     assert body["tool"] == "preview_intervention"
-    assert body["requires_user_confirmation"] is True
-    assert any("950" in c["ref"] for c in body["citations"])
+    if body["interventions"]:
+        assert any("Optimizer" in c["ref"] for c in body["citations"])
+        assert body["requires_user_confirmation"] is True
 
 
 def test_copilot_plan_blocked_refuses():

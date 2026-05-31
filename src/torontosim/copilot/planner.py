@@ -17,72 +17,22 @@ from .classify import ClassifyResult
 from .constraints import check_request
 from .tools import Citation, ToolCall, ViewDirective
 
-# The rehearsed mitigation plan (matches design/js/data.js copilotHero).
-_HERO_STEPS = [
-    "Eastbound contraflow on Lake Shore Blvd W (Strachan → Bathurst), 17:00–18:30",
-    "Retime Dufferin and Strachan signals — 110 s cycle, egress-biased splits",
-    "Close Princes' Blvd to general traffic (pedestrian egress); hold 509 / 511 transit priority",
-]
-_HERO_CITATIONS = [
-    ("Toronto Municipal Code Ch. 950", "temporary traffic regulation under an approved event TMP"),
-    ("King St Transit Priority Corridor", "through-traffic restriction preserved"),
-    ("Toronto Municipal Code Ch. 880", "fire-route / emergency access lanes maintained"),
-    ("AODA 2005", "accessible pedestrian route on Princes' Blvd retained"),
-]
-
-
-def _resolve_edges(state, name_substr: str, limit: int = 2) -> list[str]:
-    """Edge ids whose road name contains ``name_substr`` (live graph only)."""
-    out: list[str] = []
-    if state is None or not hasattr(state, "graph"):
-        return out
-    sub = name_substr.lower()
-    for _u, _v, d in state.graph.edges(data=True):
-        if sub in (d.get("road_name") or "").lower():
-            eid = d.get("edge_id") or d.get("id")
-            if eid is not None:
-                out.append(eid)
-        if len(out) >= limit:
-            break
-    return out
-
-
-def _hero_interventions(state) -> list[Intervention]:
-    """The rehearsed mitigation as concrete, applyable ops (resolved on the graph)."""
-    ivs: list[Intervention] = []
-    for name, mult in (("Dufferin", 0.7), ("Strachan", 0.7)):
-        for eid in _resolve_edges(state, name):
-            ivs.append(Intervention(op="change_capacity", edge_id=eid, multiplier=mult))
-    for eid in _resolve_edges(state, "Princes"):
-        ivs.append(Intervention(op="close_edge", edge_id=eid))
-    return ivs
-
-
-def _hero_call(state=None) -> ToolCall:
-    return ToolCall(
-        tool="preview_intervention",
-        interventions=_hero_interventions(state),
-        rationale=(
-            "Full-time releases ~45,000 over 25 minutes onto the Lake Shore / Strachan / "
-            "Dufferin spine with severe spill-over into local streets. A bylaw-valid mitigation: "
-            + "; ".join(_HERO_STEPS)
-            + ". Projected vs unmitigated: total delay −38%, local infiltration −71%."
-        ),
-        citations=[Citation(ref=r, note=n) for r, n in _HERO_CITATIONS],
-        requires_user_confirmation=True,
-    )
-
 
 def _blocked_call(prompt: str, state=None) -> ToolCall:
+    """A hard-constraint refusal whose rationale is built from the REAL violations
+    (no invented stats / rehearsed alternative). The citations carry the bylaws."""
     violations = check_request(prompt, state=state)
+    notes = "; ".join(v.note for v in violations[:2])
+    rationale = (
+        f"I can't apply that — it breaches a hard constraint: {notes}."
+        if notes
+        else "I can't apply that — it breaches a hard bylaw constraint."
+    )
     return ToolCall(
         tool="refuse",
         blocked=True,
         requires_user_confirmation=False,
-        rationale=(
-            "I can't apply that — it breaches hard constraints. The eastbound-contraflow "
-            "alternative clears 84% of the same demand without these conflicts."
-        ),
+        rationale=rationale,
         citations=[Citation(ref=v.ref, note=v.note) for v in violations],
     )
 
@@ -93,14 +43,13 @@ def _live_enabled() -> bool:
 
 
 def _generic_preview() -> ToolCall:
-    # Reached when nothing actionable could be parsed (e.g. small talk). Be
-    # honest + helpful instead of staging an empty "preview".
+    """Honest fallback when nothing actionable could be produced (model unreachable
+    or non-actionable input). No rehearsed examples — just a plain hint."""
     return ToolCall(
         tool="answer",
         rationale=(
-            "I'm the planning copilot — I turn plain-English requests into traffic interventions. "
-            'Try: "ease congestion near BMO Field", "reduce capacity on Lake Shore eastbound", '
-            "or ask why a corridor is congested."
+            "I couldn't turn that into a concrete action. Name a specific road or "
+            "intersection, or ask where congestion is worst."
         ),
         requires_user_confirmation=False,
     )
@@ -287,9 +236,9 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
             view=_worst_road_view(state),
             requires_user_confirmation=False,
         )
-    if intent == "mitigate":
-        return _hero_call(state)
-    if intent == "optimize":
+    # Both "make it better" intents go to the sim-verified optimizer — a real,
+    # scored plan, not a rehearsed script. (mitigate folds into optimize.)
+    if intent in ("optimize", "mitigate"):
         try:
             return _optimize_call(state, prompt)
         except (ImportError, OSError, ValueError):

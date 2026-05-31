@@ -452,10 +452,16 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     }
 
     def _compute_demo(scenario: str) -> dict:
+        import os
+
         from ..demo import wc_surge
 
         res = wc_surge.run_scenario(
-            scenario, graph=state.graph, baseline_od=state.od_matrix, engine="kpath"
+            scenario,
+            graph=state.graph,
+            baseline_od=state.od_matrix,
+            engine="kpath",
+            backend=os.environ.get("TS_BACKEND", "cpu"),
         )
         return {
             "scenario": scenario,

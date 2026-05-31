@@ -55,15 +55,20 @@ class GraphSAGEEdgePredictor(nn.Module):
             h = F.dropout(h, p=self.dropout, training=self.training)
         return h
 
-    def forward(
+    def score_edges(
         self,
-        x: torch.Tensor,
+        h: torch.Tensor,
         edge_index: torch.Tensor,
         edge_attr: torch.Tensor,
         context_attr: torch.Tensor,
         edge_sample_index: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        h = self.encode_nodes(x, edge_index)
+        """Edge-head pass on precomputed node embeddings ``h``.
+
+        Split out from ``forward`` so callers that score many edge batches over
+        the *same* graph encode the nodes once instead of re-running message
+        passing per batch (the encoding is independent of which edges are scored).
+        """
         if edge_sample_index is None:
             src = edge_index[0]
             dst = edge_index[1]
@@ -74,6 +79,17 @@ class GraphSAGEEdgePredictor(nn.Module):
             edge_inputs = edge_attr[edge_sample_index]
         z = torch.cat([h[src], h[dst], edge_inputs, context_attr], dim=-1)
         return F.softplus(self.edge_head(z).squeeze(-1))
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attr: torch.Tensor,
+        context_attr: torch.Tensor,
+        edge_sample_index: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        h = self.encode_nodes(x, edge_index)
+        return self.score_edges(h, edge_index, edge_attr, context_attr, edge_sample_index)
 
 
 class GraphFeatureEdgeMLP(nn.Module):
@@ -98,9 +114,15 @@ class GraphFeatureEdgeMLP(nn.Module):
             nn.Linear(hidden_dim, 1),
         )
 
-    def forward(
+    def encode_nodes(self, x: torch.Tensor, edge_index: torch.Tensor | None = None) -> torch.Tensor:
+        # No message passing: the "encoding" is just the raw node features. Kept
+        # for interface parity with GraphSAGEEdgePredictor so callers can encode
+        # once and score many edge batches the same way.
+        return x
+
+    def score_edges(
         self,
-        x: torch.Tensor,
+        h: torch.Tensor,
         edge_index: torch.Tensor,
         edge_attr: torch.Tensor,
         context_attr: torch.Tensor,
@@ -114,8 +136,19 @@ class GraphFeatureEdgeMLP(nn.Module):
             src = edge_index[0, edge_sample_index]
             dst = edge_index[1, edge_sample_index]
             edge_inputs = edge_attr[edge_sample_index]
-        z = torch.cat([x[src], x[dst], edge_inputs, context_attr], dim=-1)
+        z = torch.cat([h[src], h[dst], edge_inputs, context_attr], dim=-1)
         return F.softplus(self.net(z).squeeze(-1))
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_attr: torch.Tensor,
+        context_attr: torch.Tensor,
+        edge_sample_index: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        h = self.encode_nodes(x, edge_index)
+        return self.score_edges(h, edge_index, edge_attr, context_attr, edge_sample_index)
 
 
 def build_model(

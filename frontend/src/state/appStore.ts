@@ -80,6 +80,7 @@ export interface Warning {
   title: string;
   detail: string;
   ref?: string;
+  kind?: "restricted"; // restricted-road closure guardrail (shown in the left menu)
 }
 
 export type CopilotMode = "plan" | "chat" | "agent";
@@ -267,10 +268,50 @@ function buildWarnings(): Warning[] {
   return out;
 }
 
+/**
+ * Guardrail warnings for closures placed on restricted roads — the "Completely
+ * Prohibited" provincial highways (MTO) and the City of Toronto municipal
+ * expressways. The restricted flag rides on each segment from `/edges` (derived
+ * from the Toronto Centreline). One warning per distinct restricted road.
+ */
+function restrictedClosureWarnings(objects: SceneObject[], graph: RoadGraph | null): Warning[] {
+  if (!graph) return [];
+  const seen = new Map<string, Warning>();
+  for (const o of objects) {
+    if (!o.visible || o.type !== "closure") continue;
+    for (const edgeId of o.edgeIds ?? []) {
+      const seg = graph.byId.get(edgeId);
+      const r = seg?.restricted;
+      if (!r) continue;
+      const label = r.label || seg?.road_name || o.roadName || "this expressway";
+      const key = `${r.category}:${label}`;
+      if (seen.has(key)) continue;
+      const isMto = r.category === "mto_prohibited";
+      seen.set(key, {
+        id: `restricted:${key}`,
+        kind: "restricted",
+        severity: "danger",
+        title: `Closure not permitted · ${label}`,
+        detail: r.reason,
+        ref: isMto ? "MTO · Completely Prohibited highway" : "City of Toronto · Municipal expressway",
+      });
+    }
+  }
+  return [...seen.values()];
+}
+
+/** Restricted-road guardrails first, then the live pressure risk bands. */
+function composeWarnings(objects: SceneObject[], graph: RoadGraph | null): Warning[] {
+  return [...restrictedClosureWarnings(objects, graph), ...buildWarnings()];
+}
+
 /** Push per-edge records into the tick store and trigger a deck.gl recolor. */
 function paintRecords(set: SetFn, records: [number, number, number, number, number][]) {
   writeRecords(records);
-  set((s) => ({ pressureSeq: s.pressureSeq + 1, warnings: buildWarnings() }));
+  set((s) => ({
+    pressureSeq: s.pressureSeq + 1,
+    warnings: composeWarnings(s.objects, s.graph),
+  }));
 }
 
 /** Repaint the twin from a scenario's last run (fetch records → paint). */
@@ -838,28 +879,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       vertices: [a, b],
       edgeIds,
     };
-    set((s) => ({
-      objects: [...s.objects, obj],
-      selectedId: obj.id,
-      activeTool: "select",
-      pendingVertices: [],
-      dirty: true,
-    }));
+    set((s) => {
+      const objects = [...s.objects, obj];
+      // Surface the restricted-road guardrail immediately, before the recompute.
+      return {
+        objects,
+        selectedId: obj.id,
+        activeTool: "select",
+        pendingVertices: [],
+        dirty: true,
+        warnings: composeWarnings(objects, s.graph),
+      };
+    });
     await get().applyEdits();
   },
 
   selectObject: (id) => set({ selectedId: id, activeTool: "select" }),
   deleteObject: (id) =>
-    set((s) => ({
-      objects: s.objects.filter((o) => o.id !== id),
-      selectedId: s.selectedId === id ? null : s.selectedId,
-      dirty: true,
-    })),
+    set((s) => {
+      const objects = s.objects.filter((o) => o.id !== id);
+      return {
+        objects,
+        selectedId: s.selectedId === id ? null : s.selectedId,
+        dirty: true,
+        warnings: composeWarnings(objects, s.graph),
+      };
+    }),
   toggleObjectVis: (id) =>
-    set((s) => ({
-      objects: s.objects.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o)),
-      dirty: true,
-    })),
+    set((s) => {
+      const objects = s.objects.map((o) => (o.id === id ? { ...o, visible: !o.visible } : o));
+      return { objects, dirty: true, warnings: composeWarnings(objects, s.graph) };
+    }),
   setSurgeParams: (id, patch) =>
     set((s) => ({
       objects: s.objects.map((o) => {

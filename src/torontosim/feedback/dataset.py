@@ -15,7 +15,12 @@ See ``docs/specs/13-feedback-loop.md`` §C.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
+
+if TYPE_CHECKING:  # pandas only used in a lazy (string) type annotation below
+    import pandas as pd
 
 LEAN_NODE_DROP = {"degree", "distance_to_downtown_km", "pagerank"}
 LEAN_EDGE_DROP = {"road_class_rank", "from_node_degree", "to_node_degree"}

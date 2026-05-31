@@ -19,7 +19,9 @@ EARTH_M = 6_371_000.0
 
 def haversine_m(lat1, lon1, lat2, lon2) -> np.ndarray:
     """Great-circle distance in metres (vectorized)."""
-    la1, lo1, la2, lo2 = (np.radians(np.asarray(z, dtype=np.float64)) for z in (lat1, lon1, lat2, lon2))
+    la1, lo1, la2, lo2 = (
+        np.radians(np.asarray(z, dtype=np.float64)) for z in (lat1, lon1, lat2, lon2)
+    )
     dlat, dlon = la2 - la1, lo2 - lo1
     a = np.sin(dlat / 2) ** 2 + np.cos(la1) * np.cos(la2) * np.sin(dlon / 2) ** 2
     return EARTH_M * 2 * np.arcsin(np.sqrt(a))
@@ -27,7 +29,9 @@ def haversine_m(lat1, lon1, lat2, lon2) -> np.ndarray:
 
 def bearing_deg(lat1, lon1, lat2, lon2) -> np.ndarray:
     """Initial compass bearing 1→2 in degrees (0=N, 90=E), vectorized."""
-    la1, lo1, la2, lo2 = (np.radians(np.asarray(z, dtype=np.float64)) for z in (lat1, lon1, lat2, lon2))
+    la1, lo1, la2, lo2 = (
+        np.radians(np.asarray(z, dtype=np.float64)) for z in (lat1, lon1, lat2, lon2)
+    )
     dlon = lo2 - lo1
     y = np.sin(dlon) * np.cos(la2)
     x = np.cos(la1) * np.sin(la2) - np.sin(la1) * np.cos(la2) * np.cos(dlon)
@@ -69,21 +73,29 @@ def spatial_join(
 
     cols = ["centreline_id", "location_name", "site_lat", "site_lon", "dist_m", "bearing_deg"]
     if pairs.empty:
-        return pairs.reindex(columns=list(pairs.columns) + ["dist_m", "bearing_deg", "n_neighbour_sites"])
+        return pairs.reindex(
+            columns=list(pairs.columns) + ["dist_m", "bearing_deg", "n_neighbour_sites"]
+        )
 
     pairs["dist_m"] = haversine_m(
-        pairs["Latitude"].to_numpy(), pairs["Longitude"].to_numpy(),
-        pairs["site_lat"].to_numpy(), pairs["site_lon"].to_numpy(),
+        pairs["Latitude"].to_numpy(),
+        pairs["Longitude"].to_numpy(),
+        pairs["site_lat"].to_numpy(),
+        pairs["site_lon"].to_numpy(),
     )
     pairs["bearing_deg"] = bearing_deg(
-        pairs["Latitude"].to_numpy(), pairs["Longitude"].to_numpy(),
-        pairs["site_lat"].to_numpy(), pairs["site_lon"].to_numpy(),
+        pairs["Latitude"].to_numpy(),
+        pairs["Longitude"].to_numpy(),
+        pairs["site_lat"].to_numpy(),
+        pairs["site_lon"].to_numpy(),
     )
     pairs = pairs[pairs["dist_m"] <= radius_m].reset_index(drop=True)
     pairs = pairs.rename(
         columns={
-            "Latitude": "closure_lat", "Longitude": "closure_lon",
-            "Road": "closure_road", "Name": "closure_name",
+            "Latitude": "closure_lat",
+            "Longitude": "closure_lon",
+            "Road": "closure_road",
+            "Name": "closure_name",
         }
     )
     if not pairs.empty:

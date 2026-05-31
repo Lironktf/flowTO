@@ -29,16 +29,24 @@ from .metrics import evaluate, spatial_holdout_split
 # ── ridge backend (local, NumPy only) ────────────────────────────────────────────
 # Feature pool available in data/model/{training,validation}_dataset.csv.
 DEMAND_FEATURE_POOL = [
-    "lat", "lon", "hour", "day_of_week", "month", "is_weekend",
-    "weather_code", "road_degree", "distance_to_downtown", "near_highway",
+    "lat",
+    "lon",
+    "hour",
+    "day_of_week",
+    "month",
+    "is_weekend",
+    "weather_code",
+    "road_degree",
+    "distance_to_downtown",
+    "near_highway",
     "road_class_rank",
 ]
 # Demand-task configs (drops applied to the pool above). Honest for this dataset:
 # `full` keeps everything; the probes isolate the memorization / demand-prior claims.
 DEMAND_CONFIGS = {
     "full": frozenset(),
-    "no_latlon": frozenset({"lat", "lon"}),               # memorization probe
-    "no_downtown": frozenset({"distance_to_downtown"}),   # demand-prior probe
+    "no_latlon": frozenset({"lat", "lon"}),  # memorization probe
+    "no_downtown": frozenset({"distance_to_downtown"}),  # demand-prior probe
     "lean": frozenset({"lat", "lon", "distance_to_downtown"}),
 }
 
@@ -171,8 +179,10 @@ def run_graphsage(
         for k in per_seed[0]:
             vals = [sm[k] for sm in per_seed]
             agg[k] = float(np.mean(vals))
-            print(f"  {name:18s} {k:13s} mean={np.mean(vals):.4f} "
-                  f"std={np.std(vals):.4f} seeds={[round(x, 4) for x in vals]}")
+            print(
+                f"  {name:18s} {k:13s} mean={np.mean(vals):.4f} "
+                f"std={np.std(vals):.4f} seeds={[round(x, 4) for x in vals]}"
+            )
         results[name] = agg
     return results
 

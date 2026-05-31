@@ -59,9 +59,9 @@ def test_during_window_boundaries_and_no_fabrication():
     # only site A has in-window surveys; B has none → no row (no fabrication)
     assert list(agg["centreline_id"]) == ["A"]
     a = agg.iloc[0]
-    assert a["obs_during"] == 2              # start included, end excluded
-    assert a["survey_days_during"] == 2      # distinct count_ids
-    assert a["during_vol_mean"] == 150.0     # mean(100, 200)
+    assert a["obs_during"] == 2  # start included, end excluded
+    assert a["survey_days_during"] == 2  # distinct count_ids
+    assert a["during_vol_mean"] == 150.0  # mean(100, 200)
 
 
 def test_during_empty_when_no_overlap():

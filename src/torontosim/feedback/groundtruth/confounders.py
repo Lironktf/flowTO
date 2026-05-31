@@ -22,7 +22,9 @@ from .spatial import haversine_m
 WEATHER_FIELDS = ["temp_c", "precip_mm", "snow", "visibility_km", "wind_kmh"]
 
 
-def survey_weather(during: pd.DataFrame, weather: pd.DataFrame, *, tolerance_h: int = 2) -> pd.DataFrame:
+def survey_weather(
+    during: pd.DataFrame, weather: pd.DataFrame, *, tolerance_h: int = 2
+) -> pd.DataFrame:
     """Nearest-hour weather join onto each during-survey (within ``tolerance_h``)."""
     if during.empty:
         return during.assign(**{f: pd.Series(dtype="float64") for f in WEATHER_FIELDS})

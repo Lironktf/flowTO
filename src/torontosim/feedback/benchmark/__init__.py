@@ -16,8 +16,8 @@ produces the metrics needs torch and runs on the GB10/Spark (``benchmark.run`` +
 ``scripts/spark/benchmark_gnn.sh``, added later).
 """
 
-from .configs import REGISTRY, FeatureConfig, get_config
 from .compare import compare_configs, render_markdown, write_report
+from .configs import REGISTRY, FeatureConfig, get_config
 from .metrics import (
     evaluate,
     mae,

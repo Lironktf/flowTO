@@ -56,9 +56,7 @@ def compute_residuals(
                     "r_obs": obs - base,
                 }
             )
-    return pd.DataFrame(
-        rows, columns=["ID", "edge_id", "sim_open", "sim_int", "r_sim", "r_obs"]
-    )
+    return pd.DataFrame(rows, columns=["ID", "edge_id", "sim_open", "sim_int", "r_sim", "r_obs"])
 
 
 def simulate_open_intervened(  # pragma: no cover - needs the sim on the GB10
@@ -83,10 +81,18 @@ def simulate_open_intervened(  # pragma: no cover - needs the sim on the GB10
         }
 
     def _solve(g) -> dict[str, float]:
-        return _flows(simulate_traffic(
-            g, od_matrix, engine="equilibrium", backend=backend, auto_calibrate=False,
-            copy_graph=False, max_equilibrium_iter=max_iter, rgap_target=rgap,
-        ))
+        return _flows(
+            simulate_traffic(
+                g,
+                od_matrix,
+                engine="equilibrium",
+                backend=backend,
+                auto_calibrate=False,
+                copy_graph=False,
+                max_equilibrium_iter=max_iter,
+                rgap_target=rgap,
+            )
+        )
 
     _open_cache: dict[str, dict] = {}
 

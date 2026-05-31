@@ -19,24 +19,55 @@ import numpy as np
 
 # ── Baseline feature names (mirror models/gnn/utils.py) ─────────────────────────
 ROAD_CLASS_ORDER = [
-    "motorway", "trunk", "primary", "secondary", "tertiary",
-    "residential", "service", "unclassified", "living_street", "other",
+    "motorway",
+    "trunk",
+    "primary",
+    "secondary",
+    "tertiary",
+    "residential",
+    "service",
+    "unclassified",
+    "living_street",
+    "other",
 ]
 BASELINE_NODE_FEATURES = [
-    "lat", "lon", "degree", "in_degree", "out_degree",
-    "distance_to_downtown_km", "pagerank",
+    "lat",
+    "lon",
+    "degree",
+    "in_degree",
+    "out_degree",
+    "distance_to_downtown_km",
+    "pagerank",
 ]
 BASELINE_EDGE_FEATURES = [
-    "length_m", "road_class_rank", "lanes", "speed_kmh", "capacity",
-    "base_time_min", "one_way", "bearing_sin", "bearing_cos",
-    "from_node_degree", "to_node_degree",
+    "length_m",
+    "road_class_rank",
+    "lanes",
+    "speed_kmh",
+    "capacity",
+    "base_time_min",
+    "one_way",
+    "bearing_sin",
+    "bearing_cos",
+    "from_node_degree",
+    "to_node_degree",
     *[f"road_class_{name}" for name in ROAD_CLASS_ORDER],
 ]
 BASELINE_CONTEXT_FEATURES = [
-    "hour_norm", "day_of_week_norm", "month_norm", "is_weekend", "rush_hour",
-    "weather_clear", "weather_rain", "weather_snow",
-    "temperature_c_norm", "precipitation_mm_norm",
-    "season_winter", "season_spring", "season_summer", "season_fall",
+    "hour_norm",
+    "day_of_week_norm",
+    "month_norm",
+    "is_weekend",
+    "rush_hour",
+    "weather_clear",
+    "weather_rain",
+    "weather_snow",
+    "temperature_c_norm",
+    "precipitation_mm_norm",
+    "season_winter",
+    "season_spring",
+    "season_summer",
+    "season_fall",
 ]
 
 
@@ -66,9 +97,7 @@ class FeatureConfig:
         return [n for n in all_names if n not in self.drop_context]
 
 
-def select_columns(
-    matrix: np.ndarray, all_names: list[str], keep_names: list[str]
-) -> np.ndarray:
+def select_columns(matrix: np.ndarray, all_names: list[str], keep_names: list[str]) -> np.ndarray:
     """Return ``matrix`` restricted to ``keep_names`` columns, in keep order.
 
     ``matrix`` is ``[rows, len(all_names)]``. Raises if a kept name is absent so a

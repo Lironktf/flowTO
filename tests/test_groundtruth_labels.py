@@ -22,12 +22,15 @@ def _during_slots():
 def _pre():
     rows = [
         # r1/A: Tier-1 (hour=8,dow=2) baseline mean 200
-        ("r1", "A", 8, 2, 160, 1), ("r1", "A", 8, 2, 240, 2),
+        ("r1", "A", 8, 2, 160, 1),
+        ("r1", "A", 8, 2, 240, 2),
         # r2/B: baseline mean 200, tight std → a +100 rise is significant
-        ("r2", "B", 9, 3, 180, 3), ("r2", "B", 9, 3, 220, 4),
+        ("r2", "B", 9, 3, 180, 3),
+        ("r2", "B", 9, 3, 220, 4),
         # r3/C: no pre survey at all → no baseline
         # r4/D: only hour=10 matches (dow=5 ≠ 4) → Tier-2 (hour) baseline mean 160
-        ("r4", "D", 10, 5, 150, 5), ("r4", "D", 10, 5, 170, 6),
+        ("r4", "D", 10, 5, 150, 5),
+        ("r4", "D", 10, 5, 170, 6),
     ]
     df = pd.DataFrame(rows, columns=["ID", "centreline_id", "hour", "dow", "vol", "count_id"])
     df["cars"], df["trucks"], df["buses"] = df["vol"], 0, 0

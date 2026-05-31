@@ -157,23 +157,23 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .brand .mark b { color: var(--cobalt); }
 .brand .sub { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .08em; color: var(--ink-3); text-transform: uppercase; white-space: nowrap; }
 
-/* segmented view switch */
+/* segmented view switch — fully-rounded track with a clean active pill */
 .viewseg {
-  display: inline-flex; padding: 3px; gap: 2px;
-  background: var(--chrome-2); border: 1px solid var(--hair); border-radius: var(--r);
+  display: inline-flex; padding: 3px; gap: 3px;
+  background: var(--chrome-2); border: 1px solid var(--hair-2); border-radius: 999px;
 }
 .viewseg button {
   appearance: none; cursor: pointer; border: 0; background: transparent;
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 6px 14px; border-radius: var(--r-sm);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 13px; border-radius: 999px;
   font-weight: 600; font-size: 12.5px; color: var(--ink-3);
   transition: background .16s, color .16s, box-shadow .16s;
 }
-.viewseg button svg { width: 15px; height: 15px; }
-.viewseg button:hover { color: var(--ink); }
+.viewseg button svg { width: 14px; height: 14px; }
+.viewseg button:hover:not(.on) { color: var(--ink); }
 .viewseg button.on {
   background: var(--chrome-hi); color: var(--ink);
-  box-shadow: 0 1px 2px rgba(27,26,22,.14), var(--inset);
+  box-shadow: 0 1px 2px rgba(27,26,22,.16);
 }
 [data-theme="dark"] .viewseg button.on { box-shadow: 0 1px 3px rgba(0,0,0,.5); }
 .viewseg button.on svg { color: var(--cobalt-ink); }

@@ -1,18 +1,33 @@
 <!doctype html>
-<html lang="en" data-theme="light" data-density="comfortable">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FlowTO — Live Digital Twin of Toronto</title>
+    <title>flowTO — Toronto, Simulated</title>
+    <meta
+      name="description"
+      content="Simulate Toronto's streets and transit. See how any change — a road closure, a new route, a big event — plays out across the whole city before you make it."
+    />
+    <meta name="theme-color" content="#0d0d0d" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230d0d0d'/%3E%3Ctext x='50' y='70' font-family='sans-serif' font-size='62' font-weight='700' fill='%23d0ff00' text-anchor='middle'%3Ef%3C/text%3E%3C/svg%3E"
+    />
+    <meta property="og:title" content="flowTO — Toronto, Simulated" />
+    <meta
+      property="og:description"
+      content="Simulate Toronto's streets and transit. See how any change plays out across the whole city before you make it."
+    />
+    <meta property="og:type" content="website" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Inter:wght@300;400;500&display=swap"
       rel="stylesheet"
     />
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/landing/landing.tsx"></script>
   </body>
 </html>

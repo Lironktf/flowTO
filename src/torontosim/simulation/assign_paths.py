@@ -88,13 +88,16 @@ def k_paths_from_origin(graph, origin, targets, k):
     Uses single-source Dijkstra + edge penalisation. Penalties live on a
     throwaway ``_pen`` attribute layered over ``_eff_w`` so the base weights are
     untouched for the next origin.
-    """
-    # Working weight = _eff_w * penalty. Start with no penalty.
-    for _, _, data in graph.edges(data=True):
-        data["_pen"] = data.get("_eff_w", CLOSED_WEIGHT)
 
+    The ``_pen`` layer is initialised once per assignment pass by the caller
+    (``assign_demand_to_paths``); each origin only restores the handful of edges
+    *it* penalised back to ``_eff_w`` on exit, so the invariant "every edge's
+    ``_pen`` equals its ``_eff_w`` when an origin starts" still holds — but
+    without an O(edges) sweep per origin (which dominated multi-origin runs).
+    """
     result: Dict[object, List[list]] = defaultdict(list)
     targets = set(targets)
+    penalized: list = []  # (u, v, kk) edges this origin bumped, to restore on exit
     for _ in range(k):
         try:
             _, paths = nx.single_source_dijkstra(graph, origin, weight="_pen")
@@ -114,8 +117,13 @@ def k_paths_from_origin(graph, origin, targets, k):
                 kk = _cheapest_edge_key(graph, u, v)
                 if kk is not None:
                     graph.edges[u, v, kk]["_pen"] *= PENALTY
+                    penalized.append((u, v, kk))
         if not progressed:
             break
+    # Restore only the edges we touched so the next origin starts clean.
+    for u, v, kk in penalized:
+        data = graph.edges[u, v, kk]
+        data["_pen"] = data.get("_eff_w", CLOSED_WEIGHT)
     return result
 
 
@@ -241,6 +249,11 @@ def assign_demand_to_paths(
             data["load"] = 0.0
 
     _set_eff_weights(graph)
+    # Initialise the penalty layer once for the whole pass; each origin restores
+    # only the edges it touches (see ``k_paths_from_origin``), so we avoid an
+    # O(edges) reset per origin.
+    for _, _, data in graph.edges(data=True):
+        data["_pen"] = data.get("_eff_w", CLOSED_WEIGHT)
 
     by_origin = defaultdict(list)
     for od in od_matrix:

@@ -47,6 +47,15 @@ class AppState:
     _recompute_locks: dict = field(default_factory=dict)
     _cache_lock: object = field(default_factory=threading.Lock)
 
+    @property
+    def baseline_ready(self) -> bool:
+        """True once the (heavy) compare baseline is computed — gates the copilot UI.
+
+        Re-added after the main-merge: app.py's /healthz references this, but the
+        AppState refactor on this branch had dropped it (the heavy baseline is now
+        lazy, so this is simply False until something computes it)."""
+        return self._baseline is not None
+
     @classmethod
     def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None):
         edge_ids = sorted(
@@ -87,7 +96,11 @@ class AppState:
             return self.od_matrix
 
     def baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
-        """Cached baseline run (no interventions) — the compare reference."""
+        """Cached baseline run (no interventions) — the compare reference.
+
+        Lock-guarded (double-checked): the first caller computes; concurrent
+        callers wait rather than each kicking off a ~2-min full-graph sim.
+        """
         if self._baseline is None:
             self.ensure_od()
             self._baseline = simulate_traffic(
@@ -100,6 +113,28 @@ class AppState:
                 congestion_model=congestion_model,
             )
         return self._baseline
+
+    def blast_baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
+        """Cached AON baseline via the blast path (no interventions).
+
+        A blast scenario re-routes only affected ODs over an AON assignment, so
+        its global numbers are NOT comparable to the iterative ``baseline()``.
+        This same-method reference makes blast-vs-baseline deltas correct + fast.
+        """
+        if self._blast_baseline is None:
+            with self._baseline_lock:
+                if self._blast_baseline is None:
+                    self._blast_baseline = simulate_scenario(
+                        self.graph,
+                        self.od_matrix,
+                        [],
+                        iterations=iterations,
+                        weather=self.weather,
+                        time_context=self.time_context,
+                        congestion_model=congestion_model,
+                        recompute="blast",
+                    )
+        return self._blast_baseline
 
 
 def edge_records(state: AppState, graph) -> list:
@@ -206,4 +241,11 @@ class ScenarioStore:
         scenario_result = sc.get("_last_result")
         if scenario_result is None:
             scenario_result = self.run(sid, {})
-        return compare_simulations(self.state.baseline(), scenario_result)
+        # Compare against a baseline computed with the SAME assignment method:
+        # a blast scenario (AON re-route) vs the iterative full baseline would
+        # diff two different methods and report nonsense global deltas.
+        is_blast = (
+            scenario_result.get("recompute") == "blast" or scenario_result.get("engine") == "blast"
+        )
+        base = self.state.blast_baseline() if is_blast else self.state.baseline()
+        return compare_simulations(base, scenario_result)

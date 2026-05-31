@@ -1,0 +1,76 @@
+/* Two-modes SVG animation styles — owned by the Two-modes agent. */
+
+/* ---------- SimWidget (NLE timeline) ---------- */
+
+/* Cobalt playhead sweeps left -> right across the track, smooth loop. */
+.sim-playhead {
+  animation: sim-playhead-sweep 6s ease-in-out infinite alternate;
+}
+@keyframes sim-playhead-sweep {
+  from {
+    transform: translateX(-150px);
+  }
+  to {
+    transform: translateX(110px);
+  }
+}
+
+/* Heat track draws in once on load. */
+.sim-heat {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: sim-grow-x 0.9s 0.2s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+/* Demand clip draws in slightly later. */
+.sim-demand {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: sim-grow-x 0.7s 0.7s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+@keyframes sim-grow-x {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleX(1);
+    opacity: 0.9;
+  }
+}
+
+/* Subtle pulse on the play glyph. */
+.sim-play {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sim-play-pulse 3s ease-in-out infinite;
+}
+@keyframes sim-play-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+/* ---------- EditWidget (road-closure choreography) ---------- */
+/* The widget is driven by requestAnimationFrame in TwoModes.tsx (cars, closure
+   markers, road recolour). The only CSS it needs is a centered transform box so
+   the JS `scale()` on the closure markers pops from their own centre. */
+.edit-closure {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.12s linear;
+}
+
+/* ---------- Reduced motion ---------- */
+/* SimWidget animations off. The EditWidget JS already skips its rAF under
+   reduced motion and renders a static closed-state, so nothing else needed. */
+@media (prefers-reduced-motion: reduce) {
+  .sim-svg * {
+    animation: none !important;
+  }
+}

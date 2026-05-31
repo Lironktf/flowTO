@@ -12,7 +12,7 @@
  * backend change required. (If the backend later returns node ids + coords, swap
  * `coordKey(endpoints)` for those ids and the rest of this module is unchanged.)
  */
-import { api, type EdgeMeta, type Intervention } from "./client";
+import { api, type EdgeMeta, type Intervention, type RestrictedRoad } from "./client";
 
 export type NodeKey = string;
 
@@ -30,6 +30,7 @@ export interface Segment {
   idx: number;
   road_name?: string;
   road_class?: string;
+  restricted?: RestrictedRoad; // set on MTO highways / municipal expressways
   geometry: [number, number][]; // [lat, lng], as stored upstream
   fromKey: NodeKey;
   toKey: NodeKey;
@@ -93,6 +94,7 @@ export function buildGraph(edges: EdgeMeta[]): RoadGraph {
       idx: e.idx,
       road_name: e.road_name,
       road_class: e.road_class,
+      restricted: e.restricted,
       geometry: e.geometry,
       fromKey,
       toKey,

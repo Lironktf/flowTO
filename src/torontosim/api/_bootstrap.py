@@ -73,7 +73,7 @@ def load_default_state(
     graph_path: str | None = None,
     *,
     time_context: dict | None = None,
-    max_pairs: int = 800,
+    max_pairs: int = 12000,
     graph_source: str | None = None,
 ) -> AppState:  # pragma: no cover - runtime/server path
     """Fast boot: load the graph only.

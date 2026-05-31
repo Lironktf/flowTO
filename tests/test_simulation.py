@@ -29,6 +29,7 @@ for _p in (_REPO_ROOT, os.path.join(_REPO_ROOT, "src")):
 import time  # noqa: E402
 
 import numpy as np  # noqa: E402
+import pytest  # noqa: E402
 
 from torontosim.graph.routing import import_graph_json  # noqa: E402
 from torontosim.model.generate_od_matrix import generate_od_matrix  # noqa: E402,F401
@@ -131,7 +132,13 @@ BASELINE_OUT = os.path.join(_REPO_ROOT, "data", "simulation", "baseline_result.j
 TIME_CONTEXT = {"hour": 17, "day_of_week": 4, "month": 6, "weather": "clear"}
 
 
+@pytest.mark.heavy
 def test_simulation():
+    # Full-fidelity end-to-end on the 81k-edge graph (3000-pair ODME + two
+    # 30-iter equilibrium assignments + scipy-vs-cpu backend parity): ~minutes,
+    # so it runs in the nightly/full suite. The equilibrium engine, frame schema,
+    # determinism and blast scenarios are covered fast on a small graph by
+    # tests/test_sim_engine_integration.py on every PR.
     graph = import_graph_json(GRAPH_JSON)
     assert graph.number_of_edges() > 0
 

@@ -9,12 +9,20 @@ import { ingestDayFrame, ingestFrame } from "../state/tickStore";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
+/** Closure guardrail: a restricted road may not carry a full closure. */
+export interface RestrictedRoad {
+  category: "mto_prohibited" | "municipal_expressway";
+  label?: string | null;
+  reason: string;
+}
+
 export interface EdgeMeta {
   idx: number;
   edge_id: string;
   geometry: [number, number][] | null; // [[lat, lng], ...] (Liron's stored form)
   road_name?: string;
   road_class?: string;
+  restricted?: RestrictedRoad; // present only on MTO/municipal expressway edges
 }
 
 // A tick record: [edge_idx, load, speed, pressure, closure].
@@ -26,15 +34,6 @@ export interface DemoRun {
   headline_metric: number;
   exhibition_pressure: number;
   records: Record5[];
-}
-
-export interface CopilotResponse {
-  tool: string;
-  rationale: string;
-  citations: { ref: string; note: string }[];
-  requires_user_confirmation: boolean;
-  blocked: boolean;
-  retrieved_policy?: { doc_id: string; title: string; source: string }[];
 }
 
 /**
@@ -71,6 +70,76 @@ export interface Intervention {
   mode?: "absolute" | "relative";
   lat?: number;
   lng?: number;
+  directions?: string[];
+}
+
+export interface ViewDirective {
+  action: "fit" | "fly" | "select" | "recenter" | "tilt" | "time";
+  road_name?: string | null;
+  edge_ids?: string[];
+  lng?: number | null;
+  lat?: number | null;
+  zoom?: number | null;
+  minute?: number | null; // action="time": minute-of-day to scrub to
+}
+
+export interface CopilotResponse {
+  tool: string;
+  rationale: string;
+  interventions: Intervention[];
+  citations: { ref: string; note: string }[];
+  warnings?: { severity?: string; title?: string; detail?: string; ref?: string | null }[];
+  view?: ViewDirective | null;
+  requires_user_confirmation: boolean;
+  blocked: boolean;
+  intent?: string;
+  retrieved_policy?: { doc_id: string; title: string; source: string }[];
+}
+
+/** /copilot/route — the single classifier's decision. For plan-mode intents the
+ *  dispatched plan rides inline in `result` (no second hop). */
+export interface CopilotRouteResult {
+  mode: "plan" | "chat" | "agent";
+  intent: string;
+  result?: CopilotResponse;
+}
+
+export interface CopilotConfirmResult {
+  scenario_id: string;
+  summary: Record<string, number>;
+  summary_delta: Record<string, number>;
+  most_impacted_edges: { edge_id: string; road_name?: string | null; [k: string]: unknown }[];
+  explanation: string;
+}
+
+export interface AgentStepLog {
+  tool: string;
+  thought?: string;
+  observation: unknown;
+}
+
+export interface CopilotWarning {
+  severity?: "info" | "warn" | "danger";
+  title?: string;
+  detail?: string;
+  ref?: string | null;
+}
+
+export interface CopilotAgentResult {
+  answer: string;
+  interventions: Intervention[];
+  citations: { ref: string; note: string }[];
+  warnings?: CopilotWarning[];
+  steps: AgentStepLog[];
+  requires_user_confirmation: boolean;
+  blocked: boolean;
+}
+
+export interface StreamDone {
+  first_token_ms: number | null;
+  total_ms: number | null;
+  backend?: string;
+  error?: string;
 }
 
 /** Param-driven simulation request (POST /simulate, /simulate/prewarm). */
@@ -110,11 +179,12 @@ async function jget<T>(path: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-async function jpost<T>(path: string, body: unknown): Promise<T> {
+async function jpost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!r.ok) throw new Error(`POST ${path} → ${r.status}`);
   return r.json() as Promise<T>;
@@ -137,7 +207,7 @@ async function jdelete<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  health: () => jget<{ status: string; edges: number }>("/healthz"),
+  health: () => jget<{ status: string; edges: number; baseline_ready?: boolean }>("/healthz"),
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
   // Measured 24-hour baseline (raw TMC counts, no ML) as one binary blob of 24
   // concatenated day-frames; the tick store walks it (see `ingestBaselineDay`).
@@ -184,6 +254,44 @@ export const api = {
   compareScenario: (id: string, against = "baseline") =>
     jget<CompareResult>(`/scenarios/${id}/compare?against=${against}`),
 };
+
+/**
+ * Stream a free-text copilot answer via SSE (`/copilot/stream`). Calls `onToken`
+ * as tokens arrive and `onDone` with the latency payload on the final event.
+ */
+export async function copilotStream(
+  prompt: string,
+  onToken: (t: string) => void,
+  onDone: (d: StreamDone) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const r = await fetch(`${BASE}/copilot/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+    signal,
+  });
+  if (!r.ok || !r.body) throw new Error(`POST /copilot/stream → ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    // SSE events are separated by a blank line.
+    let nl: number;
+    while ((nl = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, nl);
+      buf = buf.slice(nl + 2);
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      const evt = JSON.parse(line.slice(6)) as { token?: string; done?: boolean } & StreamDone;
+      if (evt.token) onToken(evt.token);
+      if (evt.done) onDone(evt);
+    }
+  }
+}
 
 /** Connect the binary tick WebSocket (live-tick scenarios → tick store). */
 export function connectStream(scenarioId: string): WebSocket {

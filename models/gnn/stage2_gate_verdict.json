@@ -1,0 +1,53 @@
+{
+  "ship": true,
+  "verdict": "ship GNN",
+  "scope": "closure",
+  "recommended_checkpoint": "models/gnn/stage2_full.pt",
+  "checkpoints": {
+    "models/gnn/stage2_full.pt": {
+      "solver": "full",
+      "gate": {
+        "n": 38,
+        "err_gnn_rmse": 136.9054154524231,
+        "err_sim_rmse": 406.3146532124449,
+        "mae_gnn": 93.31698527461604,
+        "mae_sim": 315.1599893444463,
+        "rank_gnn": 0.8,
+        "rank_sim": 0.4,
+        "improvement_rmse": 269.4092377600218,
+        "ship": true,
+        "verdict": "ship GNN"
+      }
+    },
+    "models/gnn/stage2_residual.pt": {
+      "solver": "blast",
+      "gate": {
+        "n": 38,
+        "err_gnn_rmse": 128.11897339720053,
+        "err_sim_rmse": 406.3146532124449,
+        "mae_gnn": 94.85948372044061,
+        "mae_sim": 315.1599893444463,
+        "rank_gnn": 0.8,
+        "rank_sim": 0.4,
+        "improvement_rmse": 278.1956798152444,
+        "ship": true,
+        "verdict": "ship GNN"
+      }
+    }
+  },
+  "held_out": {
+    "split": "temporal",
+    "n_test_closures": 22,
+    "n_edges": 38,
+    "n_residual_rows": 310
+  },
+  "standardizers": "saved inside each checkpoint as ckpt['standardizers'] \u2014 reuse at inference, do NOT refit",
+  "caveats": [
+    "Scope is CLOSURES ONLY \u2014 openings were never gated (real opening yield ~0). Openings stay on the sim.",
+    "Calibration-grade: err_sim (~406) is inflated by weak OD grounding (sim_open~0 at most observed sites). The GNN's win is real and solver-robust (blast 128 vs full 137 RMSE, both vs sim 406) but partly reflects an under-loaded sim baseline.",
+    "Trained sim_open distribution differs from the app baseline: training used a ~1500-pair grounded OD (full=full-equilibrium, blast=AON). The app's edit baseline is full-equilibrium on a larger OD. VALIDATE on the GB10 that GNN predictions match the sim within threshold using the APP baseline before trusting; prefer stage2_full.pt (solver matches the app).",
+    "Inference needs sim_open (the open-road solve) as input channels \u2014 feed the cached no-edit SIM baseline, not Liron's pressure GNN."
+  ],
+  "produced": "2026-05-31",
+  "source": "PR #49 (P13 Stage-2 real fine-tune + gate); parity run on the verified full-equilibrium solver"
+}

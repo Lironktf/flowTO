@@ -19,7 +19,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import backends
-from .network import Network, bpr_costs, build_network
+from .network import Network, bpr_costs
 
 
 @dataclass
@@ -151,6 +151,59 @@ def frank_wolfe(
     )
 
 
+# id(graph) -> cached topology (node order, link tail/head, BPR params, CSR).
+# Keyed on identity + (n_nodes, n_edges) so add/remove mutations invalidate it;
+# status-only closures keep the structure and are reflected via the per-call cap
+# recompute below. Mirrors the id()-keyed cache convention used by the scipy
+# backend's ``_CSR_CACHE``.
+_NET_STRUCT_CACHE: dict = {}
+
+
+def _network_structure(graph):
+    from ..graph.config import BPR_PARAMS
+
+    key = id(graph)
+    sig = (graph.number_of_nodes(), graph.number_of_edges())
+    cached = _NET_STRUCT_CACHE.get(key)
+    if cached is not None and cached["sig"] == sig:
+        return cached
+
+    nodes = sorted(graph.nodes(), key=str)
+    node_index = {n: i for i, n in enumerate(nodes)}
+    tail, head, alpha, beta, edge_ids, edge_keys = [], [], [], [], [], []
+    for u, v, k, d in graph.edges(keys=True, data=True):
+        a, b = BPR_PARAMS.get(d.get("road_class", "default"), BPR_PARAMS["default"])
+        tail.append(node_index[u])
+        head.append(node_index[v])
+        alpha.append(a)
+        beta.append(b)
+        edge_ids.append(d.get("edge_id"))
+        edge_keys.append((u, v, k))
+
+    tail_a = np.asarray(tail, dtype=np.int64)
+    head_a = np.asarray(head, dtype=np.int64)
+    n_nodes = len(nodes)
+    order = np.argsort(tail_a, kind="stable").astype(np.int64)
+    indptr = np.zeros(n_nodes + 1, dtype=np.int64)
+    indptr[1:] = np.cumsum(np.bincount(tail_a, minlength=n_nodes))
+
+    cached = {
+        "sig": sig,
+        "n_nodes": n_nodes,
+        "node_index": node_index,
+        "edge_keys": edge_keys,
+        "tail": tail_a,
+        "head": head_a,
+        "alpha": np.asarray(alpha, dtype=np.float64),
+        "beta": np.asarray(beta, dtype=np.float64),
+        "edge_ids": list(edge_ids),
+        "indptr": indptr,
+        "order": order,
+    }
+    _NET_STRUCT_CACHE[key] = cached
+    return cached
+
+
 def network_from_graph(graph, *, weather_factor: float = 1.0):
     """Build a ``Network`` from Liron's MultiDiGraph (one link per edge).
 
@@ -158,27 +211,39 @@ def network_from_graph(graph, *, weather_factor: float = 1.0):
     closed / zero-capacity edges get capacity 0 -> infinite BPR cost (never
     chosen). Returns ``(net, node_index, edge_keys)`` where ``edge_keys[i]`` is
     the ``(u, v, k)`` of link ``i``.
-    """
-    from ..graph.config import BPR_PARAMS
 
-    nodes = sorted(graph.nodes(), key=str)
-    node_index = {n: i for i, n in enumerate(nodes)}
-    tail, head, t0, cap, alpha, beta, edge_ids, edge_keys = [], [], [], [], [], [], [], []
-    for u, v, k, d in graph.edges(keys=True, data=True):
+    The topology (node ordering, tail/head, per-link BPR params, CSR adjacency)
+    is cached per graph; only ``t0`` (weather-dependent) and ``cap`` (live
+    status/capacity) are recomputed each call — they're cheap and may change
+    between baseline and scenario runs. The result is byte-for-byte identical to
+    building the ``Network`` from scratch.
+    """
+    s = _network_structure(graph)
+
+    inf = float("inf")
+    t0 = np.empty(s["tail"].shape[0], dtype=np.float64)
+    cap = np.empty(s["tail"].shape[0], dtype=np.float64)
+    # Single edges() pass, same stable order as the cached structure (the graph
+    # is unmutated structurally while the cache is valid).
+    for i, (_u, _v, _k, d) in enumerate(graph.edges(keys=True, data=True)):
         base = d.get("base_time_min", 0.0) or 0.0
-        free = base / weather_factor if weather_factor > 0 else float("inf")
-        capacity = 0.0 if d.get("status") == "closed" else float(d.get("capacity", 0.0) or 0.0)
-        a, b = BPR_PARAMS.get(d.get("road_class", "default"), BPR_PARAMS["default"])
-        tail.append(node_index[u])
-        head.append(node_index[v])
-        t0.append(max(free, 1e-9))
-        cap.append(capacity)
-        alpha.append(a)
-        beta.append(b)
-        edge_ids.append(d.get("edge_id"))
-        edge_keys.append((u, v, k))
-    net = build_network(len(nodes), tail, head, t0, cap, alpha, beta, edge_ids=edge_ids)
-    return net, node_index, edge_keys
+        free = base / weather_factor if weather_factor > 0 else inf
+        t0[i] = max(free, 1e-9)
+        cap[i] = 0.0 if d.get("status") == "closed" else float(d.get("capacity", 0.0) or 0.0)
+
+    net = Network(
+        n_nodes=s["n_nodes"],
+        tail=s["tail"],
+        head=s["head"],
+        t0=t0,
+        cap=cap,
+        alpha=s["alpha"],
+        beta=s["beta"],
+        indptr=s["indptr"],
+        order=s["order"],
+        edge_ids=s["edge_ids"],
+    )
+    return net, s["node_index"], s["edge_keys"]
 
 
 def assign_equilibrium(

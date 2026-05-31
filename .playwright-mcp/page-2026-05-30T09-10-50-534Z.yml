@@ -1,0 +1,15 @@
+- generic [ref=e3]:
+  - generic [ref=e4]: Spark Hack · NVIDIA · local-first
+  - heading "A live digital twin of Toronto." [level=1] [ref=e5]
+  - generic [ref=e6]: Simulate how traffic and transit flow, apply interventions, and watch the network recompute in real time — all on-device. The reference scenario is FIFA World Cup 2026 post-match egress at BMO Field.
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: 18,190
+      - generic [ref=e10]: road edges
+    - generic [ref=e11]:
+      - generic [ref=e12]: ~45,000
+      - generic [ref=e13]: egress demand
+    - generic [ref=e14]:
+      - generic [ref=e15]: <100ms
+      - generic [ref=e16]: blast-radius recompute
+  - button "Load the twin" [ref=e17] [cursor=pointer]

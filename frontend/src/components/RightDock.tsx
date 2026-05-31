@@ -22,6 +22,9 @@ function WarningsBody() {
   if (warnings.length === 0)
     return (
       <div className="insp-empty">
+        <span className="ee-ico ok">
+          <Icon.check />
+        </span>
         <div className="big">All clear</div>
         <div className="sm">No bylaw conflicts or risk flags for the current model.</div>
       </div>

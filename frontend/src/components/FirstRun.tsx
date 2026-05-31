@@ -46,7 +46,7 @@ export function FirstRun() {
         </h1>
         <div className="fr-lede">
           Two modes: <b>Simulate</b> the day on a timeline with time-of-day lighting, or <b>Edit</b>{" "}
-          the network top-down — seal a corridor between two intersections or inject a demand surge,
+          the network top-down; seal a corridor between two intersections or inject a demand surge,
           and watch the twin recompute. 100% on-device.
         </div>
         <div className="fr-meta">

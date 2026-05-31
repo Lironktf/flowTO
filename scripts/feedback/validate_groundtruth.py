@@ -15,6 +15,16 @@ import pandas as pd
 
 from torontosim.feedback.groundtruth.clean import clean_restrictions
 from torontosim.feedback.groundtruth.labels import build_labels
+from torontosim.feedback.groundtruth.openings import (
+    after_aggregate,
+    build_opening_labels,
+    split_after,
+)
+from torontosim.feedback.groundtruth.package import (
+    build_manifest,
+    combine_interventions,
+    grouped_split,
+)
 from torontosim.feedback.groundtruth.spatial import spatial_join, tmc_sites
 from torontosim.feedback.groundtruth.temporal import (
     during_aggregate,
@@ -41,16 +51,31 @@ def main() -> None:
     dagg = during_aggregate(pairs, obs)
     print(f"during surveys: {len(during):,} · during_agg rows: {len(dagg):,}")
 
-    labels = build_labels(dagg, during, pre)
-    bl = labels[labels["has_baseline"] == 1]
+    closures = build_labels(dagg, during, pre)
+    bl = closures[closures["has_baseline"] == 1]
     up = int((bl["direction"] == 1).sum())
     down = int((bl["direction"] == 0).sum())
-    print("\n=== LABELS ===")
-    print(f"rows (restriction x site): {len(labels):,}")
-    print(f"restrictions represented:  {labels['ID'].nunique()}")
+    print("\n=== CLOSURES ===")
+    print(f"rows (restriction x site): {len(closures):,}")
+    print(f"restrictions represented:  {closures['ID'].nunique()}")
     print(f"rows WITH baseline:        {len(bl)}  (up={up}, down={down})")
     print(f"  significant (|sigma|>1.5): {int((bl['significant'] == 1).sum())}")
-    print(f"  baseline_match mix:        {labels['baseline_match'].value_counts().to_dict()}")
+
+    # openings: after-reopening vs during-closure baseline
+    after = split_after(pairs, obs)
+    aagg = after_aggregate(after)
+    openings = build_opening_labels(aagg, after, during)
+    obl = openings[openings["has_baseline"] == 1] if len(openings) else openings
+    print("\n=== OPENINGS ===")
+    print(f"rows: {len(openings):,} · with baseline: {len(obl)}")
+
+    # package: combine + leak-free split + manifest
+    combined = grouped_split(combine_interventions(closures, openings))
+    manifest = build_manifest(combined)
+    print("\n=== PACKAGED MANIFEST ===")
+    for k in ("rows", "closures", "openings", "restrictions", "with_baseline",
+              "direction_up", "direction_down", "confounder_clean", "split"):
+        print(f"  {k}: {manifest[k]}")
 
 
 if __name__ == "__main__":

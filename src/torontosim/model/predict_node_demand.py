@@ -144,8 +144,7 @@ def load_demand_model(model_path: str = MODEL_PATH, kind: str = "auto"):
                 import warnings
 
                 warnings.warn(
-                    "loaded demand model has compatibility issues:\n  - "
-                    + "\n  - ".join(problems),
+                    "loaded demand model has compatibility issues:\n  - " + "\n  - ".join(problems),
                     RuntimeWarning,
                     stacklevel=2,
                 )

@@ -175,7 +175,11 @@ def check_compatible(payload: Any, *, expected_feature_order: list[str]) -> list
         )
 
     # GNN models don't use the tabular FEATURE_ORDER row contract.
-    if man.kind != "gnn" and man.feature_order and man.feature_order != list(expected_feature_order):
+    if (
+        man.kind != "gnn"
+        and man.feature_order
+        and man.feature_order != list(expected_feature_order)
+    ):
         problems.append(
             "feature_order mismatch:\n"
             f"  model: {man.feature_order}\n"

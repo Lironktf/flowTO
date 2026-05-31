@@ -17,6 +17,10 @@ export default defineConfig({
       "/api": {
         target: process.env.VITE_PROXY_TARGET || "http://localhost:8000",
         changeOrigin: true,
+        // ws: forward the WebSocket upgrade too — the day-stream (/api/day/stream,
+        // used by "Apply & recompute") is a WS. Without this the upgrade never
+        // reaches the backend and the client fails with "Compute failed".
+        ws: true,
         rewrite: (p) => p.replace(/^\/api/, ""),
       },
     },

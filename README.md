@@ -317,11 +317,11 @@ network- or hardware-bound, and each has a working fallback (full detail in
 
 | Name | GitHub | Role | Contact |
 |---|---|---|---|
-| Kevin Jiang | [@ANonABento](https://github.com/ANonABento) | _TBD_ | kevin.jiang53@gmail.com |
-| Liron Katsif | [@Lironktf](https://github.com/Lironktf) | _TBD_ | Lironktf@gmail.com |
-| Shahar Philipp Mayorov | [@PhilippMayorov](https://github.com/PhilippMayorov) | _TBD_ | smayorov@uwo.ca |
-| Ben Petlach | [@ben-petlach](https://github.com/ben-petlach) | _TBD_ | ben.petlach@gmail.com |
-| Jefferson Chen | [@VirtualFlight](https://github.com/VirtualFlight) | _TBD_ | _TBD_ |
+| Kevin Jiang | [@ANonABento](https://github.com/ANonABento) | Developer | kevin.jiang53@gmail.com |
+| Liron Katsif | [@Lironktf](https://github.com/Lironktf) | Developer | Lironktf@gmail.com |
+| Shahar Philipp Mayorov | [@PhilippMayorov](https://github.com/PhilippMayorov) | Developer | smayorov@uwo.ca |
+| Ben Petlach | [@ben-petlach](https://github.com/ben-petlach) | Developer | ben.petlach@gmail.com |
+| Jefferson Chen | [@VirtualFlight](https://github.com/VirtualFlight) | Developer | jefferson8268@hotmail.com|
 
 ---
 

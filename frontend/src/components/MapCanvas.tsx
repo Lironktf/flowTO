@@ -144,6 +144,18 @@ export function MapCanvas() {
     const t = setTimeout(() => mapRef.current?.getMap()?.resize(), 320);
     return () => clearTimeout(t);
   }, [view, tiltOn]);
+
+  // Keep the map canvas filling #viewport whenever it changes size — collapsing
+  // a side/bottom dock grows the viewport, but the WebGL canvas only resizes
+  // when told. A ResizeObserver fires continuously through the CSS transition,
+  // so the map expands to fill the freed space instead of leaving a gutter.
+  useEffect(() => {
+    const el = document.getElementById("viewport");
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => mapRef.current?.getMap()?.resize());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     const m = mapRef.current?.getMap();
     if (!m || recenterNonce === 0) return;
@@ -386,6 +398,10 @@ export function MapCanvas() {
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
           mapStyle={STANDARD_STYLE}
+          // Flat Mercator at every zoom — Mapbox's default 'globe' curves the
+          // earth when you zoom out, which looks wrong for a city twin. Mercator
+          // keeps the zoomed-out view a proper flat plane like the close-up.
+          projection={{ name: "mercator" }}
           reuseMaps
           cursor="grab"
           onLoad={(e) => {

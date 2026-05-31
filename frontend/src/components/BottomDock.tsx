@@ -37,19 +37,24 @@ export function BottomDock() {
   const pressureSeq = useAppStore((s) => s.pressureSeq);
   const laneRef = useRef<HTMLDivElement>(null);
 
-  // Playback: advance every 520/speed ms, snapped to the step.
+  // Playback: advance every 520/speed ms, snapped to the step. At end-of-day the
+  // clock rolls over to 00:00 of the NEXT day (continuous timeline) instead of
+  // stopping — wrapping the year at day 365. (Cosmetic: the date/lighting advance;
+  // demand is re-derived only on an explicit retime.)
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => {
-      const m = useAppStore.getState().scrubberMinute;
-      if (m >= TIMELINE.endMin) {
-        setPlaying(false);
-        return;
+      const s = useAppStore.getState();
+      const next = s.scrubberMinute + TIMELINE.step;
+      if (next >= TIMELINE.endMin) {
+        setScrubber(TIMELINE.startMin);
+        setDayOfYear(s.dayOfYear >= 365 ? 1 : s.dayOfYear + 1);
+      } else {
+        setScrubber(next);
       }
-      setScrubber(Math.min(TIMELINE.endMin, m + TIMELINE.step));
     }, 520 / speed);
     return () => clearInterval(id);
-  }, [playing, speed, setScrubber, setPlaying]);
+  }, [playing, speed, setScrubber, setPlaying, setDayOfYear]);
 
   const seekFromClient = (clientX: number) => {
     const el = laneRef.current;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useAppStore } from "../state/appStore";
 import { Icon } from "./Icons";
 
@@ -41,6 +41,11 @@ function ChipRow({ disabled, onPick }: { disabled: boolean; onPick: (c: string) 
   );
 }
 
+// Drag-to-resize clamps (px). The copilot region otherwise grows to fill the dock.
+const COPILOT_MIN_H = 220;
+const COPILOT_MAX_H = 900;
+const COPILOT_DEFAULT_H = 420;
+
 export function CopilotRegion() {
   const log = useAppStore((s) => s.copilotLog);
   const ask = useAppStore((s) => s.copilotAsk);
@@ -54,6 +59,30 @@ export function CopilotRegion() {
   const graph = useAppStore((s) => s.graph);
   const pendingMode = useAppStore((s) => s.copilotPendingMode);
   const ready = useAppStore((s) => s.copilotReady);
+  const sessions = useAppStore((s) => s.copilotSessions);
+  const newChat = useAppStore((s) => s.copilotNewChat);
+  const loadSession = useAppStore((s) => s.copilotLoadSession);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Drag-to-resize the copilot region from its top edge.
+  const [height, setHeight] = useState(COPILOT_DEFAULT_H);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+  const onResizeDown = (e: ReactPointerEvent) => {
+    dragRef.current = { startY: e.clientY, startH: height };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onResizeMove = (e: ReactPointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    // Dragging up (clientY decreases) grows the panel; down shrinks it.
+    const next = d.startH + (d.startY - e.clientY);
+    setHeight(Math.max(COPILOT_MIN_H, Math.min(COPILOT_MAX_H, next)));
+  };
+  const onResizeUp = (e: ReactPointerEvent) => {
+    dragRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
   // One loader; only the label changes with the resolved mode.
   const thinkLabel =
     pendingMode === "agent"
@@ -81,17 +110,64 @@ export function CopilotRegion() {
   };
 
   return (
-    <section className="region grow" id="copilot-region">
+    <section className="region copilot-region" id="copilot-region" style={{ height, flex: "none" }}>
+      <div
+        className="copilot-resize-handle"
+        title="Drag to resize"
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+      />
       <div className="region-hd">
         <span className="lbl copilot-title">Copilot · Nemotron</span>
-        <button
-          className={`mode-tab deep-toggle ${deepMode ? "active" : ""}`}
-          aria-pressed={deepMode}
-          title="Deep: let Nemotron investigate (simulate / optimize) before it proposes. Off: quick answer or a single action."
-          onClick={toggleDeep}
-        >
-          🧠 Deep {deepMode ? "on" : "off"}
-        </button>
+        <div className="copilot-hd-actions">
+          <button
+            className="mode-tab copilot-newchat"
+            title="Start a new chat (archives the current one to history)"
+            onClick={() => {
+              setHistoryOpen(false);
+              newChat();
+            }}
+          >
+            + New chat
+          </button>
+          {sessions.length > 0 && (
+            <div className="copilot-history-wrap">
+              <button
+                className={`mode-tab copilot-history-btn ${historyOpen ? "active" : ""}`}
+                aria-expanded={historyOpen}
+                title="Chat history"
+                onClick={() => setHistoryOpen((v) => !v)}
+              >
+                History
+              </button>
+              {historyOpen && (
+                <div className="copilot-history-menu">
+                  {sessions.map((sess) => (
+                    <button
+                      key={sess.id}
+                      className="copilot-history-item"
+                      onClick={() => {
+                        loadSession(sess.id);
+                        setHistoryOpen(false);
+                      }}
+                    >
+                      {sess.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            className={`mode-tab deep-toggle ${deepMode ? "active" : ""}`}
+            aria-pressed={deepMode}
+            title="Deep: let Nemotron investigate (simulate / optimize) before it proposes. Off: quick answer or a single action."
+            onClick={toggleDeep}
+          >
+            🧠 Deep {deepMode ? "on" : "off"}
+          </button>
+        </div>
       </div>
       {latency && (
         <div className="copilot-latbar">
@@ -222,16 +298,17 @@ export function CopilotRegion() {
             </div>
           </div>
         )}
+        {/* Suggestion chips scroll with the log content (anchored after the last message). */}
+        {log.length > 0 && !showThinking && (
+          <div className="copilot-chips">
+            <ChipRow disabled={busy} onPick={submit} />
+          </div>
+        )}
       </div>
       {!ready && (
         <div className="copilot-warming">
           <span className="dot" />
           warming the twin… (priming the baseline)
-        </div>
-      )}
-      {log.length > 0 && (
-        <div className="copilot-chips">
-          <ChipRow disabled={busy} onPick={submit} />
         </div>
       )}
       <div className="copilot-input">

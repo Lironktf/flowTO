@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/appStore";
-import { buildRoadIndex, dedupeHits, geocodePlaces, retrievePlace, searchRoads, type SearchHit } from "../lib/search";
+import { buildRoadIndex, dedupeHits, geocodePlaces, searchRoads, type SearchHit } from "../lib/search";
 import { Icon } from "./Icons";
 
 /** Friendly label for a hit's source. */
@@ -14,9 +14,7 @@ const kindLabel = (kind: string) =>
 export function SearchBar() {
   const graph = useAppStore((s) => s.graph);
   const view = useAppStore((s) => s.view);
-  const flyToLocation = useAppStore((s) => s.flyToLocation);
-  const fitToBounds = useAppStore((s) => s.fitToBounds);
-  const selectRoad = useAppStore((s) => s.selectRoad);
+  const flyToHit = useAppStore((s) => s.flyToHit);
   const closeStreet = useAppStore((s) => s.closeStreet);
   const spanOnStreet = useAppStore((s) => s.spanOnStreet);
 
@@ -84,17 +82,9 @@ export function SearchBar() {
   const choose = async (h: SearchHit | undefined) => {
     if (!h) return;
     dismiss(h.label);
-    if (h.bbox) {
-      // Street: frame the whole road and highlight it.
-      fitToBounds(h.bbox);
-      if (h.edgeId) selectRoad(h.edgeId);
-    } else if (h.mapboxId) {
-      // Place: resolve coordinates, then fly + drop a pin.
-      const coord = await retrievePlace(h.mapboxId, new AbortController().signal);
-      if (coord) flyToLocation(coord[0], coord[1], 14.5);
-    } else {
-      flyToLocation(h.coord[0], h.coord[1], 14.5);
-    }
+    // Shared camera logic (street frame+highlight / place retrieve+fly) lives in
+    // the store so the copilot's focus reuses the exact same path.
+    await flyToHit(h);
   };
 
   // Edit-mode actions on a street hit: seal the whole street, or arm the corridor tool.

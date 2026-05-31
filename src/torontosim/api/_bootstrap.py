@@ -74,4 +74,6 @@ def load_default_state(
     model = load_demand_model()
     demand = predict_node_demand(graph, model, tc)
     od = generate_od_matrix(graph, demand, tc, max_pairs=max_pairs)
-    return AppState.from_graph(graph, od, weather=tc.get("weather", "clear"), time_context=tc)
+    return AppState.from_graph(
+        graph, od, weather=tc.get("weather", "clear"), time_context=tc, max_pairs=max_pairs
+    )

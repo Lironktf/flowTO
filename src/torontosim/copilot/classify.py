@@ -78,18 +78,33 @@ _SYSTEM = (
     "'from_intersection' and 'to_intersection' (e.g. 'King & Bathurst').\n"
     "  change_capacity — scale a road's capacity; set 'road_name' and 'multiplier' "
     "(0.5 = halve, 1.5 = +50%).\n"
-    "  query_congestion — asks where traffic is worst / busiest right now.\n"
-    "  explain — asks WHY a specific named road is congested; put it in 'road_name'.\n"
-    "  inspect — asks for stats/details about a named road (capacity, lanes, load); put it in 'road_name'.\n"
+    "  query_congestion — asks where traffic is worst / busiest across the city WITHOUT "
+    "naming a road ('where is congestion worst?', 'what's the busiest area?').\n"
+    "  explain — asks WHY a road is congested; put it in 'road_name'.\n"
+    "  inspect — asks for stats/details/conditions of a NAMED road: 'how busy is X', 'how "
+    "congested is X', \"what's traffic like on X\", 'stats on X'. A road is named, so it is "
+    "inspect — NOT query_congestion. Put the road in 'road_name'.\n"
     "  optimize — asks for the best / recommended plan (let the optimizer decide).\n"
     "  mitigate — asks to ease / relieve congestion near a place; put the place in 'road_name'.\n"
     "  focus — asks to SHOW / zoom / fly to a place on the map (no change); put it in 'road_name'.\n"
-    "  set_time — asks to view a specific time of day; put the minute-of-day (0-1440) in 'minute' "
-    "(8am=480, noon=720, 5pm=1020).\n"
+    "  set_time — asks to view a specific time of day OR a named rush/peak period; put the "
+    "minute-of-day (0-1440) in 'minute'. Map common phrases: 'morning rush'/'morning peak'=480, "
+    "'rush hour'/'evening rush'/'evening peak'/'PM peak'=1020, 'noon'/'midday'=720, "
+    "'midnight'/'12am'=0, 'overnight'=180. "
+    "'show rush hour' is set_time (NOT focus).\n"
     "  investigate — a compound or multi-step request ('figure out why X and propose a fix').\n"
     "  chat — greetings, small talk, or a general question not about changing the network.\n"
     "Phrasing and punctuation do NOT matter: 'close King St' and 'can you close King St?' are both "
-    "close_road. A question word does not force 'chat' — classify by what the user wants done."
+    "close_road. A question word does not force 'chat' — classify by what the user wants done.\n"
+    "Hypothetical closures are still close_road: 'what if I close X', 'what would happen if I "
+    "closed X', 'simulate closing X' all = close_road (the user wants to see the impact of "
+    "closing X, not an explanation of why X is congested).\n"
+    "If the user refers to the worst / most congested / busiest / most jammed road WITHOUT naming "
+    "it (e.g. 'close the worst road', 'why is the worst road congested', 'show me the busiest "
+    "street'), set 'road_name' to the literal word 'worst' — do NOT invent or guess a specific "
+    "road name; the system resolves which road that is.\n"
+    "For 'road_name', extract the road EXACTLY as the user said it — do NOT append 'Road', 'Street', "
+    "or 'Avenue' if they didn't (e.g. 'the Gardiner' -> 'Gardiner', not 'Gardiner Road')."
 )
 
 
@@ -101,12 +116,23 @@ def _default_model_call(system: str, prompt: str, schema: dict) -> str:
     return ollama_client.generate(system, prompt, schema)
 
 
-def classify(prompt: str, *, model_call: ModelCall | None = None) -> ClassifyResult:
-    """Classify ``prompt`` into one intent + entities. Falls back to ``chat`` on any
-    model/parse failure so routing degrades to a safe conversational reply."""
+def classify(
+    prompt: str, *, history: str = "", model_call: ModelCall | None = None
+) -> ClassifyResult:
+    """Classify ``prompt`` into one intent + entities. ``history`` (recent
+    conversation, oldest→newest) lets the model resolve referential phrases like
+    'the worst road', 'that road', 'it', or 'reopen it' to a concrete road name.
+    Falls back to ``chat`` on any model/parse failure."""
     model_call = model_call or _default_model_call
+    text = prompt or ""
+    if history.strip():
+        text = (
+            "Recent conversation (resolve references like 'the worst road', "
+            "'that road', 'it' from this — put the ACTUAL road name in 'road_name'):\n"
+            f"{history.strip()}\n\nRequest: {prompt}"
+        )
     try:
-        raw = model_call(_SYSTEM, prompt or "", classify_schema())
+        raw = model_call(_SYSTEM, text, classify_schema())
         return ClassifyResult.model_validate(json.loads(raw))
     except (json.JSONDecodeError, ValidationError, OSError, ValueError, KeyError):
         return ClassifyResult(intent="chat")

@@ -193,9 +193,19 @@ export const api = {
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
-  copilotRoute: (prompt: string, signal?: AbortSignal) =>
-    jpost<CopilotRouteResult>("/copilot/route", { prompt }, signal),
+  copilotRoute: (prompt: string, history = "", signal?: AbortSignal) =>
+    jpost<CopilotRouteResult>("/copilot/route", { prompt, history }, signal),
   copilotSuggestions: () => jget<{ prompts: string[] }>("/copilot/suggestions"),
+  // Rebuild the baseline demand at a time-of-day / date (canonical units:
+  // minute-of-day, day-of-year). Heavy — re-derives demand + re-sims.
+  retimeBaseline: (minute: number, dayOfYear: number, weather?: string) =>
+    jpost<{ time_context: Record<string, unknown>; summary: Record<string, number>; records: Record5[] }>(
+      "/baseline/retime",
+      { minute, day_of_year: dayOfYear, weather },
+    ),
+  // Dynamic follow-up chips reflecting the last exchange (prompt + bot reply + intent).
+  copilotFollowups: (prompt: string, reply: string, intent: string, signal?: AbortSignal) =>
+    jpost<{ prompts: string[] }>("/copilot/followups", { prompt, reply, intent }, signal),
   assess: (interventions: Intervention[], prompt = "", signal?: AbortSignal) =>
     jpost<{ warnings: CopilotWarning[] }>("/assess", { interventions, prompt }, signal),
   copilotAgent: (prompt: string, signal?: AbortSignal) =>

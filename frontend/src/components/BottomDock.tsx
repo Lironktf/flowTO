@@ -3,54 +3,20 @@ import { TIMELINE } from "../config";
 import { describeSegment } from "../api/graph";
 import { congestionSeries } from "../lib/congestion";
 import { describeSegmentAsync } from "../lib/mapboxCrossStreet";
+import {
+  MONTHS,
+  dateLabel,
+  dayOfYearToMD,
+  daysInMonth,
+  fmtClock,
+  mdToDayOfYear,
+} from "../lib/time";
 import { useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
 
 const SPAN = TIMELINE.endMin - TIMELINE.startMin;
 const pct = (min: number) => ((min - TIMELINE.startMin) / SPAN) * 100;
-const fmtClock = (min: number) =>
-  `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(Math.round(min) % 60).padStart(2, "0")}`;
-
-function dateLabel(doy: number): string {
-  const d = new Date(Date.UTC(2026, 0, doy));
-  return d
-    .toLocaleDateString("en-CA", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" })
-    .toUpperCase();
-}
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function dayOfYearToMD(doy: number) {
-  const d = new Date(Date.UTC(2026, 0, doy));
-  return { month: d.getUTCMonth(), day: d.getUTCDate() };
-}
-function mdToDayOfYear(month: number, day: number) {
-  return Math.round((Date.UTC(2026, month, day) - Date.UTC(2026, 0, 0)) / 86400000);
-}
-function daysInMonth(month: number) {
-  return new Date(Date.UTC(2026, month + 1, 0)).getUTCDate(); // 2026 non-leap
-}
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th"];
-
-// Day-of-month of the `nth` (1-5) occurrence of `weekday` (0=Sun..6=Sat) in `month`.
-// Clamps to the last valid occurrence when the nth overflows the month.
-function nthWeekdayOfMonth(month: number, nth: number, weekday: number): number {
-  const first = new Date(Date.UTC(2026, month, 1)).getUTCDay();
-  let dom = 1 + ((weekday - first + 7) % 7) + (nth - 1) * 7;
-  const max = daysInMonth(month);
-  while (dom > max) dom -= 7;
-  return dom;
-}
-
-// Inverse: which month / nth-occurrence / weekday a dayOfYear lands on.
-function dayOfYearToParts(doy: number): { month: number; nth: number; weekday: number } {
-  const { month, day } = dayOfYearToMD(doy);
-  const weekday = new Date(Date.UTC(2026, month, day)).getUTCDay();
-  const nth = Math.floor((day - 1) / 7) + 1;
-  return { month, nth, weekday };
-}
 
 export function BottomDock() {
   const minute = useAppStore((s) => s.scrubberMinute);
@@ -61,25 +27,32 @@ export function BottomDock() {
   const setSpeed = useAppStore((s) => s.setSpeed);
   const dayOfYear = useAppStore((s) => s.dayOfYear);
   const setDayOfYear = useAppStore((s) => s.setDayOfYear);
+  const retimeBaseline = useAppStore((s) => s.retimeBaseline);
+  const recomputing = useAppStore((s) => s.recomputing);
   const selectedRoadId = useAppStore((s) => s.selectedRoadId);
   const selectRoad = useAppStore((s) => s.selectRoad);
   const graph = useAppStore((s) => s.graph);
   const pressureSeq = useAppStore((s) => s.pressureSeq);
   const laneRef = useRef<HTMLDivElement>(null);
 
-  // Playback: advance every 520/speed ms, snapped to the step.
+  // Playback: advance every 520/speed ms, snapped to the step. At end-of-day the
+  // clock rolls over to 00:00 of the NEXT day (continuous timeline) instead of
+  // stopping — wrapping the year at day 365. (Cosmetic: the date/lighting advance;
+  // demand is re-derived only on an explicit retime.)
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => {
-      const m = useAppStore.getState().scrubberMinute;
-      if (m >= TIMELINE.endMin) {
-        setPlaying(false);
-        return;
+      const s = useAppStore.getState();
+      const next = s.scrubberMinute + TIMELINE.step;
+      if (next >= TIMELINE.endMin) {
+        setScrubber(TIMELINE.startMin);
+        setDayOfYear(s.dayOfYear >= 365 ? 1 : s.dayOfYear + 1);
+      } else {
+        setScrubber(next);
       }
-      setScrubber(Math.min(TIMELINE.endMin, m + TIMELINE.step));
     }, 520 / speed);
     return () => clearInterval(id);
-  }, [playing, speed, setScrubber, setPlaying]);
+  }, [playing, speed, setScrubber, setPlaying, setDayOfYear]);
 
   const seekFromClient = (clientX: number) => {
     const el = laneRef.current;
@@ -172,21 +145,30 @@ export function BottomDock() {
         <div className="tl-clock">
           <span className="t">{fmtClock(minute)}</span>
           <span className="dow">{dateLabel(dayOfYear)}</span>
+          <button
+            className="tbtn retime"
+            title="Re-run the simulation with demand for this time of day & date (rush-hour direction, volume). Takes a moment."
+            disabled={recomputing}
+            onClick={() => void retimeBaseline()}
+          >
+            <Icon.refresh />
+          </button>
         </div>
 
         <div className="day-control">
           <Icon.calendar />
           {(() => {
-            const { month, nth, weekday } = dayOfYearToParts(dayOfYear);
-            const apply = (m: number, n: number, w: number) =>
-              setDayOfYear(mdToDayOfYear(m, nthWeekdayOfMonth(m, n, w)));
+            const { month, day } = dayOfYearToMD(dayOfYear); // month 0–11, day 1–31
+            // Month + day-of-month. Clamp the day when the month changes (e.g. 31 → Feb).
+            const setMD = (m: number, d: number) =>
+              setDayOfYear(mdToDayOfYear(m, Math.min(d, daysInMonth(m))));
             return (
               <>
                 <select
                   className="date-select"
                   value={month}
                   title="Month"
-                  onChange={(e) => apply(Number(e.target.value), nth, weekday)}
+                  onChange={(e) => setMD(Number(e.target.value), day)}
                 >
                   {MONTHS.map((label, i) => (
                     <option key={i} value={i}>
@@ -196,25 +178,13 @@ export function BottomDock() {
                 </select>
                 <select
                   className="date-select"
-                  value={nth}
-                  title="Week of month"
-                  onChange={(e) => apply(month, Number(e.target.value), weekday)}
+                  value={day}
+                  title="Day of month"
+                  onChange={(e) => setMD(month, Number(e.target.value))}
                 >
-                  {ORDINALS.map((label, i) => (
-                    <option key={i} value={i + 1}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="date-select"
-                  value={weekday}
-                  title="Day of week"
-                  onChange={(e) => apply(month, nth, Number(e.target.value))}
-                >
-                  {WEEKDAYS.map((label, i) => (
-                    <option key={i} value={i}>
-                      {label}
+                  {Array.from({ length: daysInMonth(month) }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>
+                      {d}
                     </option>
                   ))}
                 </select>

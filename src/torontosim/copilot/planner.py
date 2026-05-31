@@ -10,11 +10,73 @@ read-only / preview-first.
 from __future__ import annotations
 
 import os
+import re
 
 from ..api.schemas import Intervention
 from . import rag
 from .classify import ClassifyResult
 from .tools import Citation, ToolCall, ViewDirective
+
+# Referential phrases that mean "the worst / busiest road" rather than a named one.
+# The classifier is told to emit road_name='worst' for these, but real models still
+# sometimes echo the surface phrase ('the worst road') or a bare generic noun, so we
+# match defensively here and resolve to the actual most-congested road below.
+_SUPERLATIVE_RE = re.compile(
+    r"\b(worst|most\s+congested|busiest|most\s+traffic|most\s+jammed|"
+    r"heaviest|most\s+gridlock(?:ed)?)\b",
+    re.I,
+)
+_GENERIC_NOUNS = {"street", "road", "the road", "the street", "worst", "the worst"}
+
+
+def _is_superlative_ref(text: str) -> bool:
+    """True if ``text`` refers to 'the worst/busiest road' instead of a named one."""
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    return bool(_SUPERLATIVE_RE.search(t)) or t in _GENERIC_NOUNS
+
+
+# Deterministic minute-of-day parse for set_time, so the time never depends on the
+# model doing clock arithmetic (which it does unreliably — temperature 0 isn't
+# perfectly deterministic on GPU, so 'show me 6am' would sometimes fall back to the
+# 5pm default). Named periods first (specific before generic), then a clock match.
+_NAMED_MINUTES: list[tuple[tuple[str, ...], int]] = [
+    (("midnight",), 0),
+    (("noon", "midday", "mid-day"), 720),
+    (("morning rush", "morning peak", "am peak", "am rush"), 480),
+    (("evening rush", "evening peak", "pm peak", "pm rush", "rush hour", "rush-hour"), 1020),
+    (("overnight", "late night", "late-night"), 180),
+    (("morning",), 480),
+    (("afternoon",), 900),
+    (("evening",), 1020),
+    (("tonight",), 1320),
+]
+_CLOCK_RE = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?", re.I)
+
+
+def _parse_minute(prompt: str) -> int | None:
+    """Minute-of-day (0–1439) from free text, or None if no time is mentioned.
+
+    Handles named periods ('midnight', 'rush hour', 'morning') and clock times
+    ('6 am', '8am', '14:30', '12pm')."""
+    t = (prompt or "").lower()
+    for keys, mins in _NAMED_MINUTES:
+        if any(k in t for k in keys):
+            return mins
+    for m in _CLOCK_RE.finditer(t):
+        hh, mm = int(m.group(1)), int(m.group(2) or 0)
+        if hh > 24 or mm >= 60:
+            continue
+        ap = (m.group(3) or "").replace(".", "")
+        if ap == "am":
+            return ((0 if hh == 12 else hh) % 24) * 60 + mm
+        if ap == "pm":
+            return ((hh if hh == 12 else hh + 12) % 24) * 60 + mm
+        if m.group(2) is not None:  # explicit "HH:MM" with no am/pm → 24-hour clock
+            return (hh % 24) * 60 + mm
+        # a bare number with no colon and no am/pm is too ambiguous — skip it
+    return None
 
 
 def _live_enabled() -> bool:
@@ -143,6 +205,12 @@ def _worst_road_view(state) -> ViewDirective | None:
         if d.get("road_name") == best_name and d.get("status") != "closed" and d.get("edge_id")
     ]
     return ViewDirective(action="fit", road_name=best_name, edge_ids=edge_ids)
+
+
+def _worst_congested_road_name(state) -> str | None:
+    """Name of the single most-congested road in the baseline (None if unreadable)."""
+    view = _worst_road_view(state)
+    return view.road_name if view is not None else None
 
 
 def _segments_for_road(graph, road_name) -> dict | None:
@@ -319,10 +387,34 @@ def _capacity_command(state, cls) -> ToolCall:
 
 
 def _focus_call(state, cls) -> ToolCall:
-    """A focus/show intent → a read-only camera move (no plan, no confirm)."""
+    """A focus/show intent → a read-only camera move (no plan, no confirm).
+
+    Resolves the typed name to the canonical road + its edge_ids so the camera fits
+    precisely and the segments highlight (a bare name like 'Gardiner' otherwise leaves
+    the frontend to fuzzy-match with no ids to draw)."""
     name = (cls.road_name or "").strip()
     if not name:
         return _generic_preview()
+    graph = _read_graph(state)
+    info = _segments_for_road(graph, name) if graph is not None else None
+    # Only frame a road when the match confidently covers what the user said. A
+    # weak match ('Liberty Village' -> 'Liberty Street', 0.5) is almost certainly a
+    # place, not that road — so we pass the raw name through (no edge_ids) and the
+    # frontend's omnibox resolver geocodes it. This keeps navigation a single source
+    # of truth: roads frame precisely, places fall through to the same geocoder the
+    # search bar uses.
+    if info is not None:
+        from .resolve import distinctive_coverage
+
+        if distinctive_coverage(name, info["name"]) >= 0.6:
+            return ToolCall(
+                tool="answer",
+                rationale=f"Showing {info['name']} on the map.",
+                view=ViewDirective(action="fit", road_name=info["name"], edge_ids=info["edge_ids"]),
+                requires_user_confirmation=False,
+            )
+    # No confident road match → best-effort camera move by name; the frontend
+    # resolves it (local roads, then Mapbox places).
     return ToolCall(
         tool="answer",
         rationale=f"Showing {name} on the map.",
@@ -335,6 +427,19 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
     """Map a classified intent to a ToolCall. Warn-don't-block: constraint conflicts
     are attached as severity-coded warnings (in plan_intervention), never refused."""
     intent = cls.intent if cls is not None else "chat"
+    # Resolve superlative/referential road phrases ('the worst road', 'the busiest
+    # street') to the actual most-congested road BEFORE the deterministic handlers run.
+    # Otherwise resolve.py fuzzy-matches the literal word 'worst'/'street' and either
+    # fails or lands on a nonsense road. This works with no conversation history.
+    if (
+        cls is not None
+        and intent
+        in {"close_road", "reopen_road", "change_capacity", "explain", "inspect", "focus"}
+        and _is_superlative_ref(cls.road_name)
+    ):
+        worst = _worst_congested_road_name(state)
+        if worst:
+            cls = cls.model_copy(update={"road_name": worst})
     if intent == "query_congestion":
         return ToolCall(
             tool="answer",
@@ -360,11 +465,17 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
     if intent == "focus":
         return _focus_call(state, cls)
     if intent == "set_time":
-        minute = int(cls.minute) % 1440 if cls.minute is not None else 1020  # default 5pm peak
-        hh, mm = divmod(minute, 60)
+        from ..timeofday import clamp_minute_of_day, hhmm
+
+        # Deterministic parse is authoritative (the model's clock math is flaky);
+        # fall back to the model's minute, then to the 5pm peak default. Clamp to a
+        # valid minute-of-day (never silently wrap an out-of-range value).
+        parsed = _parse_minute(prompt)
+        raw = parsed if parsed is not None else (cls.minute if cls.minute is not None else 1020)
+        minute = clamp_minute_of_day(raw)
         return ToolCall(
             tool="answer",
-            rationale=f"Showing the network at {hh:02d}:{mm:02d}.",
+            rationale=f"Showing the network at {hhmm(minute)}.",
             view=ViewDirective(action="time", minute=minute),
             requires_user_confirmation=False,
         )

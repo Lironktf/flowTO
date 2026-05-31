@@ -20,6 +20,7 @@ from .schemas import (
     CopilotConfirm,
     CopilotConfirmResult,
     Intervention,
+    RetimeRequest,
     RunRequest,
     RunResult,
     Scenario,
@@ -280,11 +281,29 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         except ImportError:
             raise HTTPException(501, "copilot not available (P09 not installed)") from None
         prompt = payload.get("prompt", "")
-        cls = classify(prompt)
+        # Optional recent-conversation context so referential asks ("the worst
+        # road", "that road", "it") resolve to a concrete road in classification.
+        cls = classify(prompt, history=payload.get("history", ""))
         out: dict = {"mode": cls.mode, "intent": cls.intent}
         if cls.mode == "plan":
             out["result"] = plan_intervention(prompt, state, classification=cls)
         return out
+
+    @app.post("/copilot/followups")
+    def copilot_followups(payload: dict):
+        """Context-aware follow-up prompt chips for the frontend (intent-keyed,
+        deterministic, no model call)."""
+        try:
+            from ..copilot.followups import followups
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        return {
+            "prompts": followups(
+                payload.get("prompt", ""),
+                payload.get("reply", ""),
+                payload.get("intent", ""),
+            )
+        }
 
     @app.post("/assess")
     def assess_closure(payload: dict):
@@ -495,6 +514,45 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         if scenario not in ("baseline", "wc_surge", "wc_fix"):
             raise HTTPException(422, f"unknown demo scenario: {scenario!r}")
         return _get_demo(scenario)
+
+    retime_lock = threading.Lock()
+
+    @app.post("/baseline/retime")
+    def baseline_retime(req: RetimeRequest):
+        """Rebuild the baseline demand at a new time-of-day / date.
+
+        Time-of-day is encoded in the OD matrix (commute direction + rush factor),
+        so changing the hour/day re-derives demand from the model and re-runs the
+        baseline — not a cheap per-run param. Returns the repaint records for the
+        new baseline. Heavy (model predict + gravity + sim); the UI gates it behind
+        an explicit 'apply' with a loading state, not per-scrub. A non-blocking lock
+        rejects a second retime while one is running (the CPU sim would otherwise
+        stack and freeze the server for minutes).
+        """
+        if not retime_lock.acquire(blocking=False):
+            raise HTTPException(409, "a baseline retime is already in progress")
+        try:
+            tc = {
+                k: v
+                for k, v in {
+                    "minute": req.minute,
+                    "day_of_year": req.day_of_year,
+                    "weather": req.weather,
+                }.items()
+                if v is not None
+            }
+            # Carry forward the current values for whatever wasn't supplied.
+            merged = {**state.time_context, **tc}
+            state.retime(merged)
+            app.state.demo_cache = {}  # demo records were computed from the old OD
+            res = _get_demo("baseline")
+            return {
+                "time_context": state.time_context,
+                "summary": res["summary"],
+                "records": res["records"],
+            }
+        finally:
+            retime_lock.release()
 
     # ---- jobs ----------------------------------------------------------- #
     @app.get("/jobs/{job_id}")

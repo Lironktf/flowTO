@@ -213,6 +213,26 @@ export async function retrievePlace(mapboxId: string, signal: AbortSignal): Prom
   return c ? [c[0], c[1]] : null;
 }
 
+/**
+ * Headless resolver: free-text query -> the single best map target, using the
+ * SAME chain the omnibox does (local roads first, then Mapbox places). This is
+ * the one source of truth for "name -> where to fly" — the search bar and the
+ * copilot both go through it, so they can never disagree. Returns null if the
+ * query matches no road and no place.
+ */
+export async function resolveQuery(
+  roadIndex: RoadIndexEntry[],
+  query: string,
+  signal: AbortSignal,
+): Promise<SearchHit | null> {
+  const q = query.trim();
+  if (!q) return null;
+  const roads = searchRoads(roadIndex, q, 1);
+  if (roads.length) return roads[0];
+  const places = await geocodePlaces(q, signal, 1).catch(() => [] as SearchHit[]);
+  return places[0] ?? null;
+}
+
 /** Merge local + place hits, dropping case-insensitive label duplicates (keeps the first). */
 export function dedupeHits(hits: SearchHit[], limit = 8): SearchHit[] {
   const seen = new Set<string>();

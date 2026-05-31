@@ -55,6 +55,17 @@ class Scenario(ScenarioCreate):
     id: str
 
 
+class RetimeRequest(BaseModel):
+    """Rebuild the baseline demand at a time-of-day / date (canonical units).
+
+    ``minute`` is minute-of-day 0–1439; ``day_of_year`` is 1–365 in the simulated
+    year. Both optional — omit one to keep the current value."""
+
+    minute: Optional[int] = None
+    day_of_year: Optional[int] = None
+    weather: Optional[str] = None
+
+
 class ScenarioPatch(BaseModel):
     name: Optional[str] = None
     interventions: Optional[list[Intervention]] = None

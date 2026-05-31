@@ -11,6 +11,24 @@ def _model(payload: dict):
     return lambda _s, _p, _sc: json.dumps(payload)
 
 
+def test_classify_passes_history_for_reference_resolution():
+    # 'the worst road' must be resolvable from recent conversation — the history
+    # is fed into the model prompt so it can extract the concrete road name.
+    seen = {}
+
+    def cap(_system, prompt, _schema):
+        seen["prompt"] = prompt
+        return json.dumps({"intent": "explain", "road_name": "Browning Avenue"})
+
+    res = classify(
+        "why is the worst road congested?",
+        history="Copilot: Congestion is worst on Browning Avenue (v/c 16.9).",
+        model_call=cap,
+    )
+    assert "Browning Avenue" in seen["prompt"]  # history reached the model
+    assert res.road_name == "Browning Avenue"
+
+
 def test_mode_derivation_from_intent():
     assert ClassifyResult(intent="close_road").mode == "plan"
     assert ClassifyResult(intent="query_congestion").mode == "plan"

@@ -42,8 +42,10 @@ def test_assess_endpoint_returns_severity_coded_warnings():
     # that matches a protected corridor by text.
     r = _client().post(
         "/assess",
-        json={"interventions": [{"op": "close_edge", "edge_id": "e0"}],
-              "prompt": "close lake shore both ways"},
+        json={
+            "interventions": [{"op": "close_edge", "edge_id": "e0"}],
+            "prompt": "close lake shore both ways",
+        },
     )
     assert r.status_code == 200
     ws = r.json()["warnings"]

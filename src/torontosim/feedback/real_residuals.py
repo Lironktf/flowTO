@@ -78,8 +78,13 @@ def assemble_factory_rows(
     from .groundtruth.package import grouped_split
 
     coord_cols = [
-        "ID", "centreline_id", "closure_lat", "closure_lon",
-        "site_lat", "site_lon", "StartTime",
+        "ID",
+        "centreline_id",
+        "closure_lat",
+        "closure_lon",
+        "site_lat",
+        "site_lon",
+        "StartTime",
     ]
     have = [c for c in coord_cols if c in pairs.columns]
     coords = pairs[have].drop_duplicates(["ID", "centreline_id"])
@@ -247,8 +252,8 @@ def build_interventions_and_observed(graph, factory_rows: pd.DataFrame):
         "n_restrictions_geocoded": int(len(closed_edge)),
         "n_rows_with_count": int(n_with_count),
         "n_observed_mapped": int(len(observed)),
-        "n_mapped_exact": int(n_exact),          # site centreline backs a graph edge
-        "n_mapped_nearest": int(n_nearest),      # snapped to nearest edge by site coords
+        "n_mapped_exact": int(n_exact),  # site centreline backs a graph edge
+        "n_mapped_nearest": int(n_nearest),  # snapped to nearest edge by site coords
         "n_site_unmapped": int(n_site_unmapped),
         "n_active_restrictions": int(len(active_ids)),
         "n_centrelines_in_graph": int(len(cl_index)),
@@ -283,14 +288,22 @@ def build_real_residuals(
         simulate_open_intervened,
     )
 
-    interventions, observed, meta, coverage = build_interventions_and_observed(
-        graph, factory_rows
-    )
+    interventions, observed, meta, coverage = build_interventions_and_observed(graph, factory_rows)
 
     if not interventions:
         cols = [
-            "ID", "centreline_id", "edge_id", "closed_edge", "sim_open", "sim_int",
-            "r_sim", "r_obs", "observed", "StartTime", "split", "has_baseline",
+            "ID",
+            "centreline_id",
+            "edge_id",
+            "closed_edge",
+            "sim_open",
+            "sim_int",
+            "r_sim",
+            "r_obs",
+            "observed",
+            "StartTime",
+            "split",
+            "has_baseline",
         ]
         return pd.DataFrame(columns=cols), coverage, {}
 
@@ -305,9 +318,7 @@ def build_real_residuals(
     closed_by_id = {iv["ID"]: iv["closed_edge"] for iv in interventions}
     res["closed_edge"] = res["ID"].map(closed_by_id)
     for col in ("centreline_id", "StartTime", "split", "has_baseline", "observed"):
-        res[col] = [
-            meta.get((row.ID, row.edge_id), {}).get(col) for row in res.itertuples()
-        ]
+        res[col] = [meta.get((row.ID, row.edge_id), {}).get(col) for row in res.itertuples()]
 
     coverage["n_residual_rows"] = int(len(res))
     return res, coverage, sim_open_full

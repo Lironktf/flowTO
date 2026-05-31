@@ -53,7 +53,9 @@ def load_checkpoint(path, *, device=None):  # pragma: no cover - torch on the GB
 
     ck = torch.load(path, map_location=device or "cpu", weights_only=False)
     model = ResidualEdgePredictor(
-        ck["node_in_dim"], ck["edge_in_dim"], ck["context_in_dim"],
+        ck["node_in_dim"],
+        ck["edge_in_dim"],
+        ck["context_in_dim"],
         hidden_dim=ck["hidden_dim"],
     )
     model.load_state_dict(ck["model_state"])
@@ -139,9 +141,12 @@ def train_stage1(  # pragma: no cover - torch on the GB10
 
     if ckpt_path is not None:
         save_checkpoint(
-            ckpt_path, model,
-            node_in_dim=t["node_in_dim"], edge_in_dim=t["edge_in_dim"],
-            context_in_dim=t["context_in_dim"], hidden_dim=hidden_dim,
+            ckpt_path,
+            model,
+            node_in_dim=t["node_in_dim"],
+            edge_in_dim=t["edge_in_dim"],
+            context_in_dim=t["context_in_dim"],
+            hidden_dim=hidden_dim,
             standardizers=t["standardizers"],
         )
 
@@ -187,9 +192,7 @@ def train_stage2(  # pragma: no cover - torch on the GB10
 
     torch.manual_seed(seed)
     model, ck = load_checkpoint(stage1_ckpt)
-    t = build_stage2_tensors(
-        graph, residuals, sim_open_full, standardizers=ck.get("standardizers")
-    )
+    t = build_stage2_tensors(graph, residuals, sim_open_full, standardizers=ck.get("standardizers"))
     if t["edge_in_dim"] != ck["edge_in_dim"]:
         raise ValueError(
             f"edge_in_dim mismatch: stage2 {t['edge_in_dim']} vs ckpt {ck['edge_in_dim']} "
@@ -200,7 +203,9 @@ def train_stage2(  # pragma: no cover - torch on the GB10
     model = model.to(device)
     x, ei, ctx = t["x"].to(device), t["edge_index"].to(device), t["context"].to(device)
     attr, tgt, omask = (
-        t["scenario_attr"].to(device), t["targets"].to(device), t["obs_mask"].to(device),
+        t["scenario_attr"].to(device),
+        t["targets"].to(device),
+        t["obs_mask"].to(device),
     )
     cap = t["capacity"].to(device)
     tr_idx, te_idx = _split_indices(t["splits"])
@@ -258,7 +263,7 @@ def train_stage2(  # pragma: no cover - torch on the GB10
             for i in np.where((omask[s] > 0).cpu().numpy())[0]:
                 eid = t["edge_order"][i]
                 capi = float(cap[i])
-                held["r_obs"].append(float(tgt[s][i]) * capi)   # exact: (r_obs/cap)·cap
+                held["r_obs"].append(float(tgt[s][i]) * capi)  # exact: (r_obs/cap)·cap
                 held["r_gnn"].append(float(pred[i]) * capi)
                 held["r_sim"].append(rsim_lookup.get((iv_id, eid), float("nan")))
                 held["ID"].append(iv_id)
@@ -266,9 +271,12 @@ def train_stage2(  # pragma: no cover - torch on the GB10
 
     if ckpt_path is not None:
         save_checkpoint(
-            ckpt_path, model,
-            node_in_dim=t["node_in_dim"], edge_in_dim=t["edge_in_dim"],
-            context_in_dim=t["context_in_dim"], hidden_dim=ck["hidden_dim"],
+            ckpt_path,
+            model,
+            node_in_dim=t["node_in_dim"],
+            edge_in_dim=t["edge_in_dim"],
+            context_in_dim=t["context_in_dim"],
+            hidden_dim=ck["hidden_dim"],
             standardizers=t["standardizers"],
         )
 

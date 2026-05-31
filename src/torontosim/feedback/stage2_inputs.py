@@ -45,7 +45,9 @@ def load_tmc_records():  # pragma: no cover - GB10
     return pd.read_csv(TMC_RAW, low_memory=False).to_dict("records")
 
 
-def grounded_od(graph, *, time_context=None, max_pairs: int = 2000, tmc_records=None):  # pragma: no cover - GB10
+def grounded_od(
+    graph, *, time_context=None, max_pairs: int = 2000, tmc_records=None
+):  # pragma: no cover - GB10
     """A TMC-counts-grounded OD (gravity → IPF → ODME against observed peaks)."""
     from torontosim.model.generate_od_matrix import generate_od_matrix
     from torontosim.model.predict_node_demand import (
@@ -58,6 +60,10 @@ def grounded_od(graph, *, time_context=None, max_pairs: int = 2000, tmc_records=
     if tmc_records is None:
         tmc_records = load_tmc_records()
     return generate_od_matrix(
-        graph, demands, tc, max_pairs=max_pairs,
-        calibration="ipf_counts", tmc_records=tmc_records,
+        graph,
+        demands,
+        tc,
+        max_pairs=max_pairs,
+        calibration="ipf_counts",
+        tmc_records=tmc_records,
     )

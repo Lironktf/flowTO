@@ -537,13 +537,13 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             }
             # Carry forward the current values for whatever wasn't supplied.
             merged = {**state.time_context, **tc}
-            state.retime(merged)
-            app.state.demo_cache = {}  # demo records were computed from the old OD
-            res = _get_demo("baseline")
+            state.retime(merged)  # regenerates OD + re-warms state.baseline()
+            app.state.demo_cache = {}  # demo scenarios were computed from the old OD
+            base = state.baseline()  # cached by retime — the new-time baseline
             return {
                 "time_context": state.time_context,
-                "summary": res["summary"],
-                "records": res["records"],
+                "summary": base["summary"],
+                "records": edge_records(state, base["graph"]),
             }
         finally:
             retime_lock.release()

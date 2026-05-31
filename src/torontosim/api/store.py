@@ -121,6 +121,10 @@ class AppState:
             self.weather = tc.get("weather", self.weather)
             self._baseline = None
             self._blast_baseline = None
+        # Re-warm eagerly so ``baseline_ready`` recovers (the UI gates the "warming
+        # the twin" overlay on it) and the copilot baseline reflects the new time.
+        # ``baseline()`` takes the lock itself, so call it outside the block above.
+        self.baseline()
 
     def baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
         """Cached baseline run (no interventions) — the compare reference.

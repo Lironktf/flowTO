@@ -46,10 +46,16 @@ def load_tmc_records():  # pragma: no cover - GB10
 
 
 def grounded_od(
-    graph, *, time_context=None, max_pairs: int = 2000, tmc_records=None
+    graph, *, time_context=None, max_pairs: int = 3000, tmc_records=None, method: str = "app"
 ):  # pragma: no cover - GB10
-    """A TMC-counts-grounded OD (gravity → IPF → ODME against observed peaks)."""
-    from torontosim.model.generate_od_matrix import generate_od_matrix
+    """A TMC-counts-grounded OD.
+
+    ``method="app"`` (default) builds the OD **exactly as ``api/recompute.py`` does**
+    (``build_grounded_od``, ``max_pairs=3000``) so the model's ``sim_open`` input matches
+    the app's runtime baseline — the residual then transfers to the app by construction
+    (no train/serve distribution gap). ``method="ipf_counts"`` keeps the older
+    ``generate_od_matrix(calibration="ipf_counts")`` path.
+    """
     from torontosim.model.predict_node_demand import (
         load_demand_model,
         predict_node_demand,
@@ -57,6 +63,13 @@ def grounded_od(
 
     tc = time_context or DEFAULT_TIME_CONTEXT
     demands = predict_node_demand(graph, load_demand_model(), tc)
+    if method == "app":
+        from torontosim.model.odme_calibrate import build_grounded_od
+
+        return build_grounded_od(graph, demands, tc, max_pairs=max_pairs)["od"]
+
+    from torontosim.model.generate_od_matrix import generate_od_matrix
+
     if tmc_records is None:
         tmc_records = load_tmc_records()
     return generate_od_matrix(

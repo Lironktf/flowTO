@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
-import torch
+import pytest
 
-from torontosim.feedback.model import ResidualEdgePredictor
+# torch + torch-geometric (the [gnn] extra) are Spark/GPU-only and not installed
+# in CI. importorskip skips this module on import there, instead of erroring at
+# collection (which would fail the whole run before marker deselection applies).
+torch = pytest.importorskip("torch")
+
+from torontosim.feedback.model import ResidualEdgePredictor  # noqa: E402
+
+# GPU residual model — runs only on the Spark (skipped in CI alongside other
+# `spark`-marked GPU/LLM tests).
+pytestmark = pytest.mark.spark
 
 
 def _tiny():
@@ -41,5 +50,5 @@ def test_signed_head_can_predict_negative():
             first = float(loss)
         loss.backward()
         opt.step()
-    assert float(loss) < first              # learned
+    assert float(loss) < first  # learned
     assert float(m(x, ei, ea, ctx).mean()) < 0  # reached negative (softplus could not)

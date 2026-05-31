@@ -79,6 +79,9 @@ def main(argv=None) -> int:
     p.add_argument("--out", default="data/gnn/stage2_metrics.json")
     p.add_argument("--radius-m", type=float, default=500.0)
     p.add_argument("--max-pairs", type=int, default=2000)
+    p.add_argument("--sim-backend", default="gpu",
+                   help="equilibrium solver backend: gpu (cuGraph, GB10) | scipy | cpu; "
+                        "gpu auto-falls back to cpu if cuGraph errors")
     p.add_argument("--max-iter", type=int, default=50)
     p.add_argument("--rgap", type=float, default=1e-3)
     p.add_argument("--epochs", type=int, default=300)
@@ -125,7 +128,8 @@ def main(argv=None) -> int:
     # --- real residuals (sim OPEN vs CLOSED) --------------------------------
     t1 = time.time()
     residuals, coverage, sim_open_full = build_real_residuals(
-        graph, factory_rows, od, backend="scipy", max_iter=args.max_iter, rgap=args.rgap
+        graph, factory_rows, od,
+        backend=args.sim_backend, max_iter=args.max_iter, rgap=args.rgap,
     )
     print(f"[residuals] {coverage} in {time.time() - t1:.0f}s")
     if residuals.empty:
@@ -139,7 +143,7 @@ def main(argv=None) -> int:
         t2 = time.time()
         sim_pairs = generate_from_sim(
             graph, od, n=args.pretrain_scenarios, seed=0,
-            max_iter=args.max_iter, rgap=args.rgap,
+            backend=args.sim_backend, max_iter=args.max_iter, rgap=args.rgap,
         )
         train_stage1(
             graph, sim_pairs, epochs=args.pretrain_epochs, hidden_dim=64, seed=42,

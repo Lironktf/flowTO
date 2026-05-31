@@ -91,3 +91,31 @@ def context_features(time_context: dict | None = None) -> list[float]:
 def scenario_context(time_context: dict | None = None) -> np.ndarray:
     """``context_features`` as a float32 ``[CONTEXT_DIM]`` array (the model input row)."""
     return np.asarray(context_features(time_context), dtype=np.float32)
+
+
+def time_context_from_fields(
+    *, start_time=None, weather=None, temperature_c=None, precipitation_mm=None
+) -> dict:
+    """Build a ``time_context`` dict from a closure row's raw fields (torch/pandas-free).
+
+    ``start_time`` may be a datetime/pandas-Timestamp or an ISO string; missing or NaT/NaN
+    fields are simply omitted so ``scenario_context`` falls back to its defaults. Weather
+    fields flow through when the factory's confounder join provides them.
+    """
+    tc: dict = {}
+    if start_time is not None and start_time == start_time:  # excludes NaT/NaN
+        dt = start_time
+        if not hasattr(dt, "hour"):
+            from datetime import datetime
+
+            dt = datetime.fromisoformat(str(start_time).replace("Z", "+00:00"))
+        tc["hour"] = int(dt.hour)
+        tc["day_of_week"] = int(dt.weekday())
+        tc["month"] = int(dt.month)
+    if weather is not None and weather == weather:
+        tc["weather"] = str(weather)
+    if temperature_c is not None and temperature_c == temperature_c:
+        tc["temperature_c"] = float(temperature_c)
+    if precipitation_mm is not None and precipitation_mm == precipitation_mm:
+        tc["precipitation_mm"] = float(precipitation_mm)
+    return tc

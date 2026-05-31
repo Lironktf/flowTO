@@ -47,3 +47,23 @@ def test_parity_with_baseline_when_torch_present():
         {"day_of_week": 6, "month": 7, "weather": "clear"},
     ):
         assert context_features(tc) == pytest.approx(context_vector(tc))
+
+
+def test_time_context_from_fields():
+    from datetime import datetime
+
+    from torontosim.feedback.context import scenario_context, time_context_from_fields
+
+    # a datetime-like start_time -> hour/dow/month extracted
+    tc = time_context_from_fields(start_time=datetime(2023, 1, 3, 8, 30), weather="snow")
+    assert tc == {"hour": 8, "day_of_week": 1, "month": 1, "weather": "snow"}  # Tue
+    # an ISO string works too
+    assert time_context_from_fields(start_time="2023-07-09T17:00:00")["month"] == 7
+    # missing/NaN fields are omitted -> still a valid context vector
+    assert time_context_from_fields(start_time=None) == {}
+    assert scenario_context(time_context_from_fields(start_time=float("nan"))).shape == (14,)
+    # weather + temp/precip flow through
+    tc2 = time_context_from_fields(
+        start_time=None, weather="rain", temperature_c=4.0, precipitation_mm=9.0
+    )
+    assert tc2 == {"weather": "rain", "temperature_c": 4.0, "precipitation_mm": 9.0}

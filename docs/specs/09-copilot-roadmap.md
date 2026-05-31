@@ -54,9 +54,9 @@ Sim/saved-scenario UI.
 - [ ] **Backend `demand_surge` intervention** — generalize `demo/wc_surge.py` into a real op (inject/reduce OD
       demand at a node/area + direction). Unlocks "add congestion near BMO" for the agent **and** the Edit UI
       (currently unbacked). Add to `graph/mutations.py` + `api/schemas.py` `InterventionType`.
-- [ ] **Corridor closure for the agent** — resolve "close King between Bathurst and Jarvis" → edge list
+- [x] **Corridor closure** (from PR #31 resolve.py: road_edges_by_name / road_between) — resolve "close King between Bathurst and Jarvis" → edge list
       (backend equivalent of `corridorBetween`), then N× `close_edge`.
-- [ ] **Diagnose / explain tools** — read the sim back: `diagnose_network` (top congested corridors by
+- [~] **Diagnose / explain tools** — query_congestion done (PR #31); explain_edge still TODO — read the sim back: `diagnose_network` (top congested corridors by
       pressure/risk), `explain_edge` (why X is congested — upstream OD + capacity). Data already computed.
 - [ ] **Transit-impact awareness** — check intervention edges against GTFS routes (P08); report streetcar/bus
       effect. Makes the copilot multi-modal.

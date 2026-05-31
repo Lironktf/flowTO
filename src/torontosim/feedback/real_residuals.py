@@ -351,7 +351,24 @@ def build_real_residuals(
             )
 
     sim_open_full = dict(simulate_open())  # the one global open solve
-    res = compute_residuals(interventions, observed, simulate_open, simulate_intervened)
+
+    # The model trains on r_obs = observed − sim_open (the OPEN solve only); the CLOSED
+    # solve (sim_int) is needed solely for r_sim, which the gate reads only for held-out
+    # (test) closures. So run the expensive closed solve ONLY for test closures — train
+    # closures get sim_int = sim_open (r_sim = 0, unused). Model + gate verdict unchanged;
+    # ~80% fewer equilibrium solves. See docs/specs/15-feedback-loop-perf.md.
+    test_ids = {iv_id for (iv_id, _e), m in meta.items() if m.get("split") == "test"}
+    test_closed_edges = {iv["closed_edge"] for iv in interventions if iv["ID"] in test_ids}
+    _real_intervened = simulate_intervened
+
+    def _gated_intervened(ops):
+        eid = ops[0].get("edge_id") if ops else None
+        if eid in test_closed_edges:
+            return _real_intervened(ops)  # held-out closure → real closed solve for r_sim
+        return sim_open_full  # train closure → skip (r_sim unused)
+
+    coverage["n_closed_solves"] = int(len(test_closed_edges))
+    res = compute_residuals(interventions, observed, simulate_open, _gated_intervened)
 
     closed_by_id = {iv["ID"]: iv["closed_edge"] for iv in interventions}
     res["closed_edge"] = res["ID"].map(closed_by_id)

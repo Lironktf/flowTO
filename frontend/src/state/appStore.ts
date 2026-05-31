@@ -86,7 +86,7 @@ export interface Warning {
 
 export type CopilotMode = "plan" | "chat" | "agent";
 
-interface CopilotMessage {
+export interface CopilotMessage {
   role: "user" | "bot";
   text: string;
   steps?: string[];
@@ -117,6 +117,45 @@ interface CopilotLatency {
   mode: CopilotMode;
 }
 
+/** An archived chat — its full message log, with a title for the history list. */
+export interface CopilotSession {
+  id: string;
+  title: string;
+  log: CopilotMessage[];
+}
+
+const COPILOT_SESSIONS_KEY = "flowto.copilot.sessions";
+const COPILOT_SESSION_SEQ_KEY = "flowto.copilot.sessionSeq";
+
+/** Persist sessions + the id counter to localStorage (best-effort). */
+function persistSessions(sessions: CopilotSession[], seq: number) {
+  try {
+    localStorage.setItem(COPILOT_SESSIONS_KEY, JSON.stringify(sessions));
+    localStorage.setItem(COPILOT_SESSION_SEQ_KEY, String(seq));
+  } catch {
+    /* storage unavailable (private mode / SSR) — keep going in-memory */
+  }
+}
+
+/** Rehydrate sessions + the id counter from localStorage on load. */
+function loadSessions(): { sessions: CopilotSession[]; seq: number } {
+  try {
+    const raw = localStorage.getItem(COPILOT_SESSIONS_KEY);
+    const sessions = raw ? (JSON.parse(raw) as CopilotSession[]) : [];
+    const seq = Number(localStorage.getItem(COPILOT_SESSION_SEQ_KEY) ?? "0") || 0;
+    return { sessions: Array.isArray(sessions) ? sessions : [], seq };
+  } catch {
+    return { sessions: [], seq: 0 };
+  }
+}
+
+/** First user message, truncated — used as a session title. */
+function sessionTitle(log: CopilotMessage[]): string {
+  const firstUser = log.find((m) => m.role === "user")?.text?.trim();
+  const base = firstUser || "Untitled chat";
+  return base.length > 40 ? base.slice(0, 40) + "…" : base;
+}
+
 // A staged (previewed, not-yet-applied) copilot plan. Single source of truth so
 // the chat confirm and the map preview act on the same plan + edges — one apply.
 interface StagedPlan {
@@ -127,6 +166,9 @@ interface StagedPlan {
 
 // Non-reactive holder for the in-flight request's abort controller.
 let copilotAbort: AbortController | null = null;
+
+// Rehydrated once at module load (localStorage), seeds the store's initial state.
+const INITIAL_SESSIONS = loadSessions();
 
 interface Telemetry {
   recompute: number;
@@ -178,6 +220,8 @@ interface AppState {
   pendingVertices: PendingVertex[];
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
+  copilotSessions: CopilotSession[]; // archived chats (history menu)
+  copilotSessionSeq: number; // incrementing counter for session ids (no Date.now/Math.random)
   deepMode: boolean; // 🧠 Deep → force the Agent investigate-loop; else auto-route
   copilotReady: boolean; // false until the backend's compare baseline is warm
   copilotThinking: boolean;
@@ -218,6 +262,8 @@ interface AppState {
   copilotRevert: (msgIndex: number) => Promise<void>;
   toggleDeep: () => void;
   copilotStop: () => void;
+  copilotNewChat: () => void;
+  copilotLoadSession: (id: string) => void;
   // editor
   selectTool: (id: EditTool) => void;
   placeAt: (coord: [number, number]) => Promise<void>;
@@ -495,6 +541,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedId: null,
   pendingVertices: [],
   copilotLog: [],
+  copilotSessions: INITIAL_SESSIONS.sessions,
+  copilotSessionSeq: INITIAL_SESSIONS.seq,
   deepMode: false,
   copilotReady: false,
   copilotThinking: false,
@@ -665,6 +713,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  // Archive the live chat (if any messages) into sessions, then clear the log.
+  copilotNewChat: () =>
+    set((s) => {
+      if (s.copilotLog.length === 0) return {};
+      const seq = s.copilotSessionSeq + 1;
+      const session: CopilotSession = {
+        id: `chat-${seq}`,
+        title: sessionTitle(s.copilotLog),
+        log: s.copilotLog,
+      };
+      const sessions = [session, ...s.copilotSessions];
+      persistSessions(sessions, seq);
+      return { copilotSessions: sessions, copilotSessionSeq: seq, copilotLog: [] };
+    }),
+
+  // Swap to a past session's log — archiving the live one first (so nothing is lost).
+  copilotLoadSession: (id) =>
+    set((s) => {
+      const target = s.copilotSessions.find((x) => x.id === id);
+      if (!target) return {};
+      let sessions = s.copilotSessions;
+      let seq = s.copilotSessionSeq;
+      if (s.copilotLog.length > 0) {
+        seq = seq + 1;
+        const archived: CopilotSession = {
+          id: `chat-${seq}`,
+          title: sessionTitle(s.copilotLog),
+          log: s.copilotLog,
+        };
+        sessions = [archived, ...sessions];
+      }
+      // Pull the target out of the (possibly newly-extended) list and load it live.
+      sessions = sessions.filter((x) => x.id !== id);
+      persistSessions(sessions, seq);
+      return { copilotSessions: sessions, copilotSessionSeq: seq, copilotLog: target.log };
+    }),
+
   copilotAsk: async (text) => {
     // Single classifier routes (replaces the old isQuestion regex). Deep mode is a
     // manual override that forces the agent loop; otherwise /copilot/route runs one
@@ -756,15 +841,27 @@ export const useAppStore = create<AppState>((set, get) => ({
         resp.citations?.[0]?.ref,
       );
     };
+    // After each reply lands, refresh the suggestion chips to reflect this
+    // exchange. Degrade gracefully: on error/404, keep the existing chips.
+    const refreshFollowups = async (reply: string, intent: string) => {
+      try {
+        const { prompts } = await api.copilotFollowups(text, reply, intent, signal);
+        if (prompts?.length) set({ copilotChips: prompts });
+      } catch {
+        /* keep the existing graph-grounded copilotChips */
+      }
+    };
     const t0 = performance.now();
 
     try {
       // Deep override → agent; else classify once via /route.
       let mode: CopilotMode = "agent";
+      let intent = "";
       let routedPlan: CopilotResponse | undefined;
       if (!get().deepMode) {
         const routed = await api.copilotRoute(text, signal);
         mode = routed.mode;
+        intent = routed.intent ?? "";
         routedPlan = routed.result;
       }
       set({ copilotPendingMode: mode }); // now the single loader can label itself
@@ -795,6 +892,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           res.answer,
           res.citations?.[0]?.ref,
         );
+        await refreshFollowups(res.answer, intent || "agent");
       } else if (mode === "chat") {
         // Don't push the streaming bubble upfront — keep the single "thinking"
         // loader visible until the first token, then start the reply. This way
@@ -837,11 +935,15 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
           signal,
         );
+        // Chips reflect the completed chat reply (its final accumulated text).
+        const last = get().copilotLog[get().copilotLog.length - 1];
+        await refreshFollowups(last?.role === "bot" ? last.text : "", intent || "chat");
       } else {
         // plan mode — /route already dispatched the plan; fall back to /plan only
         // if the inline result is somehow missing (defensive).
         const resp = routedPlan ?? (await api.copilotPlan(text, signal));
         renderPlan(resp);
+        await refreshFollowups(resp.rationale, intent || "plan");
       }
     } catch (e) {
       // User-initiated Stop (AbortError) is handled in copilotStop — stay quiet.

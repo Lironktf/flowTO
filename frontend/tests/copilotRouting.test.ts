@@ -32,6 +32,7 @@ vi.mock("../src/api/client", () => {
           : { mode: "plan", intent: "close_road", result: plan };
       }),
       copilotPlan: vi.fn(async () => plan),
+      copilotFollowups: vi.fn(async () => ({ prompts: [] })),
       copilotAgent: vi.fn(async () => agent),
       copilotConfirm: vi.fn(),
       scenarioRecords: vi.fn(),

@@ -286,6 +286,22 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             out["result"] = plan_intervention(prompt, state, classification=cls)
         return out
 
+    @app.post("/copilot/followups")
+    def copilot_followups(payload: dict):
+        """Context-aware follow-up prompt chips for the frontend (intent-keyed,
+        deterministic, no model call)."""
+        try:
+            from ..copilot.followups import followups
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        return {
+            "prompts": followups(
+                payload.get("prompt", ""),
+                payload.get("reply", ""),
+                payload.get("intent", ""),
+            )
+        }
+
     @app.post("/assess")
     def assess_closure(payload: dict):
         """SSOT warn-don't-block assessment — shared by clickops + copilot. Returns

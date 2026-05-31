@@ -56,6 +56,18 @@ def test_road_edges_by_name_fuzzy_matches_whole_road():
     assert set(res["edge_ids"]) == {"ls1", "ls2"}
 
 
+def test_road_edges_by_name_prefers_prominent_road_on_ambiguous_match():
+    # "Gardiner" matches both the motorway Expressway and a residential Road →
+    # the prominence tiebreak must pick the Expressway (the bug from live testing).
+    g = nx.MultiDiGraph()
+    g.add_edge(0, 1, key=0, road_name="Gardiner Expressway", road_class="motorway", edge_id="gx1")
+    g.add_edge(1, 0, key=0, road_name="Gardiner Expressway", road_class="motorway", edge_id="gx2")
+    g.add_edge(2, 3, key=0, road_name="Gardiner Road", road_class="residential", edge_id="gr1")
+    res = resolve.road_edges_by_name(g, "Gardiner")
+    assert res["found"] is True
+    assert res["road_name"] == "Gardiner Expressway"
+
+
 def test_road_edges_by_name_unknown_returns_not_found():
     res = resolve.road_edges_by_name(_state().graph, "nonexistent parkway")
     assert res["found"] is False

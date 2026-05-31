@@ -496,7 +496,33 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .metrics-empty .sm { font-size: 11px; line-height: 1.5; }
 
 /* ============================================================ COPILOT */
-#copilot-region { display: flex; flex-direction: column; min-height: 0; }
+#copilot-region { display: flex; flex-direction: column; min-height: 0; position: relative; }
+
+/* drag-to-resize handle on the copilot region's top edge */
+.copilot-resize-handle {
+  height: 6px; flex: none; cursor: ns-resize; touch-action: none;
+  border-bottom: 1px solid var(--hair); background: var(--chrome-hi);
+}
+.copilot-resize-handle:hover { background: var(--cobalt-line); }
+
+/* header actions: new chat + history menu */
+.copilot-hd-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.copilot-newchat, .copilot-history-btn {
+  border: 1px solid var(--hair); border-radius: 999px; padding: 3px 9px;
+}
+.copilot-history-wrap { position: relative; }
+.copilot-history-menu {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 20;
+  min-width: 180px; max-width: 280px; max-height: 280px; overflow-y: auto;
+  background: var(--chrome); border: 1px solid var(--hair); border-radius: var(--r-sm);
+  box-shadow: 0 6px 24px rgba(27,26,22,.16); padding: 4px; display: flex; flex-direction: column; gap: 2px;
+}
+.copilot-history-item {
+  appearance: none; cursor: pointer; border: 0; background: transparent; text-align: left;
+  font-family: 'Public Sans', sans-serif; font-size: 11px; color: var(--ink-2);
+  padding: 6px 8px; border-radius: var(--r-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.copilot-history-item:hover { background: var(--chrome-hi); color: var(--ink); }
 .copilot-log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 11px; }
 .msg { display: flex; flex-direction: column; gap: 4px; max-width: 96%; }
 .msg .who { font-family:'IBM Plex Mono',monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-4); }
@@ -518,7 +544,7 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .copilot-welcome .who { font-family:'IBM Plex Mono',monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-4); }
 .copilot-welcome .bub { font-size: 12px; line-height: 1.5; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--hair); background: var(--chrome-hi); color: var(--ink); border-bottom-left-radius: 4px; }
 .copilot-welcome-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
-.copilot-chips { display: flex; gap: 6px; padding: 0 12px 9px; flex-wrap: wrap; flex: none; }
+.copilot-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: none; margin-top: 2px; }
 .chip { appearance: none; cursor: pointer; font-size: 10px; font-weight: 500; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--hair); background: var(--chrome-hi); color: var(--ink-2); transition: border-color .14s, color .14s; }
 .chip:hover { border-color: var(--cobalt-line); color: var(--cobalt-ink); }
 .copilot-input { border-top: 1px solid var(--hair); padding: 9px 10px; display: flex; gap: 8px; align-items: center; flex: none; }

@@ -84,12 +84,16 @@ _SYSTEM = (
     "  optimize — asks for the best / recommended plan (let the optimizer decide).\n"
     "  mitigate — asks to ease / relieve congestion near a place; put the place in 'road_name'.\n"
     "  focus — asks to SHOW / zoom / fly to a place on the map (no change); put it in 'road_name'.\n"
-    "  set_time — asks to view a specific time of day; put the minute-of-day (0-1440) in 'minute' "
-    "(8am=480, noon=720, 5pm=1020).\n"
+    "  set_time — asks to view a specific time of day OR a named rush/peak period; put the "
+    "minute-of-day (0-1440) in 'minute'. Map common phrases: 'morning rush'/'morning peak'=480, "
+    "'rush hour'/'evening rush'/'evening peak'/'PM peak'=1020, 'noon'/'midday'=720, 'overnight'=180. "
+    "'show rush hour' is set_time (NOT focus).\n"
     "  investigate — a compound or multi-step request ('figure out why X and propose a fix').\n"
     "  chat — greetings, small talk, or a general question not about changing the network.\n"
     "Phrasing and punctuation do NOT matter: 'close King St' and 'can you close King St?' are both "
-    "close_road. A question word does not force 'chat' — classify by what the user wants done."
+    "close_road. A question word does not force 'chat' — classify by what the user wants done.\n"
+    "For 'road_name', extract the road EXACTLY as the user said it — do NOT append 'Road', 'Street', "
+    "or 'Avenue' if they didn't (e.g. 'the Gardiner' -> 'Gardiner', not 'Gardiner Road')."
 )
 
 

@@ -196,6 +196,9 @@ export const api = {
   copilotRoute: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotRouteResult>("/copilot/route", { prompt }, signal),
   copilotSuggestions: () => jget<{ prompts: string[] }>("/copilot/suggestions"),
+  // Dynamic follow-up chips reflecting the last exchange (prompt + bot reply + intent).
+  copilotFollowups: (prompt: string, reply: string, intent: string, signal?: AbortSignal) =>
+    jpost<{ prompts: string[] }>("/copilot/followups", { prompt, reply, intent }, signal),
   assess: (interventions: Intervention[], prompt = "", signal?: AbortSignal) =>
     jpost<{ warnings: CopilotWarning[] }>("/assess", { interventions, prompt }, signal),
   copilotAgent: (prompt: string, signal?: AbortSignal) =>

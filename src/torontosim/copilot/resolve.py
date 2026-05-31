@@ -23,6 +23,18 @@ def _tokens(s: str) -> set:
     return {t for t in _norm(s).split() if t != "and" and len(t) > 2}
 
 
+# Road-class prominence (higher = more major), for tiebreaking ambiguous name matches.
+_CLASS_RANK = {
+    "motorway": 6,
+    "trunk": 5,
+    "primary": 4,
+    "secondary": 3,
+    "tertiary": 2,
+    "residential": 1,
+    "unclassified": 1,
+}
+
+
 def resolve_node_by_name(graph, name, *, min_score: float = 1.1):
     """Best node whose ``name`` matches ``name``. Returns (node_id, name, score) or None.
 
@@ -65,18 +77,32 @@ def road_edges_by_name(graph, road_name) -> dict:
     if not q or not q_tokens:
         return {"found": False, "reason": "no road name given"}
 
-    names = {d["road_name"] for _u, _v, d in graph.edges(data=True) if d.get("road_name")}
+    # Most-prominent road_class per distinct name → a small tiebreak bonus so an
+    # ambiguous match (e.g. "Gardiner" → Expressway vs Road) prefers the major road.
+    name_rank: dict = {}
+    for _u, _v, d in graph.edges(data=True):
+        nm = d.get("road_name")
+        if not nm:
+            continue
+        r = _CLASS_RANK.get(d.get("road_class") or "", 0)
+        if r > name_rank.get(nm, -1):
+            name_rank[nm] = r
+
+    # Rank by (token overlap, then road prominence, then fuzzy ratio). Prominence
+    # outranks the length-biased ratio so equal-overlap matches prefer the major
+    # road (e.g. "Gardiner" → Expressway/motorway, not the residential Road).
     best = None
-    best_score = -1.0
-    for nm in names:
+    best_key = (-1.0, -1, -1.0)
+    best_base = 0.0
+    for nm, rank in name_rank.items():
         nn = _norm(nm)
         overlap = len(q_tokens & _tokens(nm)) / len(q_tokens)
         ratio = difflib.SequenceMatcher(None, q, nn).ratio()
-        score = overlap * 2.0 + ratio
-        if score > best_score:
-            best_score, best = score, nm
+        key = (overlap, rank, ratio)
+        if key > best_key:
+            best_key, best, best_base = key, nm, overlap * 2.0 + ratio
 
-    if best is None or best_score < 1.0:
+    if best is None or best_base < 1.0:
         return {"found": False, "reason": f"no road matching {road_name!r}"}
 
     edge_ids = [

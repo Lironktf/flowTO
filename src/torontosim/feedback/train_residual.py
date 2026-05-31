@@ -90,8 +90,13 @@ def train_stage1(  # pragma: no cover - torch on the GB10
     torch.manual_seed(seed)
     t = build_stage1_tensors(graph, pairs)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    x, ei, ctx = t["x"].to(device), t["edge_index"].to(device), t["context"].to(device)
+    x, ei = t["x"].to(device), t["edge_index"].to(device)
     attr, tgt = t["scenario_attr"].to(device), t["targets"].to(device)
+    ctx_rows = t["scenario_context"].to(device)  # [S, C]
+    n_edges = attr.shape[1]
+
+    def _ctx(s):  # broadcast one scenario's context row to every edge -> [E, C]
+        return ctx_rows[s].unsqueeze(0).expand(n_edges, -1)
 
     n = attr.shape[0]
     order = torch.randperm(n, generator=torch.Generator().manual_seed(seed))
@@ -112,7 +117,7 @@ def train_stage1(  # pragma: no cover - torch on the GB10
         with torch.no_grad():
             errs = []
             for s in idxs:
-                err = torch.abs(model(x, ei, attr[s], ctx) - tgt[s])
+                err = torch.abs(model(x, ei, attr[s], _ctx(s)) - tgt[s])
                 if affected_only:
                     m = _affected(s)
                     if m.any():
@@ -135,7 +140,7 @@ def train_stage1(  # pragma: no cover - torch on the GB10
         for s in tr_idx:
             opt.zero_grad()
             w = 1.0 + affected_weight * _affected(s).float()
-            loss = (loss_fn(model(x, ei, attr[s], ctx), tgt[s]) * w).mean()
+            loss = (loss_fn(model(x, ei, attr[s], _ctx(s)), tgt[s]) * w).mean()
             loss.backward()
             opt.step()
 
@@ -193,20 +198,27 @@ def train_stage2(  # pragma: no cover - torch on the GB10
     torch.manual_seed(seed)
     model, ck = load_checkpoint(stage1_ckpt)
     t = build_stage2_tensors(graph, residuals, sim_open_full, standardizers=ck.get("standardizers"))
-    if t["edge_in_dim"] != ck["edge_in_dim"]:
+    if t["edge_in_dim"] != ck["edge_in_dim"] or t["context_in_dim"] != ck["context_in_dim"]:
         raise ValueError(
-            f"edge_in_dim mismatch: stage2 {t['edge_in_dim']} vs ckpt {ck['edge_in_dim']} "
-            "(Stage-1 and Stage-2 must share the graph + feature set)"
+            f"dim mismatch: stage2 edge/context {t['edge_in_dim']}/{t['context_in_dim']} vs "
+            f"ckpt {ck['edge_in_dim']}/{ck['context_in_dim']} — Stage-1 and Stage-2 must share "
+            "the feature + context set (re-pretrain Stage-1 with the enriched context)"
         )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
-    x, ei, ctx = t["x"].to(device), t["edge_index"].to(device), t["context"].to(device)
+    x, ei = t["x"].to(device), t["edge_index"].to(device)
     attr, tgt, omask = (
         t["scenario_attr"].to(device),
         t["targets"].to(device),
         t["obs_mask"].to(device),
     )
+    ctx_rows = t["scenario_context"].to(device)  # [S, C] per-closure time/weather
+    n_edges = attr.shape[1]
+
+    def _ctx(s):  # broadcast one closure's context row to every edge -> [E, C]
+        return ctx_rows[s].unsqueeze(0).expand(n_edges, -1)
+
     cap = t["capacity"].to(device)
     tr_idx, te_idx = _split_indices(t["splits"])
     monitor = te_idx or tr_idx  # if no held-out fold, early-stop on train
@@ -221,7 +233,7 @@ def train_stage2(  # pragma: no cover - torch on the GB10
             for s in idxs:
                 m = omask[s] > 0
                 if m.any():
-                    err = torch.abs(model(x, ei, attr[s], ctx)[m] - tgt[s][m])
+                    err = torch.abs(model(x, ei, attr[s], _ctx(s))[m] - tgt[s][m])
                     errs.append(float(err.mean()))
         return float(np.mean(errs)) if errs else float("nan")
 
@@ -234,7 +246,9 @@ def train_stage2(  # pragma: no cover - torch on the GB10
             if w.sum() == 0:
                 continue
             opt.zero_grad()
-            loss = (loss_fn(model(x, ei, attr[s], ctx), tgt[s]) * w).sum() / w.sum().clamp_min(1.0)
+            loss = (loss_fn(model(x, ei, attr[s], _ctx(s)), tgt[s]) * w).sum() / w.sum().clamp_min(
+                1.0
+            )
             loss.backward()
             opt.step()
         cur = masked_mae(monitor)
@@ -258,7 +272,7 @@ def train_stage2(  # pragma: no cover - torch on the GB10
     model.eval()
     with torch.no_grad():
         for s in te_idx:
-            pred = model(x, ei, attr[s], ctx)
+            pred = model(x, ei, attr[s], _ctx(s))
             iv_id = t["scenario_ids"][s]
             for i in np.where((omask[s] > 0).cpu().numpy())[0]:
                 eid = t["edge_order"][i]

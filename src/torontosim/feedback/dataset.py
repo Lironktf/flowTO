@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .context import CONTEXT_DIM, scenario_context, time_context_from_fields
+
 if TYPE_CHECKING:  # pandas only used in a lazy (string) type annotation below
     import pandas as pd
 
@@ -75,8 +77,15 @@ def _standardize_simopen(t, cols, stats=None):
     return t, stats
 
 
-def build_stage1_tensors(graph, pairs: pd.DataFrame) -> dict:  # pragma: no cover - torch on GB10
-    """Full Stage-1 tensors: lean static features + per-scenario channels + targets."""
+def build_stage1_tensors(
+    graph, pairs: pd.DataFrame, *, time_context=None
+) -> dict:  # pragma: no cover - torch on GB10
+    """Full Stage-1 tensors: lean static features + per-scenario channels + targets.
+
+    ``time_context`` sets the (shared) context row for these sim pairs — they're solved
+    on one OD/time, so every scenario gets the same context (the real variety enters at
+    Stage-2). Defaults to the normalized weekday-PM-peak context.
+    """
     import torch
 
     from models.gnn.build_gnn_dataset import _build_static_tensors
@@ -108,15 +117,17 @@ def build_stage1_tensors(graph, pairs: pd.DataFrame) -> dict:  # pragma: no cove
 
     simopen_cols = [static_ea.shape[1] + 2, static_ea.shape[1] + 3]
     scenario_attr, simopen_stats = _standardize_simopen(torch.stack(attrs), simopen_cols)
+    ctx_row = torch.tensor(scenario_context(time_context), dtype=torch.float32)  # [C]
+    scenario_ctx = ctx_row.unsqueeze(0).repeat(scenario_attr.shape[0], 1)  # [S, C] shared
     return {
         "x": x,
         "edge_index": static["edge_index"],
         "scenario_attr": scenario_attr,  # [S, E, lean_edge + 4]
         "targets": torch.stack(targets),  # [S, E]
-        "context": torch.zeros(static_ea.shape[0], 2),  # no time context for sim pairs
+        "scenario_context": scenario_ctx,  # [S, C] per-scenario time/weather (shared here)
         "node_in_dim": int(x.shape[1]),
         "edge_in_dim": int(scenario_attr.shape[2]),
-        "context_in_dim": 2,
+        "context_in_dim": CONTEXT_DIM,
         "edge_order": edge_order,
         # persisted so the Stage-2 fine-tune reuses the same input scaling
         "standardizers": {"node": ns, "edge_static": es, "simopen": simopen_stats},
@@ -166,8 +177,9 @@ def build_stage2_tensors(
     capacity = {m["edge_id"]: m["capacity"] for m in meta}
     cap_vec = np.array([max(float(capacity.get(e, 1.0)), 1.0) for e in edge_order])
 
-    attrs, targets, masks, ids, splits, times = [], [], [], [], [], []
+    attrs, targets, masks, ids, splits, times, ctx_rows = [], [], [], [], [], [], []
     for iv_id, grp in residuals.groupby("ID"):
+        r0 = grp.iloc[0]
         closed = grp["closed_edge"].iloc[0]
         robs = {r["edge_id"]: float(r["r_obs"]) for _, r in grp.iterrows()}
         # every edge gets its global open flow; only observed edges get a target
@@ -182,22 +194,31 @@ def build_stage2_tensors(
         masks.append(torch.tensor(omask, dtype=torch.float32))
         ids.append(iv_id)
         splits.append(grp["split"].iloc[0])
-        times.append(grp["StartTime"].iloc[0])
+        times.append(r0.get("StartTime"))
+        # per-closure context: its window's time-of-day + weather (when the factory joined it)
+        tc = time_context_from_fields(
+            start_time=r0.get("StartTime"),
+            weather=r0.get("weather"),
+            temperature_c=r0.get("temperature_c"),
+            precipitation_mm=r0.get("precipitation_mm"),
+        )
+        ctx_rows.append(scenario_context(tc))
 
     scenario_attr = torch.stack(attrs)
     simopen_cols = [static_ea.shape[1] + 2, static_ea.shape[1] + 3]
     scenario_attr, simopen_stats = _standardize_simopen(scenario_attr, simopen_cols, simopen_stats)
+    scenario_ctx = torch.tensor(np.stack(ctx_rows), dtype=torch.float32)  # [S, C]
     return {
         "x": x,
         "edge_index": static["edge_index"],
         "scenario_attr": scenario_attr,  # [S, E, lean_edge + 4]
         "targets": torch.stack(targets),  # [S, E] (Δpressure; valid where obs_mask)
         "obs_mask": torch.stack(masks),  # [S, E] 1 at observed sites
-        "context": torch.zeros(static_ea.shape[0], 2),
+        "scenario_context": scenario_ctx,  # [S, C] per-closure time/weather
         "capacity": torch.tensor(cap_vec, dtype=torch.float32),  # [E] flow⇄pressure
         "node_in_dim": int(x.shape[1]),
         "edge_in_dim": int(scenario_attr.shape[2]),
-        "context_in_dim": 2,
+        "context_in_dim": CONTEXT_DIM,
         "edge_order": edge_order,
         "scenario_ids": ids,
         "splits": splits,

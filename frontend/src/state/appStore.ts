@@ -115,6 +115,14 @@ interface CopilotLatency {
   mode: CopilotMode;
 }
 
+// A staged (previewed, not-yet-applied) copilot plan. Single source of truth so
+// the chat confirm and the map preview act on the same plan + edges — one apply.
+interface StagedPlan {
+  msgIndex: number; // the bot message in copilotLog carrying this plan
+  interventions: Intervention[];
+  edgeIds: string[]; // close_edge targets — drives the map preview overlay
+}
+
 // Non-reactive holder for the in-flight request's abort controller.
 let copilotAbort: AbortController | null = null;
 
@@ -147,7 +155,7 @@ interface AppState {
   recomputing: boolean;
   recomputeStep: number;
   recomputeTitle: string;
-  planStaged: boolean;
+  stagedPlan: StagedPlan | null; // a previewed copilot plan awaiting confirm (single source)
   status: { state: StatusState; label: string };
   // data
   edges: EdgeMeta[];
@@ -470,7 +478,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   recomputing: false,
   recomputeStep: 0,
   recomputeTitle: "",
-  planStaged: false,
+  stagedPlan: null,
   status: { state: "nominal", label: "Baseline · nominal" },
   edges: [],
   graph: null,
@@ -668,6 +676,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       copilotLog: [...s.copilotLog, { role: "user", text }],
       copilotThinking: true,
       copilotPendingMode: get().deepMode ? "agent" : null, // deep is known upfront
+      stagedPlan: null, // a new ask supersedes any previously staged plan
     }));
     const controller = new AbortController();
     copilotAbort = controller;
@@ -682,9 +691,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         ],
       }));
     };
-    const afterPlan = (hasPlan: boolean, blocked: boolean, detail = "", ref?: string) => {
+    // Stage the plan as the single source of truth: capture the bot message it
+    // rode on (just pushed → last index), its interventions, and the close_edge
+    // targets for the map preview. Both confirm surfaces act on this.
+    const afterPlan = (interventions: Intervention[] | undefined, blocked: boolean, detail = "", ref?: string) => {
       if (blocked) return flashBlocked(detail, ref);
-      if (hasPlan) set({ planStaged: true });
+      if (!interventions || interventions.length === 0) return;
+      const edgeIds = interventions
+        .filter((iv) => iv.op === "close_edge" && iv.edge_id)
+        .map((iv) => iv.edge_id as string);
+      set((s) => ({ stagedPlan: { msgIndex: s.copilotLog.length - 1, interventions, edgeIds } }));
     };
     // Execute a read-only camera move from the copilot (auto-focus on the road it
     // proposes / the place you asked to see). No confirm — it only moves the view.
@@ -713,7 +729,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
       }));
       applyView(resp.view);
-      afterPlan(confirmable, resp.blocked, resp.rationale, resp.citations?.[0]?.ref);
+      afterPlan(
+        confirmable ? resp.interventions : undefined,
+        resp.blocked,
+        resp.rationale,
+        resp.citations?.[0]?.ref,
+      );
     };
     const t0 = performance.now();
 
@@ -746,7 +767,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           ],
           copilotLatency: { ms: Math.round(performance.now() - t0), mode: "agent" },
         }));
-        afterPlan(hasPlan, res.blocked, res.answer, res.citations?.[0]?.ref);
+        afterPlan(
+          hasPlan ? res.interventions : undefined,
+          res.blocked,
+          res.answer,
+          res.citations?.[0]?.ref,
+        );
       } else if (mode === "chat") {
         // Don't push the streaming bubble upfront — keep the single "thinking"
         // loader visible until the first token, then start the reply. This way
@@ -823,6 +849,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           .map((m, i) => (i === msgIndex ? { ...m, applied: true } : m))
           .concat({ role: "bot", text, result }),
         status: { state: "surge", label: "Plan applied · twin updated" },
+        stagedPlan: null, // applied → no longer staged (clears the map preview/banner)
       }));
 
     set({ status: { state: "recomputing", label: "Applying plan · running sim" } });
@@ -890,11 +917,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  // Apply the staged plan through the ONE correct path (copilotConfirm on the
+  // message that carries it) — not applyEdits-on-objects, which ignored the plan.
   applyPlan: async () => {
-    set({ planStaged: false });
-    await get().applyEdits();
+    const sp = get().stagedPlan;
+    if (!sp) return;
+    await get().copilotConfirm(sp.msgIndex);
   },
-  discardPlan: () => set({ planStaged: false }),
+  discardPlan: () => set({ stagedPlan: null }),
 
   selectTool: (id) =>
     set({ activeTool: id, selectedId: id === "select" ? get().selectedId : null, pendingVertices: [] }),
@@ -1081,7 +1111,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeSavedSimId: null,
       currentName: "Untitled simulation",
       dirty: false,
-      planStaged: false,
+      stagedPlan: null,
       selectedRoadId: null,
       copilotLog: [],
       scrubberMinute: TIMELINE.defaultMin,

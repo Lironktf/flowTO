@@ -8,6 +8,25 @@ const DELTA_ROWS: [string, string][] = [
   ["severe_edges", "severe"],
 ];
 
+/** Road/segment-aware confirm label. Closing one road = its directional segments,
+ *  NOT "N changes" — count distinct roads (via the graph) vs segments. */
+export function confirmLabel(
+  interventions: { op?: string; edge_id?: string }[],
+  graph: { byId: Map<string, { road_name?: string }> } | null,
+): string {
+  const segs = interventions.length;
+  const segPart = `${segs} segment${segs === 1 ? "" : "s"}`;
+  const roads = new Set<string>();
+  let resolvable = !!graph;
+  for (const iv of interventions) {
+    const nm = iv.edge_id && graph ? graph.byId.get(iv.edge_id)?.road_name : undefined;
+    if (nm) roads.add(nm);
+    else resolvable = false;
+  }
+  if (resolvable && roads.size > 1) return `Confirm & run · ${roads.size} roads · ${segPart}`;
+  return `Confirm & run · ${segPart}`;
+}
+
 /** Suggestion chips — graph-grounded prompts from the store (static fallback). */
 function ChipRow({ disabled, onPick }: { disabled: boolean; onPick: (c: string) => void }) {
   const chips = useAppStore((s) => s.copilotChips);
@@ -32,6 +51,7 @@ export function CopilotRegion() {
   const stop = useAppStore((s) => s.copilotStop);
   const latency = useAppStore((s) => s.copilotLatency);
   const thinking = useAppStore((s) => s.copilotThinking);
+  const graph = useAppStore((s) => s.graph);
   const pendingMode = useAppStore((s) => s.copilotPendingMode);
   const ready = useAppStore((s) => s.copilotReady);
   // One loader; only the label changes with the resolved mode.
@@ -134,11 +154,7 @@ export function CopilotRegion() {
               {m.interventions && m.interventions.length > 0 && (
                 <div className="copilot-confirm">
                   <button className="btn primary" disabled={m.applied} onClick={() => void confirm(i)}>
-                    {m.applied
-                      ? "✓ Applied"
-                      : `Confirm & run (${m.interventions.length} change${
-                          m.interventions.length > 1 ? "s" : ""
-                        })`}
+                    {m.applied ? "✓ Applied" : confirmLabel(m.interventions, graph)}
                   </button>
                 </div>
               )}

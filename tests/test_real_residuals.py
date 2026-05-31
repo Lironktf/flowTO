@@ -70,7 +70,7 @@ def _rows(g) -> pd.DataFrame:
                 site_lat=e2[0],
                 site_lon=e2[1],
                 StartTime="2023-01-01",
-                split="train",
+                split="test",
                 has_baseline=1,
             ),
             # R1: no in-window count → must yield NO residual row
@@ -83,7 +83,7 @@ def _rows(g) -> pd.DataFrame:
                 site_lat=e3[0],
                 site_lon=e3[1],
                 StartTime="2023-01-01",
-                split="train",
+                split="test",
                 has_baseline=0,
             ),
             # R1: site centreline NOT in graph → geometric fallback to nearest edge (e3)
@@ -96,7 +96,7 @@ def _rows(g) -> pd.DataFrame:
                 site_lat=e3[0],
                 site_lon=e3[1],
                 StartTime="2023-01-01",
-                split="train",
+                split="test",
                 has_baseline=0,
             ),
             # R2: closed near e3, observed at centreline 200 (→ e2)
@@ -109,7 +109,7 @@ def _rows(g) -> pd.DataFrame:
                 site_lat=e2[0],
                 site_lon=e2[1],
                 StartTime="2023-06-01",
-                split="test",
+                split="train",
                 has_baseline=1,
             ),
         ]
@@ -157,7 +157,7 @@ def test_interventions_and_observed_mapping():
     assert cov["n_mapped_nearest"] == 1  # R1 centreline 999 → e3
     assert cov["n_site_unmapped"] == 0
     assert cov["n_rows_with_count"] == 3  # 120, 30, 80 (the NaN excluded)
-    assert meta[("R1", "e2")]["split"] == "train"
+    assert meta[("R1", "e2")]["split"] == "test"
     assert meta[("R2", "e2")]["centreline_id"] == 200
     assert meta[("R1", "e3")]["snap"] == "nearest"
 
@@ -188,29 +188,33 @@ def test_build_real_residuals_signs_and_no_fabrication():
         simulate_intervened=fake_intervened,
     )
 
-    # one CLOSED solve per active restriction — none wasted on unmapped restrictions
-    assert sorted(calls) == ["e1", "e3"]
+    # CLOSED solve runs ONLY for the held-out (test) closure R1 — the train closure R2
+    # is skipped (its r_sim is unused), so its closed edge e3 is never solved.
+    assert sorted(calls) == ["e1"]
+    assert cov["n_closed_solves"] == 1
     # the full open solve is surfaced for the Stage-2 sim_open channels
     assert sim_open_full == {"e1": 10.0, "e2": 50.0, "e3": 5.0}
 
     r1e2 = res[(res["ID"] == "R1") & (res["edge_id"] == "e2")].iloc[0]
-    assert r1e2["sim_open"] == 50.0 and r1e2["sim_int"] == 70.0
+    assert r1e2["sim_open"] == 50.0 and r1e2["sim_int"] == 70.0  # test → real closed solve
     assert r1e2["r_sim"] == pytest.approx(20.0)  # 70 - 50
-    assert r1e2["r_obs"] == pytest.approx(70.0)  # 120 - 50
+    assert r1e2["r_obs"] == pytest.approx(70.0)  # 120 - 50 (open-based; unchanged)
     assert r1e2["closed_edge"] == "e1"
-    assert r1e2["split"] == "train"
+    assert r1e2["split"] == "test"
 
     # R1's nearest-snapped site (e3) is untouched by closing e1 → r_sim 0
     r1e3 = res[(res["ID"] == "R1") & (res["edge_id"] == "e3")].iloc[0]
     assert r1e3["r_sim"] == pytest.approx(0.0)
     assert r1e3["r_obs"] == pytest.approx(25.0)  # 30 - 5
 
+    # R2 is TRAIN → closed solve skipped → sim_int = sim_open → r_sim 0; r_obs still real
     r2 = res[res["ID"] == "R2"].iloc[0]
-    assert r2["r_sim"] == pytest.approx(0.0)  # closing e3 leaves e2 at 50
-    assert r2["r_obs"] == pytest.approx(30.0)  # 80 - 50
-    assert r2["split"] == "test"
+    assert r2["sim_int"] == r2["sim_open"]
+    assert r2["r_sim"] == pytest.approx(0.0)
+    assert r2["r_obs"] == pytest.approx(30.0)  # 80 - 50 (open-based; unchanged)
+    assert r2["split"] == "train"
 
-    # three mapped sites — the NaN row never appears
+    # three mapped sites — the NaN row never appears (r_obs identical to before)
     assert len(res) == 3
     assert cov["n_residual_rows"] == 3
 

@@ -153,7 +153,7 @@ export function BottomDock() {
             disabled={recomputing}
             onClick={() => void retimeBaseline()}
           >
-            <Icon.clock />
+            <Icon.refresh />
           </button>
         </div>
 

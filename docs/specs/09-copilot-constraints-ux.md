@@ -42,6 +42,47 @@ Research + design for: (1) replace hard refusals with **colored warnings the use
 - **Recommended:** add a **rehydration loader** — `state.baseline()` loads `baseline_result.json` (rebuild a `MultiDiGraph` from `nodes`/`edges`, keep `summary`) when present, else compute. Makes congestion/confirm/agent **instant**. Medium effort; must match edge-attr names (`pressure`, `load`, `status`, `road_name`, `edge_id`).
 - Alt: lock + pre-warm (one 133 s compute at boot, then instant) — simplest, no rehydration risk, but ~2 min warm-up.
 
+## Single source of truth: RAG+Nemotron warning system (clickops ⇄ copilot)
+
+Decision (2026-05-31): the closure warning system is **one module** that both manual
+block-placement (clickops) and the copilot call — grounded in the bylaw RAG (Ch. 937
+Temporary Closing of Highways, Ch. 743 Use of Streets, Ch. 880 Fire Routes, Ch. 886, 950).
+The model reasons over the *retrieved bylaw text*, so warnings cite real sections — not
+invented, not hardcoded.
+
+```
+ manual closure (placeAt/applyEdits) ─┐
+ copilot closure (plan/agent/confirm) ─┤
+                                       ▼
+                       POST /assess  { interventions }
+                                       │
+                 ┌─────────────────────┼───────────────────────────┐
+                 ▼                     ▼                            ▼
+        resolve affected roads   RAG retrieve relevant       Nemotron assess
+        (resolve.py: edge→        bylaw sections for the      (constrained JSON):
+        road_name/class/          closure type + roads        rank severity, cite the
+        fire-route/transit)       (937 permit/conditions,     retrieved §s, explain
+                 │                 880 fire route, 743         │
+                 └──── deterministic floor ───────────────────┘
+                       (fire-route/transit = danger, always-on, instant)
+                                       ▼
+                       Warning[] { severity, title, detail, ref }
+                                       ▼
+                 store.warnings → RightDock panel (colored .warn-row)
+                 + copilot also renders them inline in the chat bubble
+```
+
+- **Backend `copilot/assess.py` + `POST /assess`** — the SSOT. `assess(interventions, state)`:
+  1. resolve affected roads (resolve.py) → names/class/fire-route/transit flags;
+  2. **deterministic floor** (fire-route/transit/major-arterial) → instant severity-coded warnings;
+  3. **RAG-grounded Nemotron** pass → enrich with the cited bylaw §s + a plain-English rationale;
+  4. merge/dedupe → `Warning[]`. Never refuses (warn-don't-block).
+- **Both surfaces call it:** clickops `placeAt`/`applyEdits` → `/assess` on the placed closure; copilot
+  `plan`/`agent` → same `/assess` on proposed interventions. One warnings store, one colored UI.
+- **Perf:** show the deterministic floor instantly; the Nemotron-grounded detail fills in async (it's
+  read-only, no baseline needed). Cache per (edge-set) so repeated placements don't re-call the model.
+- Replaces the hard-refuse path; `check_request`/`advisories` fold into `assess()`.
+
 ## Open decisions
 1. **Hero**: fully live (drop all rehearsed prose; resolution may stay deterministic) — accept demo-determinism risk? Or keep a *model-narrated* deterministic hero?
 2. **Baseline**: build the rehydration loader (recommended) vs lock+warm?

@@ -1,0 +1,144 @@
+- generic [ref=e2]:
+  - generic [ref=e19]:
+    - region "Map" [ref=e20]
+    - group [ref=e21]:
+      - generic "Toggle attribution" [ref=e22] [cursor=pointer]
+      - link "MapLibre" [ref=e24] [cursor=pointer]:
+        - /url: https://maplibre.org/
+  - generic [ref=e26]:
+    - generic [ref=e27]: FlowTO
+    - generic [ref=e28]: Digital Twin · Toronto
+    - generic [ref=e29]: FIFA WC26 — Post-match egress
+    - generic [ref=e30]: Recomputing…
+    - button "Dark" [ref=e32] [cursor=pointer]
+    - button "Reset" [ref=e33] [cursor=pointer]
+  - generic [ref=e34]:
+    - generic [ref=e35]: Workspace
+    - heading "Interventions" [level=2] [ref=e36]
+    - generic [ref=e37]:
+      - generic [ref=e38] [cursor=pointer]:
+        - generic [ref=e39]: Full closure
+        - generic [ref=e40]: Close a segment to all traffic
+      - generic [ref=e41] [cursor=pointer]:
+        - generic [ref=e42]: Lane reduction
+        - generic [ref=e43]: Reduce corridor capacity
+      - generic [ref=e44] [cursor=pointer]:
+        - generic [ref=e45]: Temporary one-way
+        - generic [ref=e46]: Set contraflow / directional egress
+      - generic [ref=e47] [cursor=pointer]:
+        - generic [ref=e48]: Signal retiming
+        - generic [ref=e49]: Adjust cycle splits & offsets
+      - generic [ref=e50] [cursor=pointer]:
+        - generic [ref=e51]: Demand surge
+        - generic [ref=e52]: Inject an event trip spike
+    - generic [ref=e118]:
+      - generic [ref=e119]: Recommended plan
+      - list [ref=e120]:
+        - listitem [ref=e121]: Eastbound contraflow on Lake Shore Blvd W (Strachan → Bathurst)
+        - listitem [ref=e122]: Retime Dufferin & Strachan signals — 110 s egress splits
+        - listitem [ref=e123]: Close Princes' Blvd; hold 509 / 511 transit priority
+      - generic [ref=e124]:
+        - button "Apply & recompute" [ref=e125] [cursor=pointer]
+        - button "Discard" [ref=e126] [cursor=pointer]
+    - generic [ref=e53]: Scenarios
+    - generic [ref=e54] [cursor=pointer]:
+      - generic [ref=e55]:
+        - generic [ref=e56]: JUN 12
+        - text: FIFA WC26 — Post-match egress
+      - generic [ref=e57]: Canada vs UEFA-A · 45,000 · FT 17:05
+    - generic [ref=e58] [cursor=pointer]:
+      - generic [ref=e59]:
+        - generic [ref=e60]: PLAN
+        - text: Gardiner — Jarvis ramp closure
+      - generic [ref=e61]: Capital works · 6 wks
+    - generic [ref=e62] [cursor=pointer]:
+      - generic [ref=e63]:
+        - generic [ref=e64]: DRAFT
+        - text: TTC Line 1 — bus bridge
+      - generic [ref=e65]: St George ↔ Bloor-Yonge
+    - generic [ref=e66] [cursor=pointer]:
+      - generic [ref=e67]:
+        - generic [ref=e68]: STUDY
+        - text: King St transit-priority ext.
+      - generic [ref=e69]: Bathurst → Dufferin
+  - generic [ref=e70]:
+    - generic [ref=e71]: Baseline → Event
+    - heading "Before / After" [level=2] [ref=e72]
+    - generic [ref=e73]:
+      - generic [ref=e127]:
+        - generic [ref=e128]: Total network delay
+        - generic [ref=e129]: 4,180veh·h
+        - generic [ref=e130]: ↑ 237% vs baseline
+      - generic [ref=e131]:
+        - generic [ref=e132]: Mean travel time
+        - generic [ref=e133]: 28.7min
+        - generic [ref=e134]: ↑ 152% vs baseline
+      - generic [ref=e135]:
+        - generic [ref=e136]: 95th-pct travel time
+        - generic [ref=e137]: 62.5min
+        - generic [ref=e138]: ↑ 226% vs baseline
+      - generic [ref=e139]:
+        - generic [ref=e140]: Congested edges
+        - generic [ref=e141]: 41edges
+        - generic [ref=e142]: ↑ 193% vs baseline
+      - generic [ref=e143]:
+        - generic [ref=e144]: Local-road infiltration
+        - generic [ref=e145]: 34%
+        - generic [ref=e146]: ↑ 467% vs baseline
+  - generic [ref=e74]:
+    - generic [ref=e75]: Copilot · Nemotron · on-device
+    - generic [ref=e76]:
+      - generic [ref=e148]: Ease post-match gridlock near BMO Field without breaking bylaws.
+      - generic [ref=e149]:
+        - generic [ref=e150]: "Full-time at Toronto Stadium releases ~45,000 over 25 minutes. I assigned egress demand to the Lake Shore / Strachan / Dufferin spine and found severe spill-over into Parkdale and Liberty Village local streets. A bylaw-valid mitigation:"
+        - list [ref=e151]:
+          - listitem [ref=e152]: Eastbound contraflow on Lake Shore Blvd W (Strachan → Bathurst), 17:00–18:30
+          - listitem [ref=e153]: Retime Dufferin and Strachan signals — 110 s cycle, egress-biased splits
+          - listitem [ref=e154]: Close Princes' Blvd to general traffic (pedestrian egress); hold 509 / 511 transit priority
+        - generic [ref=e155]: § Toronto Municipal Code Ch. 950 — temporary traffic regulation under an approved event TMP
+        - generic [ref=e156]: § King St Transit Priority Corridor — through-traffic restriction preserved
+        - generic [ref=e157]: § Toronto Municipal Code Ch. 880 — fire-route / emergency access lanes maintained
+        - generic [ref=e158]: § AODA 2005 — accessible pedestrian route on Princes' Blvd retained
+      - generic [ref=e160]: "Projected vs. unmitigated: total delay −38%, local infiltration −71%, zero hard-constraint conflicts. Preview on the map?"
+    - generic [ref=e78]:
+      - button "Ease post-match gridlock near BMO Field without breaking bylaws." [active] [ref=e79] [cursor=pointer]
+      - button "Just close Lake Shore both ways." [ref=e80] [cursor=pointer]
+      - button "Protect Parkdale local streets from cut-through." [ref=e81] [cursor=pointer]
+    - generic [ref=e82]:
+      - textbox "Ask the copilot…" [ref=e83]
+      - button "Send" [ref=e84] [cursor=pointer]
+  - generic [ref=e85]:
+    - generic [ref=e86]:
+      - generic [ref=e87]: 14:00
+      - generic [ref=e88]: FRI · 12 JUN 2026
+    - slider [ref=e90]: "840"
+    - generic [ref=e91]:
+      - generic [ref=e92]: 14:00
+      - generic [ref=e93]: kickoff 15:00
+      - generic [ref=e94]: full-time 17:05
+      - generic [ref=e95]: 20:00
+  - generic [ref=e96]:
+    - generic [ref=e97]: Edge pressure
+    - generic "free flow to gridlock" [ref=e98]
+    - generic [ref=e99]:
+      - generic [ref=e100]: free
+      - generic [ref=e101]: gridlock
+  - generic [ref=e102]:
+    - generic [ref=e103]:
+      - generic [ref=e104]: Recompute
+      - generic [ref=e105]: 34 ms
+    - generic [ref=e106]:
+      - generic [ref=e107]: Affected subgraph
+      - generic [ref=e108]: 514 edges
+    - generic [ref=e109]:
+      - generic [ref=e110]: LLM latency
+      - generic [ref=e111]: —
+    - generic [ref=e112]:
+      - generic [ref=e113]: Frame rate
+      - generic [ref=e114]: 60 fps
+    - generic [ref=e115]:
+      - generic [ref=e116]: Compute
+      - generic [ref=e117]: DGX Spark · GB10
+  - generic [ref=e161]:
+    - generic [ref=e162]: Recomputing network
+    - generic [ref=e163]: Edge pressure…

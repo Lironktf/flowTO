@@ -81,7 +81,7 @@ demo but never block it.
 |---|---|
 | `datapipeline/` | Fetch (CKAN/GTFS/weather/restrictions) → Parquet + DuckDB + manifest |
 | `graph/` | Canonical road graph: OSMnx baseline + Centreline loader, capacity calibration, per-field confidence |
-| `model/` | Weather-aware ML node-demand → gravity OD + **IPF/Furness** + pragmatic **ODME** + TTS/Census seed |
+| `model/` | Weather-aware ML node-demand → gravity OD + **IPF/Furness** + pragmatic **ODME** + TTS/Census seed; data ingest/training use optional **cuDF** acceleration with a pandas fallback |
 | `simulation/` | **BPR + Frank-Wolfe / Conjugate-FW user equilibrium**; CPU (Dijkstra) + GPU (cuGraph SSSP) backends; TNTP oracle |
 | `blastradius/` | Affected-OD detection + bounded cones + adaptive subgraph recompute |
 | `api/` | FastAPI: scenario CRUD, run/preview/compare, binary WS tick frames, `/demo/run`, copilot/optimize |
@@ -104,6 +104,10 @@ system in `frontend/src/styles/flowto.css` (recreated from `design/`).
   measured **8.12×** (60.6 s → 7.47 s) on the full graph.
 - **On the DGX Spark** — cuGraph SSSP backend matches CPU (`RAPIDS_OK`, cuDF/cuGraph
   26.04 on GB10); live `nemotron3:33b` parses NL → a valid, cited tool call (`OLLAMA_OK`).
+- **cuDF data pipeline** — the model ingest/training CSV paths run on cuDF when the
+  `[gpu]` extra is installed (≈3.8–6.1× on a GB10, see `benchmarks/`) and produce
+  output byte-equivalent to the pandas path; CPU-only environments fall back
+  automatically.
 - **Determinism** — the three demo scenarios (`baseline → wc_surge → wc_fix`) reproduce
   identical numbers every run; the egress-area congestion melts red→green.
 - **Tests** — backend `make test` = 124 passed / 4 skipped / 2 Spark-gated

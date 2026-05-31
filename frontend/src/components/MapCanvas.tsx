@@ -83,17 +83,19 @@ export function MapCanvas() {
   const selectRoad = useAppStore((s) => s.selectRoad);
   const pendingVertices = useAppStore((s) => s.pendingVertices);
   const activeTool = useAppStore((s) => s.activeTool);
-  const planStaged = useAppStore((s) => s.planStaged);
+  const stagedPlan = useAppStore((s) => s.stagedPlan);
   const recomputing = useAppStore((s) => s.recomputing);
   const recomputeStep = useAppStore((s) => s.recomputeStep);
   const recomputeTitle = useAppStore((s) => s.recomputeTitle);
   const recenterNonce = useAppStore((s) => s.recenterNonce);
+  const flyNonce = useAppStore((s) => s.flyNonce);
+  const fitNonce = useAppStore((s) => s.fitNonce);
+  const flyPin = useAppStore((s) => s.flyPin);
   const tiltOn = useAppStore((s) => s.tiltOn);
   const scrubMin = useAppStore((s) => s.scrubberMinute);
   const dayOfYear = useAppStore((s) => s.dayOfYear);
   const placeAt = useAppStore((s) => s.placeAt);
   const selectObject = useAppStore((s) => s.selectObject);
-  const applyPlan = useAppStore((s) => s.applyPlan);
   const discardPlan = useAppStore((s) => s.discardPlan);
   const dark = theme === "dark";
   const placing = view === "edit" && activeTool !== "select";
@@ -104,7 +106,7 @@ export function MapCanvas() {
   useEffect(() => { placingRef.current = placing; }, [placing]);
   const [hoverStreet, setHoverStreet] = useState(false);
   const [hoverPinId, setHoverPinId] = useState<string | null>(null);
-  const [overlays, setOverlays] = useState({ poi: true, transit: true, roadLabels: true, placeLabels: true, buildings3d: true });
+  const [overlays, setOverlays] = useState({ poi: true, transit: false, roadLabels: true, placeLabels: true, buildings3d: true });
   const [layersOpen, setLayersOpen] = useState(false);
 
   const edgePaths: EdgePath[] = useMemo(() => {
@@ -144,11 +146,37 @@ export function MapCanvas() {
     const t = setTimeout(() => mapRef.current?.getMap()?.resize(), 320);
     return () => clearTimeout(t);
   }, [view, tiltOn]);
+
+  // Keep the map canvas filling #viewport whenever it changes size — collapsing
+  // a side/bottom dock grows the viewport, but the WebGL canvas only resizes
+  // when told. A ResizeObserver fires continuously through the CSS transition,
+  // so the map expands to fill the freed space instead of leaving a gutter.
+  useEffect(() => {
+    const el = document.getElementById("viewport");
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => mapRef.current?.getMap()?.resize());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     const m = mapRef.current?.getMap();
     if (!m || recenterNonce === 0) return;
     m.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
   }, [recenterNonce]);
+  // Search → fly the camera to a point hit (place); zoom defaults to a street-level view.
+  useEffect(() => {
+    const m = mapRef.current?.getMap();
+    const t = useAppStore.getState().flyTarget;
+    if (!m || flyNonce === 0 || !t) return;
+    m.flyTo({ center: [t.lng, t.lat], zoom: t.zoom ?? 15.5, duration: 1100, essential: true });
+  }, [flyNonce]);
+  // Search → frame an entire street: fit the camera to the road's full extent.
+  useEffect(() => {
+    const m = mapRef.current?.getMap();
+    const b = useAppStore.getState().fitTarget;
+    if (!m || fitNonce === 0 || !b) return;
+    m.fitBounds(b, { padding: 96, duration: 1100, maxZoom: 16, essential: true });
+  }, [fitNonce]);
 
   // Time of day → Mapbox Standard light preset (dawn/day/dusk/night), shifted by season.
   useEffect(() => {
@@ -169,6 +197,30 @@ export function MapCanvas() {
     setStandardConfig(m, "showPlaceLabels", overlays.placeLabels);
     setStandardConfig(m, "show3dObjects", overlays.buildings3d);
   }, [overlays]);
+
+  // Selected road → all edges that share its name (the whole street, not one
+  // segment). Memoized on selection/graph so the 81k-edge scan never runs per frame.
+  const selectedRoadPaths = useMemo(() => {
+    if (!selectedRoadId || !graph) return null;
+    const seg = graph.byId.get(selectedRoadId);
+    if (!seg) return null;
+    const name = seg.road_name;
+    const segs = name ? graph.edges.filter((e) => e.road_name === name) : [seg];
+    return segs.map((s) => ({ path: s.geometry.map(([la, ln]) => [ln, la] as [number, number]) }));
+  }, [selectedRoadId, graph]);
+
+  // Staged copilot plan — the edges it PROPOSES to close, previewed (amber) before
+  // the user confirms. Distinct from applied-grey closures and the blue selection.
+  const stagedPreviewPaths = useMemo(() => {
+    const ids = stagedPlan?.edgeIds;
+    if (!ids?.length || !graph) return null;
+    const out: { path: [number, number][] }[] = [];
+    for (const id of ids) {
+      const seg = graph.byId.get(id);
+      if (seg) out.push({ path: seg.geometry.map(([la, ln]) => [ln, la] as [number, number]) });
+    }
+    return out.length ? out : null;
+  }, [stagedPlan, graph]);
 
   const layers = useMemo(() => {
     const out: unknown[] = [];
@@ -204,21 +256,40 @@ export function MapCanvas() {
       }),
     );
 
-    // Selected-road highlight (sim).
-    const selSeg = selectedRoadId && graph ? graph.byId.get(selectedRoadId) : null;
-    if (selSeg) {
+    // Selected-road highlight (sim) — the full named street.
+    if (selectedRoadPaths) {
       out.push(
         new PathLayer({
           id: "road-selected",
           parameters: { depthCompare: "always" },
           slot: CONGESTION_SLOT,
-          data: [{ path: selSeg.geometry.map(([la, ln]) => [ln, la] as [number, number]) }],
+          data: selectedRoadPaths,
           getPath: (d: { path: [number, number][] }) => d.path,
           getColor: [36, 85, 214],
           getWidth: 14,
           widthUnits: "meters",
           widthMinPixels: 4,
           widthMaxPixels: 22,
+          capRounded: true,
+          jointRounded: true,
+        }),
+      );
+    }
+
+    // Staged-plan preview — the proposed-closure road in amber (not yet applied).
+    if (stagedPreviewPaths) {
+      out.push(
+        new PathLayer({
+          id: "staged-preview",
+          parameters: { depthCompare: "always" },
+          slot: CONGESTION_SLOT,
+          data: stagedPreviewPaths,
+          getPath: (d: { path: [number, number][] }) => d.path,
+          getColor: [224, 160, 27, 220], // amber = proposed / pending confirm
+          getWidth: 12,
+          widthUnits: "meters",
+          widthMinPixels: 4,
+          widthMaxPixels: 20,
           capRounded: true,
           jointRounded: true,
         }),
@@ -266,6 +337,24 @@ export function MapCanvas() {
         stroked: true, getLineColor: [255, 255, 255], lineWidthMinPixels: 2,
       }),
     );
+
+    // Searched place → a marker so a point hit (no road to highlight) is visible.
+    if (flyPin) {
+      out.push(
+        new ScatterplotLayer({
+          id: "search-pin",
+          parameters: { depthCompare: "always" },
+          data: [{ coord: flyPin }],
+          getPosition: (d: { coord: [number, number] }) => d.coord,
+          getRadius: 9,
+          radiusUnits: "pixels",
+          getFillColor: dark ? [111, 155, 255] : [36, 85, 214],
+          stroked: true,
+          getLineColor: [255, 255, 255],
+          lineWidthMinPixels: 2.5,
+        }),
+      );
+    }
 
     // Pending closure vertices (the first picked intersection).
     if (pendingVertices.length) {
@@ -363,7 +452,7 @@ export function MapCanvas() {
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectedRoadPaths, stagedPreviewPaths, selectRoad, pendingVertices, overlays, flyPin]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (
@@ -386,6 +475,10 @@ export function MapCanvas() {
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
           mapStyle={STANDARD_STYLE}
+          // Flat Mercator at every zoom — Mapbox's default 'globe' curves the
+          // earth when you zoom out, which looks wrong for a city twin. Mercator
+          // keeps the zoomed-out view a proper flat plane like the close-up.
+          projection={{ name: "mercator" }}
           reuseMaps
           cursor="grab"
           onLoad={(e) => {
@@ -479,15 +572,14 @@ export function MapCanvas() {
             background: "linear-gradient(90deg,var(--c-free),var(--c-light),var(--c-mod),var(--c-heavy),var(--c-sev))" }} />
         </div>
       </div>
-      {planStaged && (
+      {stagedPlan && (
         <div className="vp-hud bc">
           <div className="plan-bar">
             <span className="pb-ico"><Icon.check /></span>
             <span className="pb-tx">
-              <span className="pb-t">Copilot plan ready</span>
-              <span className="pb-s">Apply to recompute the network with the proposed actions</span>
+              <span className="pb-t">Plan staged · {stagedPlan?.edgeIds.length ?? 0} segment(s) previewed</span>
+              <span className="pb-s">Review &amp; confirm in the copilot panel →</span>
             </span>
-            <button className="btn primary btn-sm" onClick={() => void applyPlan()}>Apply &amp; recompute</button>
             <button className="btn ghost btn-sm" onClick={() => discardPlan()}>Discard</button>
           </div>
         </div>

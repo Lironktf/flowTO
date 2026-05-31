@@ -1,0 +1,101 @@
+- generic [ref=e2]:
+  - generic [ref=e18]:
+    - region "Map" [ref=e19]
+    - group [ref=e20]:
+      - generic "Toggle attribution" [ref=e21] [cursor=pointer]
+      - link "MapLibre" [ref=e23] [cursor=pointer]:
+        - /url: https://maplibre.org/
+  - generic [ref=e25]:
+    - generic [ref=e26]: FlowTO
+    - generic [ref=e27]: Digital Twin · Toronto
+    - generic [ref=e28]: FIFA WC26 — Post-match egress
+    - generic [ref=e29]: Baseline · nominal
+    - button "Transit" [ref=e31] [cursor=pointer]
+    - button "Dark" [ref=e32] [cursor=pointer]
+    - button "Reset" [ref=e33] [cursor=pointer]
+  - generic [ref=e34]:
+    - generic [ref=e35]: Workspace
+    - heading "Interventions" [level=2] [ref=e36]
+    - generic [ref=e37]:
+      - generic [ref=e38] [cursor=pointer]:
+        - generic [ref=e39]: Full closure
+        - generic [ref=e40]: Close a segment to all traffic
+      - generic [ref=e41] [cursor=pointer]:
+        - generic [ref=e42]: Lane reduction
+        - generic [ref=e43]: Reduce corridor capacity
+      - generic [ref=e44] [cursor=pointer]:
+        - generic [ref=e45]: Temporary one-way
+        - generic [ref=e46]: Set contraflow / directional egress
+      - generic [ref=e47] [cursor=pointer]:
+        - generic [ref=e48]: Signal retiming
+        - generic [ref=e49]: Adjust cycle splits & offsets
+      - generic [ref=e50] [cursor=pointer]:
+        - generic [ref=e51]: Demand surge
+        - generic [ref=e52]: Inject an event trip spike
+    - generic [ref=e53]: Scenarios
+    - generic [ref=e54] [cursor=pointer]:
+      - generic [ref=e55]:
+        - generic [ref=e56]: JUN 12
+        - text: FIFA WC26 — Post-match egress
+      - generic [ref=e57]: Canada vs UEFA-A · 45,000 · FT 17:05
+    - generic [ref=e58] [cursor=pointer]:
+      - generic [ref=e59]:
+        - generic [ref=e60]: PLAN
+        - text: Gardiner — Jarvis ramp closure
+      - generic [ref=e61]: Capital works · 6 wks
+    - generic [ref=e62] [cursor=pointer]:
+      - generic [ref=e63]:
+        - generic [ref=e64]: DRAFT
+        - text: TTC Line 1 — bus bridge
+      - generic [ref=e65]: St George ↔ Bloor-Yonge
+    - generic [ref=e66] [cursor=pointer]:
+      - generic [ref=e67]:
+        - generic [ref=e68]: STUDY
+        - text: King St transit-priority ext.
+      - generic [ref=e69]: Bathurst → Dufferin
+  - generic [ref=e70]:
+    - generic [ref=e71]: Outcome
+    - heading "Before / After" [level=2] [ref=e72]
+    - generic [ref=e73]: Network nominal — apply an intervention or play the matchday.
+  - generic [ref=e74]:
+    - generic [ref=e75]: Copilot · Nemotron · on-device
+    - generic [ref=e77]: Ask me to ease congestion or test a closure — I preview every action and cite the bylaw constraints first.
+    - generic [ref=e78]:
+      - button "Ease post-match gridlock near BMO Field without breaking bylaws." [ref=e79] [cursor=pointer]
+      - button "Just close Lake Shore both ways." [ref=e80] [cursor=pointer]
+      - button "Protect Parkdale local streets from cut-through." [ref=e81] [cursor=pointer]
+    - generic [ref=e82]:
+      - textbox "Ask the copilot…" [ref=e83]
+      - button "Send" [ref=e84] [cursor=pointer]
+  - generic [ref=e85]:
+    - generic [ref=e86]:
+      - generic [ref=e87]: 14:00
+      - generic [ref=e88]: FRI · 12 JUN 2026
+    - slider [ref=e90]: "840"
+    - generic [ref=e91]:
+      - generic [ref=e92]: 14:00
+      - generic [ref=e93]: kickoff 15:00
+      - generic [ref=e94]: full-time 17:05
+      - generic [ref=e95]: 20:00
+  - generic [ref=e96]:
+    - generic [ref=e97]: Edge pressure
+    - generic "free flow to gridlock" [ref=e98]
+    - generic [ref=e99]:
+      - generic [ref=e100]: free
+      - generic [ref=e101]: gridlock
+  - generic [ref=e102]:
+    - generic [ref=e103]:
+      - generic [ref=e104]: Recompute
+      - generic [ref=e105]: 0 ms
+    - generic [ref=e106]:
+      - generic [ref=e107]: Affected subgraph
+      - generic [ref=e108]: 0 edges
+    - generic [ref=e109]:
+      - generic [ref=e110]: LLM latency
+      - generic [ref=e111]: —
+    - generic [ref=e112]:
+      - generic [ref=e113]: Frame rate
+      - generic [ref=e114]: 60 fps
+    - generic [ref=e115]:
+      - generic [ref=e116]: Compute
+      - generic [ref=e117]: DGX Spark · GB10

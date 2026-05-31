@@ -340,15 +340,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { edges } = await api.edges();
       resizeTickStore(edges.length);
       const graph = buildGraph(edges);
-      const base = await api.demoRun("baseline");
       set({
         edges,
         graph,
         loaded: true,
-        status: { state: "nominal", label: "Baseline · nominal" },
+        status: { state: "recomputing", label: "Graph loaded · painting baseline…" },
         telemetry: { ...IDLE },
       });
-      paintBaseline(set, base.records);
+      try {
+        const base = await api.demoRun("baseline");
+        paintBaseline(set, base.records);
+        set({ status: { state: "nominal", label: "Baseline · nominal" } });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        set({
+          error: `Toronto graph loaded, but the baseline simulation failed (${msg}).`,
+          status: { state: "blocked", label: "Graph loaded · baseline unavailable" },
+        });
+      }
       void get().loadSavedSims();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

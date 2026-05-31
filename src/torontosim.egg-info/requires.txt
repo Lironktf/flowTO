@@ -34,5 +34,11 @@ httpx>=0.27
 cudf-cu13
 cugraph-cu13
 
+[model]
+xgboost>=2.0
+
 [sim]
 aequilibrae>=1.0
+
+[transit]
+gtfs_kit>=6.0

@@ -3,8 +3,8 @@ import { useAppStore } from "../state/appStore";
 
 const BOOT_LINES = [
   "› booting FlowTO runtime…",
-  "› loading Toronto network · 18,190 edges",
-  "› warming Nemotron-on-device · GB10…",
+  "› loading Toronto network · 81,669 edges",
+  "› warming baseline assignment · GB10…",
   "› ready ▸ press “Load the twin”",
 ];
 
@@ -36,7 +36,7 @@ export function FirstRun() {
         <div className="fr-meta">
           <div className="m">
             <div className="k">Road edges</div>
-            <div className="v">18,190</div>
+            <div className="v">81,669</div>
           </div>
           <div className="m">
             <div className="k">Egress demand</div>
@@ -44,7 +44,7 @@ export function FirstRun() {
           </div>
           <div className="m">
             <div className="k">Blast-radius</div>
-            <div className="v">766 ms</div>
+            <div className="v">7.47 s</div>
           </div>
         </div>
         <button className="btn primary" onClick={() => void loadTwin()} disabled={loading}>

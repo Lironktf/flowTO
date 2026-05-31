@@ -1,7 +1,7 @@
 .PHONY: install install-sim lint fmt test spark-test clean
 
 VENV ?= .venv
-PYTHON ?= python3.12
+PYTHON ?= python3
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
 

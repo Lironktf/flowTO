@@ -14,7 +14,7 @@ The web app is a two-mode planner's instrument:
   closures / lane reductions / one-ways / signal retiming, snapped to real roads,
   recomputed via blast-radius.
 
-Everything on the map is **real engine output** — the actual 18,190-edge Toronto
+Everything on the map is **real engine output** — the actual 81,669-edge Toronto
 graph recolored by the assignment engine, not canned data.
 
 ---
@@ -23,24 +23,36 @@ graph recolored by the assignment engine, not canned data.
 
 ```bash
 # 1. Python env + tests (CPU)
-make install          # venv + pip install -e .[dev,...]
-make test             # pytest -q  → 104 passed, 2 skipped (spark-gated)
+make install          # Python 3.12 or 3.13 venv + pip install -e ".[dev,api,data]"
+make test             # pytest -q -m "not spark" → 124 passed, 4 skipped, 2 deselected
 
-# 2. Run the API (loads the real graph, warms the demo cache)
+# 2. Run the API (loads the real graph, warms the baseline assignment)
 scripts/run_api.sh                         # http://localhost:8000  (OpenAPI at /docs)
 
 # 3. Run the frontend (proxies /api → :8000)
 cd frontend && npm install && npm run dev  # http://localhost:5173
 
 # 4. Headless demo + perf evidence
-python -m torontosim.demo.wc_surge --scenario all   # baseline → surge → fix (deterministic)
-python -m torontosim.perf.bench                     # full-city vs blast-radius (~15× speedup)
+.venv/bin/python -m torontosim.demo.wc_surge --scenario all  # baseline → surge → fix
+.venv/bin/python -m torontosim.perf.bench                    # full-city vs blast-radius
 ```
+
+`make install` uses `python3` by default. To select another supported
+interpreter explicitly, run `make install PYTHON=python3.13`.
+The CPU demo falls back to a deterministic heuristic demand model if the
+optional committed XGBoost model cannot load. To use that artifact on macOS,
+install OpenMP (`brew install libomp`) and run `.venv/bin/pip install -e ".[model]"`.
 
 Then open **:5173**, click **Load the twin**, and use the **Simulate / Edit**
 switch. The 90-second run-of-show is in [`demo/RUNBOOK.md`](demo/RUNBOOK.md);
 phase-by-phase test commands in [`docs/specs/TESTING.md`](docs/specs/TESTING.md);
 browser QA in [`docs/specs/VISUAL_TESTING.md`](docs/specs/VISUAL_TESTING.md).
+
+On the first click, the browser downloads the 81,669-edge Toronto graph, builds
+its local intersection index, and reveals the map. Baseline pressures are then
+painted as soon as the API's background assignment warm-up finishes. The API
+warms only that initial baseline; surge and fix scenarios are computed on
+demand.
 
 ---
 
@@ -88,13 +100,14 @@ system in `frontend/src/styles/flowto.css` (recreated from `design/`).
 - **Engine correctness** — Conjugate-Frank-Wolfe link flows match the **published
   SiouxFalls user-equilibrium to ~0.1%**; assignment is byte-for-byte deterministic.
 - **Blast-radius** — equals a full recompute exactly at the all-or-nothing layer;
-  **15.2× measured speedup** (11.6 s → 766 ms) on the full graph.
+  run the benchmark command for machine-specific evidence. A local macOS run
+  measured **8.12×** (60.6 s → 7.47 s) on the full graph.
 - **On the DGX Spark** — cuGraph SSSP backend matches CPU (`RAPIDS_OK`, cuDF/cuGraph
   26.04 on GB10); live `nemotron3:33b` parses NL → a valid, cited tool call (`OLLAMA_OK`).
 - **Determinism** — the three demo scenarios (`baseline → wc_surge → wc_fix`) reproduce
   identical numbers every run; the egress-area congestion melts red→green.
-- **Tests** — backend `pytest -q` = 104 passed / 2 skipped (the 2 are Spark GPU + LLM,
-  both run green on the Spark); frontend `npm run build` + 12 vitest.
+- **Tests** — backend `make test` = 124 passed / 4 skipped / 2 Spark-gated
+  deselected; frontend `npm run build` + `npm run test`.
 
 ## Status & honest deferrals
 The MVP (all 13 phases P00–P12) is complete and green. Deferred items are

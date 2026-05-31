@@ -7,6 +7,7 @@
  * h3-js, …) that isn't needed for the redesign and breaks the production bundle.
  */
 import { PathLayer } from "@deck.gl/layers";
+import { CONGESTION_SLOT } from "../lib/mapbox";
 
 export type RGB = [number, number, number];
 
@@ -46,6 +47,7 @@ export function buildTransitLayers(routes: RouteGeom[]): unknown[] {
       getColor: (r: RouteGeom) => modeColor(r.mode),
       getWidth: 2.5,
       widthUnits: "pixels",
+      slot: CONGESTION_SLOT,
       capRounded: true,
       jointRounded: true,
     }),

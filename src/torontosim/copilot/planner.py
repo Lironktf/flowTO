@@ -8,10 +8,11 @@ generic preview otherwise. Always read-only / preview-first.
 
 from __future__ import annotations
 
+import json
 import os
 
 from ..api.schemas import Intervention
-from . import rag
+from . import ollama_client, rag
 from .constraints import check_request
 from .tools import Citation, ToolCall
 
@@ -131,6 +132,113 @@ def _optimize_call(state, prompt: str) -> ToolCall:
     )
 
 
+# --- Intent router (adapted from PR #31) ------------------------------------ #
+# The model classifies intent and extracts only NAMES; resolve.py does the exact
+# graph work (name → node/edges), so no edge_id is ever invented. Whole-road and
+# A→B segment closures + a read-only congestion query.
+_COMMAND_HINTS = ("close", "reopen", "shut", "block", "congest", "worst", "bottleneck", "busiest", "between")
+_INTENT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "intent": {
+            "type": "string",
+            "enum": ["close_road", "reopen_road", "close_segment", "reopen_segment", "query_congestion", "other"],
+        },
+        "road_name": {"type": "string"},
+        "from_intersection": {"type": "string"},
+        "to_intersection": {"type": "string"},
+    },
+    "required": ["intent"],
+}
+_INTENT_SYSTEM = (
+    "Classify the user's traffic request into one intent and extract the names it mentions. "
+    "Intents: 'close_road'/'reopen_road' act on an ENTIRE named road (put its name in 'road_name', "
+    "e.g. 'Gardiner Expressway'); 'close_segment'/'reopen_segment' act only between two intersections "
+    "(put them in 'from_intersection'/'to_intersection', e.g. 'Yonge & Bloor'); 'query_congestion' asks "
+    "where traffic is worst; 'other' for anything else. Return JSON only."
+)
+
+
+def _answer_congestion(state) -> str:
+    """Read the cached baseline and describe the most congested roads (read-only)."""
+    try:
+        graph = state.baseline()["graph"]
+    except Exception as exc:  # noqa: BLE001
+        return f"I couldn't read the current congestion state ({type(exc).__name__})."
+    rows = sorted(
+        (
+            (d.get("pressure") or 0.0, d.get("road_name"))
+            for _u, _v, d in graph.edges(data=True)
+            if d.get("status") != "closed"
+            and isinstance(d.get("pressure"), (int, float))
+            and (d.get("load") or 0) > 0
+        ),
+        reverse=True,
+    )
+    seen: set = set()
+    top: list = []
+    for p, nm in rows:
+        key = nm or f"_unnamed{len(top)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        top.append((nm, p))
+        if len(top) >= 5:
+            break
+    if not top:
+        return "No roads are congested in the current baseline."
+    parts = [f"{nm or 'an unnamed segment'} (v/c {p:.1f})" for nm, p in top]
+    return "Congestion is worst on: " + "; ".join(parts) + "."
+
+
+def _try_command(prompt: str, state, model_call) -> ToolCall | None:
+    """Route close/reopen/query intents to a ToolCall via deterministic resolution.
+
+    The model only classifies intent + parses names; ``resolve.py`` maps names to
+    real edge_ids (never invented). Returns None to fall through to the planner.
+    """
+    from .resolve import road_between, road_edges_by_name
+
+    graph = getattr(state, "graph", None)
+    if graph is None:
+        return None
+    try:
+        cmd = json.loads(model_call(_INTENT_SYSTEM, prompt, _INTENT_SCHEMA))
+    except Exception:  # noqa: BLE001 — model/parse failure → not a command
+        return None
+    intent = str(cmd.get("intent", "other")).lower()
+
+    if intent == "query_congestion":
+        return ToolCall(tool="answer", rationale=_answer_congestion(state), requires_user_confirmation=False)
+
+    if intent in ("close_road", "reopen_road"):
+        res = road_edges_by_name(graph, cmd.get("road_name"))
+        op = "close_edge" if intent == "close_road" else "reopen_edge"
+        verb = "Close" if intent == "close_road" else "Reopen"
+        label = res.get("road_name", cmd.get("road_name"))
+    elif intent in ("close_segment", "reopen_segment"):
+        res = road_between(graph, cmd.get("from_intersection"), cmd.get("to_intersection"))
+        op = "close_edge" if intent == "close_segment" else "reopen_edge"
+        verb = "Close" if intent == "close_segment" else "Reopen"
+        label = f"{res.get('from_name')} → {res.get('to_name')}" if res.get("found") else None
+    else:
+        return None  # 'other' → general planner
+
+    if not res.get("found"):
+        return ToolCall(
+            tool="answer",
+            rationale=f"I couldn't resolve that — {res.get('reason', 'unknown')}.",
+            requires_user_confirmation=False,
+        )
+    interventions = [Intervention(op=op, edge_id=e) for e in res["edge_ids"]]
+    return ToolCall(
+        tool="preview_intervention",
+        interventions=interventions,
+        rationale=f"{verb} {label} ({len(interventions)} road segment(s)). Confirm to apply.",
+        requires_user_confirmation=True,
+    )
+
+
 def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> dict:
     """Return a validated, JSON-serializable copilot tool call for ``prompt``.
 
@@ -157,10 +265,19 @@ def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> di
     elif live:
         from .plan import PlanError, plan
 
-        try:
-            call = plan(prompt, state)
-        except (PlanError, OSError, ValueError):
-            call = _generic_preview()  # model unreachable / no valid call → safe default
+        call = None
+        # Close/reopen a road or A→B segment, or "where's congestion?" — the model
+        # only classifies + names, resolve.py maps to real edges (no hallucination).
+        if any(h in text for h in _COMMAND_HINTS):
+            try:
+                call = _try_command(prompt, state, ollama_client.generate)
+            except (OSError, ValueError):
+                call = None
+        if call is None:
+            try:
+                call = plan(prompt, state)
+            except (PlanError, OSError, ValueError):
+                call = _generic_preview()  # model unreachable / no valid call → safe default
     else:
         call = _generic_preview()
 

@@ -790,21 +790,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         status: { state: "recomputing", label: "Graph loaded · painting baseline…" },
         telemetry: { ...IDLE },
       });
-      try {
-        const base = await api.demoRun("baseline");
-        paintRecords(set, base.records);
-        set({ status: { state: "nominal", label: "Baseline · nominal" } });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        set({
-          error: `Toronto graph loaded, but the baseline simulation failed (${msg}).`,
-          status: { state: "blocked", label: "Graph loaded · baseline unavailable" },
-        });
-      }
-      // Populate the 24-hour predicted day so the timeline becomes a true playback
-      // axis (scrub/▶play select precomputed hours — no recompute). Best-effort: the
-      // single-frame demo baseline above already painted, so a failure here is benign.
-      void get().loadBaselineDay();
+      // Paint the baseline from the full-coverage GNN predicted day — the canonical
+      // no-edit "usual congestion" view, which loads in ~0.3s once the bundle is
+      // warm and doubles as the timeline's playback axis (scrub/▶play select
+      // precomputed hours, no recompute). We deliberately do NOT block here on the
+      // legacy /demo/run kpath engine baseline: it runs a full ~88k-edge assignment
+      // that takes minutes and used to be awaited right here, freezing the load at
+      // "painting baseline…" and blocking this GNN paint behind it.
+      await get().loadBaselineDay();
       void get().loadSavedSims();
       // Graph-grounded suggestion chips (real road names); static fallback on failure.
       void api

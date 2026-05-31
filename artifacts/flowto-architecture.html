@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowTO — Full System Architecture</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#2a3340;
+  --fg:#e6edf3; --muted:#9aa7b4; --accent:#ff5c39; --accent2:#4aa3ff;
+  --green:#3fb950; --amber:#e0a21a; --red:#d23a32; --code-bg:#11161d;
+  --maxw:860px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font:16px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{display:flex; max-width:1180px; margin:0 auto; gap:32px; padding:0 24px}
+/* sidebar TOC */
+nav.toc{
+  position:sticky; top:0; align-self:flex-start; height:100vh; overflow-y:auto;
+  width:250px; flex:0 0 250px; padding:28px 8px 60px 0; font-size:13px;
+  border-right:1px solid var(--border);
+}
+nav.toc .toc-title{font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--muted); margin:0 0 12px 6px}
+nav.toc ul{list-style:none; margin:0; padding:0}
+nav.toc ul ul{padding-left:12px}
+nav.toc a{display:block; color:var(--muted); text-decoration:none; padding:3px 6px;
+  border-radius:6px; border-left:2px solid transparent}
+nav.toc a:hover{color:var(--fg); background:var(--panel)}
+main{flex:1 1 auto; min-width:0; padding:36px 0 120px; max-width:var(--maxw)}
+/* hero */
+.hero{border:1px solid var(--border); background:linear-gradient(140deg,#171d27,#11151c);
+  border-radius:16px; padding:34px 34px 28px; margin-bottom:14px}
+.hero .badge{display:inline-block; font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--accent); border:1px solid var(--accent); border-radius:999px; padding:4px 12px; margin-bottom:16px}
+.hero h1{margin:0; font-size:34px; line-height:1.15; letter-spacing:-.02em}
+.hero .sub{color:var(--muted); margin-top:10px; font-size:15px}
+.meta{display:flex; gap:18px; flex-wrap:wrap; margin-top:18px; font-size:12.5px; color:var(--muted)}
+.meta b{color:var(--fg); font-weight:600}
+/* typography */
+h1,h2,h3,h4{line-height:1.25; letter-spacing:-.01em; scroll-margin-top:24px}
+h2{font-size:25px; margin:48px 0 14px; padding-bottom:8px; border-bottom:1px solid var(--border)}
+h3{font-size:19px; margin:30px 0 10px; color:#fff}
+h4{font-size:15px; margin:22px 0 8px; color:var(--accent2)}
+p{margin:12px 0}
+a{color:var(--accent2); text-decoration:none}
+a:hover{text-decoration:underline}
+strong{color:#fff}
+hr{border:none; border-top:1px solid var(--border); margin:40px 0}
+ul,ol{padding-left:24px}
+li{margin:5px 0}
+blockquote{margin:18px 0; padding:12px 18px; background:var(--panel);
+  border-left:3px solid var(--accent); border-radius:0 8px 8px 0; color:var(--muted)}
+blockquote strong{color:var(--accent)}
+/* code */
+code{font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13px}
+:not(pre)>code{background:var(--code-bg); border:1px solid var(--border); padding:1px 6px;
+  border-radius:5px; color:#e6c07b; white-space:nowrap}
+pre{background:var(--code-bg); border:1px solid var(--border); border-radius:12px;
+  padding:18px 20px; overflow-x:auto; line-height:1.5; margin:16px 0}
+pre code{color:#c9d1d9; font-size:12.5px; white-space:pre}
+/* tables */
+table{border-collapse:collapse; width:100%; margin:18px 0; font-size:13.5px;
+  border:1px solid var(--border); border-radius:10px; overflow:hidden}
+th,td{text-align:left; padding:9px 13px; border-bottom:1px solid var(--border); vertical-align:top}
+th{background:var(--panel2); color:#fff; font-weight:600; font-size:12px;
+  text-transform:uppercase; letter-spacing:.04em}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--panel)}
+td code{white-space:normal}
+/* footer */
+footer{margin-top:60px; padding-top:24px; border-top:1px solid var(--border);
+  color:var(--muted); font-size:13px}
+/* print */
+@media print{
+  nav.toc{display:none}
+  body{background:#fff; color:#111}
+  .wrap{display:block; max-width:100%}
+  .hero{background:#f4f5f7; border-color:#ddd}
+  .hero h1,h3,h4,strong,th{color:#111}
+  pre,:not(pre)>code{background:#f4f5f7; border-color:#ddd; color:#111}
+  pre code{color:#111}
+  a{color:#0b5}
+  h2{border-color:#ddd}
+}
+@media (max-width:880px){ nav.toc{display:none} .wrap{padding:0 16px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc">
+  <div class="toc-title">Contents</div>
+  <ul><li><a href="#table-of-contents">Table of contents</a></li><li><a href="#1-the-30-second-mental-model">The 30-second mental model</a></li><li><a href="#2-repository-layout">Repository layout</a></li><li><a href="#3-the-end-to-end-data-flow">The end-to-end data flow</a></li><li><a href="#4-data-pipeline">Data pipeline</a><ul><li><a href="#sources-modules">Sources &amp;amp; modules</a></li></ul></li><li><a href="#5-graph">Graph</a><ul><li><a href="#representation">Representation</a></li><li><a href="#builders">Builders</a></li><li><a href="#supporting-modules">Supporting modules</a></li></ul></li><li><a href="#6-demand-od">Demand &amp;amp; OD</a><ul><li><a href="#stage-1-ml-node-demand">Stage 1 — ML node demand</a></li><li><a href="#stage-2-gravity-od-calibration">Stage 2 — gravity OD + calibration</a></li></ul></li><li><a href="#7-simulation-engine">Simulation engine</a><ul><li><a href="#the-compact-network">The compact network</a></li><li><a href="#the-cost-function-bpr">The cost function (BPR)</a></li><li><a href="#engine-a-frank-wolfe-user-equilibrium-equilibriumpy">Engine A — Frank-Wolfe user equilibrium (equilibrium.py)</a></li><li><a href="#engine-b-k-path-propagation-loop-assign_pathspy-congestionpy">Engine B — k-path propagation loop (assign_paths.py + congestion.py)</a></li><li><a href="#pluggable-backends-backends">Pluggable backends (backends/)</a></li><li><a href="#orchestration-simulate_trafficpy">Orchestration (simulate_traffic.py)</a></li><li><a href="#validation-oraclepy">Validation (oracle.py)</a></li></ul></li><li><a href="#8-blast-radius">Blast-radius</a></li><li><a href="#9-optimizer">Optimizer</a></li><li><a href="#10-copilot">Copilot</a></li><li><a href="#11-transit-overlay">Transit overlay</a></li><li><a href="#12-the-backend-api">The backend API</a><ul><li><a href="#shared-state-storepy">Shared state (store.py)</a></li><li><a href="#endpoints">Endpoints</a></li><li><a href="#the-binary-tick-contract-encodingpy">The binary tick contract (encoding.py)</a></li></ul></li><li><a href="#13-the-frontend">The frontend</a><ul><li><a href="#the-app-shell">The app shell</a></li><li><a href="#state-zustand">State (Zustand)</a></li><li><a href="#the-map-mapcanvastsx">The map (MapCanvas.tsx)</a></li><li><a href="#client-decoding-apiclientts-libdecodeframets-apigraphts">Client + decoding (api/client.ts, lib/decodeFrame.ts, api/graph.ts)</a></li><li><a href="#the-two-modes">The two modes</a></li></ul></li><li><a href="#14-gnn-surrogate">GNN surrogate</a></li><li><a href="#15-performance-determinism">Performance &amp;amp; determinism</a></li><li><a href="#16-cpu-vs-gpu-vs-llm">CPU vs GPU vs LLM</a></li><li><a href="#17-build-test-deploy">Build, test, deploy</a></li><li><a href="#18-glossary">Glossary</a></li></ul>
+</nav>
+<main>
+  <div class="hero">
+    <span class="badge">Spark Hack · NVIDIA · DGX Spark / GB10</span>
+    <h1>FlowTO — Full System Architecture</h1>
+    <div class="sub">A live, 100% on-device digital twin of Toronto's road + transit network.</div>
+    <div class="meta">
+      <span><b>81,669</b> road edges</span>
+      <span><b>BPR + Frank-Wolfe</b> user equilibrium</span>
+      <span><b>~130</b> tests</span>
+      <span>Built <b>2026-05-31</b></span>
+    </div>
+  </div>
+  <h1 id="flowto-full-system-architecture">FlowTO — Full System Architecture</h1>
+<blockquote>
+<p>A live, on-device digital twin of Toronto's road + transit network. Built for the
+NVIDIA Spark Hack (DGX Spark / GB10). Everything runs locally: a principled
+traffic-assignment engine, an adaptive blast-radius recompute, an on-device
+Nemotron copilot, and a two-mode deck.gl/Mapbox planner's IDE. The hero scenario
+is FIFA WC 2026 post-match egress at BMO Field.</p>
+</blockquote>
+<p>This document explains the entire system end to end: how data flows in, how the
+graph and demand are built, how the simulation engine computes equilibrium, how the
+blast-radius recompute keeps edits interactive, how the API serves it, and how the
+frontend renders it. It is written to be read top to bottom, but each section stands
+alone.</p>
+<hr />
+<h2 id="table-of-contents">Table of contents</h2>
+<ol>
+<li><a href="#1-the-30-second-mental-model">The 30-second mental model</a></li>
+<li><a href="#2-repository-layout">Repository layout</a></li>
+<li><a href="#3-the-end-to-end-data-flow">The end-to-end data flow</a></li>
+<li><a href="#4-data-pipeline">Data pipeline — open data → Parquet/DuckDB</a></li>
+<li><a href="#5-graph">Graph — the canonical road network</a></li>
+<li><a href="#6-demand--od">Demand &amp; OD — who travels where</a></li>
+<li><a href="#7-simulation-engine">Simulation engine — user equilibrium</a></li>
+<li><a href="#8-blast-radius">Blast-radius — adaptive recompute</a></li>
+<li><a href="#9-optimizer">Optimizer — sim-as-verifier proposals</a></li>
+<li><a href="#10-copilot">Copilot — natural language → validated tool calls</a></li>
+<li><a href="#11-transit-overlay">Transit overlay</a></li>
+<li><a href="#12-the-backend-api">The backend API</a></li>
+<li><a href="#13-the-frontend">The frontend</a></li>
+<li><a href="#14-gnn-surrogate">GNN surrogate (stretch)</a></li>
+<li><a href="#15-performance--determinism">Performance &amp; determinism</a></li>
+<li><a href="#16-cpu-vs-gpu-vs-llm">CPU vs GPU vs LLM: what's gated where</a></li>
+<li><a href="#17-build-test-deploy">Build, test, deploy</a></li>
+<li><a href="#18-glossary">Glossary</a></li>
+</ol>
+<hr />
+<h2 id="1-the-30-second-mental-model">1. The 30-second mental model</h2>
+<pre><code> Toronto open data ─► datapipeline ─► graph (OSMnx baseline + Centreline loader)
+                                         │
+                          demand &amp; OD (ML node-demand + IPF/ODME)
+                                         │
+                 simulation engine ──────┴───────────────────────────┐
+                 BPR + Frank-Wolfe user equilibrium                   │
+                 (oracle-validated vs TNTP; CPU + scipy + cuGraph)    │
+                 blast-radius adaptive recompute ──────────► FastAPI ─┼─► deck.gl + Mapbox
+                                                              REST +  │   two-view IDE
+                 copilot (Nemotron via Ollama) ─────────────► WS      │   (Simulate · Edit)
+                 optimizer (heuristic, sim-as-verifier; cuOpt-ready)  │
+</code></pre>
+<p>The <strong>CPU path is the demo path</strong>. Every number you see on the map is real engine
+output over the actual <strong>81,669-edge Toronto graph</strong> — not canned data. GPU (cuGraph,
+cuOpt) and the LLM (Nemotron) live behind flags; they upgrade the demo but never block
+it. The whole stack is <strong>deterministic</strong>: identical inputs always produce identical
+outputs, which is what makes the before/after comparisons trustworthy and the tests
+hermetic.</p>
+<p>Two design rules recur everywhere and are worth internalizing up front:</p>
+<ul>
+<li><strong>Deterministic by construction.</strong> No wall-clock seeding of model state, stable
+  sort orders, fixed tie-breaks in every shortest-path backend, timestamps passed in
+  rather than read from the clock. This is why CPU/scipy/GPU backends produce bit-for-bit
+  identical assignments.</li>
+<li><strong>Graceful degradation.</strong> Every accelerated or external dependency has a local
+  fallback: GPU → scipy → CPU; XGBoost → deterministic heuristic; live Nemotron →
+  deterministic router; real GTFS → hand-authored demo routes. The demo always runs.</li>
+</ul>
+<hr />
+<h2 id="2-repository-layout">2. Repository layout</h2>
+<pre><code>flowTO/
+├── src/torontosim/            # the real Python package (installable: `pip install -e .`)
+│   ├── datapipeline/          # fetch (CKAN/GTFS/weather/restrictions) → Parquet + DuckDB + manifest
+│   ├── graph/                 # canonical road graph: OSMnx + Centreline, capacity calibration, schema
+│   ├── model/                 # ML node-demand → gravity OD → IPF/Furness → ODME → TTS/Census seed
+│   ├── simulation/            # BPR + Frank-Wolfe UE; CPU/scipy/GPU backends; TNTP oracle
+│   │   └── backends/          # cpu.py (heap Dijkstra), scipy_backend.py, gpu.py (cuGraph)
+│   ├── blastradius/           # affected-OD detection + bounded cones + adaptive subgraph recompute
+│   ├── optimizer/             # heuristic proposals scored by running the sim; cuOpt client
+│   ├── copilot/               # Nemotron NL → validated tool calls; bylaw checker; local RAG
+│   ├── transit/               # GTFS → route lines + scheduled vehicle trajectories
+│   ├── perf/                  # timing harness + full-city vs blast-radius benchmark
+│   ├── demo/                  # FIFA WC match-day surge + the three demo scenarios
+│   └── api/                   # FastAPI: scenario CRUD, run/preview/compare, binary WS frames
+├── src/{graph,model,simulation}/   # LEGACY pre-restructure copies (superseded by torontosim/*)
+├── frontend/                  # React + Vite + TS; deck.gl + Mapbox + Zustand; landing + app
+├── models/                    # demand_model.pkl (XGBoost) + gnn/ (GraphSAGE surrogate)
+├── data/                      # graph JSON, raw/baked datasets, training CSVs, bench results
+├── docs/                      # specs (00–12), research notes, this file
+├── demo/                      # RUNBOOK.md + scenario JSON fixtures
+├── scripts/                   # run_api.sh, run_frontend.sh, spark/* SSH harness
+└── pyproject.toml             # package metadata + optional-dependency groups
+</code></pre>
+<blockquote>
+<p><strong>Note on <code>src/graph</code>, <code>src/model</code>, <code>src/simulation</code>:</strong> these are pre-"P00 restructure"
+copies that predate the consolidation into the <code>torontosim</code> package. The canonical,
+imported-everywhere code lives under <code>src/torontosim/</code>. When in doubt, follow the
+<code>torontosim</code> import path — that's what <code>pyproject.toml</code> packages and what the API,
+tests, and frontend talk to.</p>
+</blockquote>
+<p>The package is configured in <code>pyproject.toml</code> with <code>package-dir = {"" = "src"}</code> and
+declares <strong>optional-dependency groups</strong> that map exactly onto the CPU/GPU/LLM gating:
+<code>dev</code>, <code>data</code>, <code>sim</code> (AequilibraE oracle), <code>model</code> (XGBoost), <code>gpu</code> (cudf/cugraph-cu13,
+Spark only), <code>gnn</code> (torch + PyG), <code>ai</code> (ollama + sentence-transformers + chromadb,
+Spark only), <code>api</code> (fastapi/uvicorn/pydantic), and <code>transit</code> (gtfs_kit).</p>
+<hr />
+<h2 id="3-the-end-to-end-data-flow">3. The end-to-end data flow</h2>
+<p>A single trip through the system, from raw bytes to a colored road on screen:</p>
+<ol>
+<li><strong>Ingest.</strong> <code>datapipeline</code> fetches Toronto open data (Centreline, Intersections, TMC
+   counts, signals, bridges, neighbourhoods), GTFS feeds (TTC/GO/UP), live road
+   restrictions, and ECCC weather. It normalizes everything to Parquet + a DuckDB
+   catalog + a SHA-256 lineage manifest.</li>
+<li><strong>Build the graph.</strong> <code>graph</code> turns either the committed OSMnx JSON (default,
+   demo-safe) or the baked Centreline Parquet into a canonical NetworkX <code>MultiDiGraph</code>
+   with per-edge capacity, speed, free-flow time, lanes, geometry, and per-field
+   confidence labels. TMC peaks calibrate capacity upward where observed flow exceeds
+   the model.</li>
+<li><strong>Predict demand.</strong> <code>model.predict_node_demand</code> runs a weather/time-aware ML model
+   (XGBoost, or a deterministic heuristic fallback) to estimate per-intersection
+   throughput for a given <code>{hour, day_of_week, month, weather}</code> context.</li>
+<li><strong>Build OD.</strong> <code>model.generate_od_matrix</code> converts node demand into an
+   origin→destination trip table via a time-of-day-biased gravity model, optionally
+   balanced with IPF/Furness and grounded against observed counts with ODME.</li>
+<li><strong>Assign.</strong> <code>simulation</code> loads OD onto the network and solves for <strong>user
+   equilibrium</strong> (BPR cost function, Frank-Wolfe/Conjugate-FW), or runs the faster
+   k-path propagation loop. Output: per-edge <code>load</code>, <code>pressure</code>, <code>current_time_min</code>,
+   <code>risk</code>.</li>
+<li><strong>Edit &amp; recompute.</strong> A planner closes a road or boosts demand. <code>blastradius</code>
+   detects exactly which OD pairs are affected, builds a bounded subgraph around the
+   change, and reroutes only those — interactive instead of re-solving all of Toronto.</li>
+<li><strong>Serve.</strong> <code>api</code> (FastAPI) exposes scenario CRUD, run/preview/compare, the WC demo,
+   copilot, optimizer, and transit, plus a <strong>binary WebSocket tick stream</strong>.</li>
+<li><strong>Render.</strong> The frontend uploads geometry once (keyed by edge index), then streams
+   compact 17-byte-per-edge frames and recolors the deck.gl <code>PathLayer</code> by pressure —
+   React never touches the per-tick data.</li>
+</ol>
+<p>Everything after step 2 is keyed off a single shared, read-only baseline graph held in
+the API's <code>AppState</code>, so all scenarios compare against the same reference.</p>
+<hr />
+<h2 id="4-data-pipeline">4. Data pipeline</h2>
+<p><strong>Package:</strong> <code>src/torontosim/datapipeline/</code> · <strong>Spec:</strong> <code>docs/specs/01-data-pipeline.md</code></p>
+<p>A three-verb CLI (<code>python -m torontosim.datapipeline {fetch,bake,verify}</code>) turns live
+City-of-Toronto open data into a verifiable offline store.</p>
+<h3 id="sources-modules">Sources &amp; modules</h3>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ckan.py</code></td>
+<td>City of Toronto CKAN portal client. <code>package_show()</code>, <code>resolve_resource(pkg, fmt, name_contains=...)</code> (survives resource-UUID renames), <code>dump_url()</code>, <code>datastore_pages()</code> (paginated streaming), <code>download_file()</code> (1 MB chunks, browser UA — required by City endpoints).</td>
+</tr>
+<tr>
+<td><code>gtfs.py</code></td>
+<td>Static GTFS feeds. A frozen <code>GtfsFeed</code> dataclass + <code>FEEDS</code> registry for <code>ttc</code> (via CKAN package <code>ttc-routes-and-schedules</code>), <code>go</code> and <code>up</code> (direct Metrolinx zip URLs). <code>fetch_feed(key, dest, date_tag=...)</code>.</td>
+</tr>
+<tr>
+<td><code>restrictions.py</code></td>
+<td>Live CART road-closures feed (<code>secure.toronto.ca/.../road_restrictions/v3</code>). <code>parse()</code> normalizes epoch-ms timestamps and geoPolylines into shapely <code>LineString</code>s; <code>fetch()</code> pulls live closures to simulate.</td>
+</tr>
+<tr>
+<td><code>weather.py</code></td>
+<td>ECCC hourly observations. <code>parse_filename()</code> and <code>fix_filenames()</code> repair malformed names like <code>weather_2023 6_00.csv</code>; <code>categorize()</code> bins conditions into <code>clear/rain/snow/fog/storm</code> (with a temp ≤ −2 °C → snow fallback).</td>
+</tr>
+<tr>
+<td><code>bake.py</code></td>
+<td>Normalize raw CSV/GeoJSON → Parquet (WKT geometry, EPSG:4326 metadata) + a DuckDB catalog (one view per Parquet). Per-dataset bakers (<code>bake_centreline</code>, <code>bake_tmc</code>, …) coerce types. <code>verify()</code> checks row counts against <code>ROWCOUNT_FLOORS</code> (centreline ≥ 60k, tmc ≥ 300k, …).</td>
+</tr>
+<tr>
+<td><code>manifest.py</code></td>
+<td>Lineage. <code>ManifestEntry</code> / <code>Manifest</code> record source URL, CKAN UUID, <code>fetched_at</code> (ISO-8601, <strong>passed in</strong> for determinism), <code>sha256</code>, and the correct open-data license attribution per source.</td>
+</tr>
+<tr>
+<td><code>cli.py</code></td>
+<td><code>fetch</code> (network) → <code>bake</code> (offline) → <code>verify</code> (floors). The <code>CKAN_DATASETS</code> catalog maps logical names to <code>(package_id, format)</code>. Data dir is <code>TS_DATA_DIR</code> (default <code>&lt;repo&gt;/data</code>).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output layout:</strong> <code>data/raw/&lt;name&gt;.&lt;ext&gt;</code> → <code>data/parquet/&lt;name&gt;.parquet</code> +
+<code>data/catalog.duckdb</code> + <code>data/manifest.json</code>; GTFS bakes to <code>data/transit/{agency}_{date}.json</code>.</p>
+<p>The pipeline is split deliberately: <strong><code>fetch</code> is the only step that touches the
+network</strong>, so <code>bake</code>/<code>verify</code> (and all tests) run hermetically offline against the raw
+cache.</p>
+<hr />
+<h2 id="5-graph">5. Graph</h2>
+<p><strong>Package:</strong> <code>src/torontosim/graph/</code> · <strong>Specs:</strong> <code>docs/specs/02-graph.md</code>, <code>docs/graph-model-and-api.md</code></p>
+<p>The canonical road network is a NetworkX <strong><code>MultiDiGraph</code></strong> (parallel edges allowed,
+directed). Two builders feed the <em>same</em> schema so everything downstream is
+source-agnostic.</p>
+<h3 id="representation">Representation</h3>
+<ul>
+<li><strong>Nodes</strong> = intersections. Attributes: <code>x</code>/<code>lon</code>, <code>y</code>/<code>lat</code>, <code>name</code> (synthesized from
+  incident streets, e.g. "King Street West &amp; Spadina Avenue"), <code>degree</code>.</li>
+<li><strong>Edges</strong> = directed street segments, keyed by a deterministic <code>edge_id = "{u}-{v}-{k}"</code>.
+  Attributes: <code>road_name</code>, <code>road_class</code> (<code>motorway</code>/<code>primary</code>/<code>secondary</code>/<code>tertiary</code>/
+  <code>residential</code>/<code>service</code>/<code>default</code>), <code>length_m</code>, <code>one_way</code>, <code>speed_kmh</code>, <code>lanes</code>,
+  <code>capacity</code> (veh/h, must be &gt; 0), <code>base_time_min</code> (free-flow), <code>current_time_min</code>
+  (congested; <code>"Infinity"</code> when closed), <code>status</code> (<code>open</code>/<code>closed</code>), <code>load</code>, <code>pressure</code>
+  (= load/capacity), <code>geometry</code> (<code>[[lat, lon], …]</code>), <code>centreline_id</code> (TCL join key), and
+  a <strong><code>confidence</code></strong> dict labeling each of <code>{lanes, speed_kmh, capacity, one_way}</code> as
+  <code>observed | inferred | default | manual</code>.</li>
+</ul>
+<h3 id="builders">Builders</h3>
+<ul>
+<li><strong><code>build_graph.py</code> (OSMnx, default).</strong> <code>download_graph()</code> pulls from OpenStreetMap;
+  <code>enrich_graph()</code> fills speed/lanes/capacity from per-class defaults in <code>config.py</code>
+  (<code>VEHICLES_PER_HOUR_PER_LANE</code>, <code>DEFAULT_SPEED_KMH</code>, <code>DEFAULT_LANES</code>) and computes
+  <code>base_time_min = length_km / speed_kmh × 60</code>. Capacity = lanes × per-lane throughput.</li>
+<li><strong><code>centreline_loader.py</code> (Toronto Centreline, opt-in).</strong> <code>build_centreline_graph()</code>
+  joins TCL segments to the Intersections file, maps <code>FEATURE_CODE_DESC</code> to road class
+  (<code>expressway → motorway</code>, <code>major arterial → primary</code>, …), honors <code>ONEWAY_DIR_CODE</code>
+  (0/1/−1) to add one or both directions, and attaches bridge clearances. Preserves
+  <code>centreline_id</code> for TMC matching.</li>
+</ul>
+<h3 id="supporting-modules">Supporting modules</h3>
+<ul>
+<li><strong><code>schema.py</code></strong> — single source of truth. <code>CANONICAL_EDGE_FIELDS</code>, <code>validate_graph()</code>
+  (raises <code>SchemaError</code> on missing/null/invalid fields or capacity ≤ 0), <code>make_edge()</code>,
+  and <code>ensure_confidence()</code> to backfill legacy graphs.</li>
+<li><strong><code>calibrate_capacity.py</code></strong> — <code>calibrate(graph, tmc_records, min_gain=1.05)</code> only
+  <em>raises</em> capacity where observed TMC peak hourly flow (max 15-min interval × 4) exceeds
+  modeled capacity by &gt; 5 %, and re-labels that field <code>observed</code>.</li>
+<li><strong><code>mutations.py</code></strong> — in-place "what-if" ops the simulator and API share:
+  <code>close_edge</code> (status=closed, capacity=0, time=∞, stashing prior values for reversal),
+  <code>reopen_edge</code>, <code>change_capacity</code>, <code>add_edge</code>, <code>remove_edge</code>, <code>close_node</code>.</li>
+<li><strong><code>repair.py</code></strong> — <code>heal_oneway_arterials()</code> converts unreliable OSM one-ways to two-way
+  (default <code>mode="all"</code>, or conservative <code>mode="named"</code>) so closing a segment can't
+  silently strand trips.</li>
+<li><strong><code>routing.py</code></strong> — the <code>edge_id → (u, v, k)</code> index (<code>build_edge_index</code>), nearest-node /
+  nearest-edge spatial lookups, <code>find_shortest_path</code>, and JSON I/O
+  (<code>export_graph_json</code> / <code>import_graph_json</code>, which converts ∞ ↔ <code>"Infinity"</code>).</li>
+<li><strong><code>config.py</code></strong> — <code>normalise_road_class</code>, <code>haversine_m</code>, <code>base_time_min</code>, plus the
+  shared <code>BPR_PARAMS</code> (α, β per road class).</li>
+</ul>
+<hr />
+<h2 id="6-demand-od">6. Demand &amp; OD</h2>
+<p><strong>Package:</strong> <code>src/torontosim/model/</code> · <strong>Specs:</strong> <code>docs/specs/03-demand-and-od.md</code></p>
+<p>This subsystem answers "how many vehicles want to go from where to where, right now?"
+in two stages: per-node demand, then origin→destination pairs.</p>
+<h3 id="stage-1-ml-node-demand">Stage 1 — ML node demand</h3>
+<p><code>features.py</code> defines a frozen 11-feature schema (<code>FEATURE_ORDER</code>) shared by training
+and inference so they can never drift: <code>lat, lon, hour, day_of_week, month, is_weekend,
+weather_code, road_degree, distance_to_downtown, near_highway, road_class_rank</code>.
+Static per-node features are precomputed once per graph.</p>
+<ul>
+<li><strong><code>train_demand_model.py</code></strong> trains a gradient-boosted regressor on <code>vehicle_count</code>.
+  Backend is XGBoost (<code>device=cuda</code> on the Spark) or sklearn <code>HistGradientBoostingRegressor</code>.
+  <code>train_with_sweep()</code> does a resumable randomized hyperparameter search. Synthetic data
+  can be generated when real counts are unavailable. The artifact is a joblib payload
+  <code>{model, feature_order, target, kind, metrics}</code> at <code>models/demand_model.pkl</code>.</li>
+<li><strong><code>predict_node_demand.py</code></strong> loads that model and returns <code>{node_id: demand}</code> for a time
+  context. Three-way fallback governed by <code>FLOWTO_DEMAND_MODEL</code>: <strong>GNN</strong> (if available) →
+  <strong>XGBoost</strong> (the committed pkl) → <strong><code>HeuristicDemandModel</code></strong> — a deterministic
+  closed-form formula (<code>base × class_factor × downtown_factor × highway_factor ×
+  degree_factor × rush_factor × weather_factor</code>) that mirrors the synthetic data
+  generator exactly, so the demo never depends on a trained artifact loading.</li>
+<li><strong><code>ingest_real_data.py</code></strong> builds the training CSVs from real TMC counts + weather,
+  snapping each sensor to the nearest graph node via a cKD-tree and splitting train/val
+  <strong>by intersection</strong> (no leakage).</li>
+</ul>
+<h3 id="stage-2-gravity-od-calibration">Stage 2 — gravity OD + calibration</h3>
+<p><code>generate_od_matrix.py</code> turns node demand into <code>[{origin, destination, trips}, …]</code>:</p>
+<ul>
+<li><strong>Gravity core:</strong> <code>OD(i,j) = origin_strength(i) × destination_strength(j) / (1 + dist_km)</code>,
+  with <strong>time-of-day biasing</strong> (AM peak pulls residential→downtown; PM peak pushes
+  downtown→outer; weekend evenings add a nightlife pull). Restricted to the largest
+  strongly-connected component, top ~1,500 origins/dests, trip lengths ∈ [0.4, 25] km,
+  scaled to a nominal total (~100k).</li>
+<li><strong><code>calibration="ipf"</code></strong> runs Furness biproportional fitting (<code>ipf.py</code>) to match
+  production/attraction marginals; structural zeros stay zero.</li>
+<li><strong><code>calibration="ipf_counts"</code></strong> additionally runs <strong>ODME</strong> (<code>odme.py</code>): all-or-nothing
+  assign the seed OD to links, compute per-link observed/assigned ratios, and nudge each
+  OD pair by the (damped) geometric mean of the ratios along its path — monotone error
+  reduction, regularized toward the seed.</li>
+</ul>
+<p>Supporting modules: <code>odme_calibrate.py</code> (node-throughput-based ODME against sensor
+counts), <code>timeofday.py</code> (TTS peak-hour factoring), <code>tts_seed.py</code> (survey/Census gravity
+prior exploded to nodes), <code>validate_past.py</code> (post-hoc predicted-vs-observed accuracy).</p>
+<hr />
+<h2 id="7-simulation-engine">7. Simulation engine</h2>
+<p><strong>Package:</strong> <code>src/torontosim/simulation/</code> · <strong>Spec:</strong> <code>docs/specs/04-simulation-engine.md</code></p>
+<p>The core. Given a graph and an OD table, compute the flow on every link. There are two
+engines and they share one congestion model and one set of pluggable shortest-path
+backends.</p>
+<h3 id="the-compact-network">The compact network</h3>
+<p><code>network.py</code> converts the NetworkX <code>MultiDiGraph</code> into a <code>Network</code> dataclass: parallel
+NumPy arrays (<code>tail</code>, <code>head</code>, <code>t0</code>, <code>cap</code>, <code>alpha</code>, <code>beta</code>) plus a <strong>CSR adjacency</strong>
+(<code>indptr</code>, <code>order</code>) built with a stable sort for determinism. This is the form every
+backend operates on — cache-friendly and vectorizable.</p>
+<h3 id="the-cost-function-bpr">The cost function (BPR)</h3>
+<p><code>bpr.py</code> implements the Bureau of Public Roads volume-delay function:</p>
+<pre><code>t(x) = t0 · (1 + α·(x/c)^β),   default α = 0.15, β = 4.0,   t = ∞ if c ≤ 0
+</code></pre>
+<p>α/β are overridable per road class (freeways tolerate higher v/c; arterials degrade
+sooner). It's strictly convex, which is what guarantees a unique equilibrium.</p>
+<h3 id="engine-a-frank-wolfe-user-equilibrium-equilibriumpy">Engine A — Frank-Wolfe user equilibrium (<code>equilibrium.py</code>)</h3>
+<p>Solves Beckmann's program <code>min Σ ∫₀^xᵢ tᵢ(v) dv</code> — the state where no driver can find a
+faster route (Wardrop's first principle). Three variants via the <code>algorithm</code> arg: <code>msa</code>
+(method of successive averages), <code>fw</code> (plain Frank-Wolfe), and <strong><code>cfw</code> (Conjugate
+Frank-Wolfe, the default)</strong> — which uses the diagonal BPR Hessian to pick a conjugate
+descent direction and reaches AequilibraE-grade accuracy in far fewer iterations.</p>
+<p>Each iteration:
+1. All-or-nothing load <code>y</code> on current costs (via the selected backend).
+2. Relative gap <code>rgap = (Σ t·x − Σ t·y) / (Σ t·x)</code>; stop when <code>rgap ≤ target</code>.
+3. Descent direction <code>d = y − x</code> (or the conjugate blend).
+4. <strong>Exact line search</strong> by bisection on the Beckmann derivative <code>Σ dᵢ·tᵢ(xᵢ + λdᵢ)</code>.
+5. <code>x ← x + λd</code>.</p>
+<p>Initialization is a free-flow all-or-nothing load (x = 0 is infeasible). Closed/zero-cap
+links get infinite cost and are never chosen. <code>assign_equilibrium()</code> wraps this and
+writes <code>load</code> back onto the graph.</p>
+<h3 id="engine-b-k-path-propagation-loop-assign_pathspy-congestionpy">Engine B — k-path propagation loop (<code>assign_paths.py</code> + <code>congestion.py</code>)</h3>
+<p>The original, intuitive engine and the API default. For a fixed number of iterations
+(4): route each origin's demand over its <strong>top-k shortest paths</strong> (k=3), splitting demand
+inversely to path travel time, then recompute congestion and repeat — so each pass routes
+on the <em>previous</em> pass's congested times. Path diversity comes from penalizing
+already-used edges (<code>PENALTY = 3.0</code>). <code>congestion.py</code> maps load → <code>pressure = load/cap</code>
+→ <code>current_time_min</code> (either the BPR formula or a legacy piecewise multiplier) → a <code>risk</code>
+band, applying a weather speed factor.</p>
+<h3 id="pluggable-backends-backends">Pluggable backends (<code>backends/</code>)</h3>
+<p>All implement <code>all_or_nothing(net, costs, od_by_origin)</code> and produce <strong>bit-for-bit
+identical</strong> results via shared tie-break rules (sorted origins; heap ties broken by
+node id; equal-cost path ties broken by lowest link index, implemented as an
+<code>index × 1e-9</code> epsilon in the vectorized backends):</p>
+<ul>
+<li><strong><code>cpu.py</code></strong> — heap Dijkstra over the CSR graph. Always available; the correctness anchor.</li>
+<li><strong><code>scipy_backend.py</code></strong> — <code>scipy.sparse.csgraph.dijkstra</code> over collapsed parallel edges,
+  all origins in one C call. ~30× faster than the Python heap on the Toronto graph; used
+  for auto-calibration.</li>
+<li><strong><code>gpu.py</code></strong> — cuGraph SSSP with cached topology and a virtual super-source for
+  multi-source cones. Spark-only; falls back to CPU on any import/runtime error.</li>
+</ul>
+<p><code>backends/__init__.all_or_nothing()</code> is the dispatcher; <code>available_backends()</code> reports
+what's installed.</p>
+<h3 id="orchestration-simulate_trafficpy">Orchestration (<code>simulate_traffic.py</code>)</h3>
+<p><code>simulate_traffic(graph, od, engine=..., congestion_model=..., backend=...)</code> is the front
+door. It optionally <strong>auto-calibrates</strong> total demand to a target mean pressure (0.55) —
+exploiting that pressure is linear in demand under fixed routing, so one assignment pass
+sets the scale. It captures per-iteration <strong>frames</strong> for animation (the equilibrium engine
+replays its converged flow as a load ramp so the frames build deterministically to the
+true answer), and returns a rich dict: <code>summary</code> (assigned trips, active edges, average
+pressure, high-risk/severe/closed counts, stranded trips), <code>frames</code>, the mutated <code>graph</code>,
+and equilibrium diagnostics (<code>rgap</code>, <code>converged</code>).</p>
+<p><code>simulate_scenario(graph, od, scenario, recompute="full"|"blast")</code> applies mutations
+then re-solves — either the whole network (always correct) or just the affected
+subgraph (§8). <code>compare_simulations()</code> diffs two results into a summary delta + the
+most-impacted edges.</p>
+<h3 id="validation-oraclepy">Validation (<code>oracle.py</code>)</h3>
+<p>The engine's correctness is anchored on the <strong>TNTP</strong> academic fixtures (e.g. SiouxFalls):
+<code>oracle.py</code> parses TNTP net/trips/flow files, the test suite solves UE, and the
+Conjugate-FW link flows are checked against the <em>published</em> equilibrium — plus an
+optional AequilibraE cross-check (import-skipped when not installed). This is "verified,
+not asserted."</p>
+<hr />
+<h2 id="8-blast-radius">8. Blast-radius</h2>
+<p><strong>Package:</strong> <code>src/torontosim/blastradius/</code> · <strong>Spec:</strong> <code>docs/specs/05-blast-radius.md</code></p>
+<p>The problem: re-solving all of Toronto for every click is too slow to feel interactive.
+The insight: a local change (close one edge, throttle one corridor) only changes shortest
+paths in a bounded region. Blast-radius recomputes <em>exactly that region</em> and proves it
+equals the full recompute for the affected OD pairs.</p>
+<ol>
+<li><strong>Affected-OD detection (<code>pathcache.py</code>).</strong> Before any edit, <code>build_path_cache()</code>
+   caches every OD pair's baseline shortest path and builds a <strong>reverse index</strong>
+   <code>edge → set(OD)</code>. On a change, <code>PathCache.affected_ods(changed_links)</code> is an O(1)
+   set lookup: exactly the OD pairs whose baseline path used a changed link.</li>
+<li><strong>Bounded cones (<code>cones.py</code>).</strong> <code>bounded_cone()</code> grows a cost-bounded Dijkstra
+   <strong>downstream</strong> from the changed links' heads and <strong>upstream</strong> from their tails
+   (default radius 8 free-flow minutes). <code>highway_core()</code> adds the endpoints of the
+   top-capacity (90th-percentile) edges so long detours via expressways aren't missed.
+   The union is the candidate subgraph.</li>
+<li><strong>Reroute &amp; widen (<code>recompute.py</code>).</strong> <code>blast_assign()</code> reroutes only the affected OD
+   pairs over the subgraph (<code>_reroute_affected</code>), and if boundary flow shifts by &gt; 8 %,
+   <strong>adaptively widens</strong> the radius (up to 20 min). It returns a <code>BlastResult</code> with the
+   new per-link flow, the affected OD set, the subgraph node/link sets, and <code>stats</code>
+   (subgraph fraction, counts) — which the frontend surfaces as "1,284 edges affected."</li>
+</ol>
+<p>Both CPU (heap) and GPU (cuGraph SSSP with a virtual super-source) paths exist; GPU falls
+back to CPU. <code>tests/test_blastradius_parity.py</code> asserts blast output matches full
+recompute on the affected region.</p>
+<hr />
+<h2 id="9-optimizer">9. Optimizer</h2>
+<p><strong>Package:</strong> <code>src/torontosim/optimizer/</code> · <strong>Spec:</strong> <code>docs/specs/10-optimizer.md</code></p>
+<p>Auto-proposes interventions that improve a metric, scored by <strong>running the actual
+simulation</strong> (sim-as-verifier) rather than a learned proxy — so a proposal can never look
+good on paper but fail in the engine.</p>
+<ul>
+<li><strong><code>problem.py</code></strong> — <code>OptimizeProblem</code> (objective default <code>average_pressure</code>, <code>budget</code>,
+  <code>max_actions</code>, <code>candidate_k</code>, <code>capacity_multiplier</code>, allowed <code>action_space</code>).</li>
+<li><strong><code>constraints.py</code></strong> — <code>mask_action()</code> hard-rejects illegal moves: no through-capacity
+  boosts on residential/local streets (cut-through harm), no transit-priority corridor
+  changes, no full motorway closure (emergency access). <code>ACTION_COST</code> + <code>within_budget()</code>
+  enforce the capital budget.</li>
+<li><strong><code>search.py</code></strong> — <code>greedy_search()</code>: take the top-k congested edges, generate
+  capacity-uplift candidates, mask the illegal ones, <strong>score each by calling
+  <code>simulate_scenario</code></strong>, sort by improvement (tie-break by edge_id), and greedily add
+  improving actions within budget/<code>max_actions</code>. Returns <code>{baseline_metric, best_metric,
+  improvement, plan, plan_cost, candidates}</code> and is <strong>never worse than baseline</strong> (empty
+  plan if nothing helps).</li>
+<li><strong><code>cuopt_client.py</code></strong> — optional NVIDIA cuOpt client for VRP sub-problems (Spark only);
+  raises <code>CuOptUnavailable</code> and the heuristic carries the demo.</li>
+</ul>
+<hr />
+<h2 id="10-copilot">10. Copilot</h2>
+<p><strong>Package:</strong> <code>src/torontosim/copilot/</code> · <strong>Spec:</strong> <code>docs/specs/09-copilot.md</code></p>
+<p>Turns plain-language planner requests into <strong>validated, schema-constrained tool calls</strong>,
+read-only and preview-first by default, with hard bylaw guardrails and cited policy.</p>
+<p>The flow (<code>planner.plan_intervention</code> → <code>plan.plan</code>):</p>
+<ol>
+<li><strong>Deterministic router</strong> handles rehearsed intents without any LLM — a blocked
+   closure ("close Lakeshore both ways") returns a <code>refuse</code> with bylaw citations; the
+   hero "ease gridlock near BMO Field" returns a pre-built mitigation plan.</li>
+<li><strong>Live model (optional, Spark-gated).</strong> Otherwise, POST to Ollama at
+   <code>localhost:11434</code> running <strong><code>nemotron3:33b</code></strong> with <code>temperature=0</code>,
+   <code>format=tool_call_json_schema()</code> (schema-constrained decoding), and a system prompt
+   that mandates read-only-by-default and cite-your-policies.</li>
+<li><strong>Schema validation.</strong> The response is parsed into a Pydantic <code>ToolCall</code> (one of
+   <code>preview_intervention</code>, <code>create_scenario</code>, <code>run_simulation</code>, <code>compare_scenarios</code>,
+   <code>retrieve_policy</code>, <code>explain_edge</code>, <code>refuse</code>), with up to 3 re-asks on invalid JSON.</li>
+<li><strong>Semantic checks.</strong> Every <code>intervention.edge_id</code> must exist in <code>state.edge_index</code>;
+   <code>constraints.check_request()</code> runs the deterministic <strong>bylaw checker</strong> (e.g. fully
+   closing Lakeshore violates the fire-route code and TTC replacement-bus bylaw → returns
+   <code>refuse</code> with <code>Violation</code>s); any state-changing call is forced to
+   <code>requires_user_confirmation=True</code>.</li>
+<li><strong>RAG grounding (<code>rag.py</code>).</strong> A local TF-IDF bag-of-words retriever over a curated
+   bylaw corpus (<code>copilot/corpus/*.md</code>) attaches the top policy docs to the response —
+   no embeddings server required (the heavier <code>sentence-transformers</code>/<code>chromadb</code> stack is
+   the Spark-only upgrade).</li>
+</ol>
+<p><code>explain.py</code> produces deterministic natural-language summaries of compare deltas
+("Average network pressure eased by X…"). The <code>Intervention</code> schema is <strong>shared</strong> with
+the API (<code>api/schemas.py</code>), so the copilot emits exactly the objects the API validates
+and applies — plan → preview → confirm → apply.</p>
+<hr />
+<h2 id="11-transit-overlay">11. Transit overlay</h2>
+<p><strong>Package:</strong> <code>src/torontosim/transit/</code> · <strong>Spec:</strong> <code>docs/specs/08-transit-overlay.md</code></p>
+<p>A visual overlay (not part of the assignment): scheduled transit lines and moving
+vehicles.</p>
+<ul>
+<li><strong><code>gtfs_reader.py</code></strong> — stdlib reader for real GTFS zips/dirs. <code>route_lines()</code> builds
+  per-route geometry from <code>shapes.txt</code> (falling back to ordered stop coords);
+  <code>trip_trajectories()</code> joins <code>stop_times</code> → <code>stops</code>; <code>build_feed_cache()</code> writes
+  <code>data/transit/{agency}_{date}.json</code>; <code>load_cached_feed()</code> reads it (falling back to the
+  newest cached date).</li>
+<li><strong><code>trajectories.py</code></strong> — <code>build_trajectory()</code> produces <code>{path, timestamps}</code> with
+  <strong>monotonic</strong> seconds-since-midnight (handles GTFS &gt; 24:00 times); <code>interpolate_position()</code>
+  linearly interpolates a vehicle's <code>[lng, lat]</code> at any time t.</li>
+<li><strong><code>routes.py</code></strong> — <code>ROUTE_TYPE_MODE</code> maps GTFS route types to modes (streetcar/subway/
+  bus/rail/air-rail) for coloring; ships a hand-authored <code>DEMO_ROUTES</code> (509 Harbourfront,
+  511 Bathurst) and <code>demo_trajectories()</code> so the overlay always renders even without a
+  baked feed.</li>
+</ul>
+<p>The API prefers cached real feeds and falls back to the demo set.</p>
+<hr />
+<h2 id="12-the-backend-api">12. The backend API</h2>
+<p><strong>Package:</strong> <code>src/torontosim/api/</code> · <strong>Spec:</strong> <code>docs/specs/06-backend-api.md</code></p>
+<p>FastAPI, created by <code>create_app(state)</code>. Tests inject a tiny graph; production
+(<code>serve()</code>) loads the full Toronto graph + baseline OD once via
+<code>_bootstrap.load_default_state()</code> and shares one read-only baseline.</p>
+<h3 id="shared-state-storepy">Shared state (<code>store.py</code>)</h3>
+<ul>
+<li><strong><code>AppState</code></strong> holds the baseline <code>graph</code>, baseline <code>od_matrix</code>, the
+  <code>weather</code>/<code>time_context</code>, a <strong>stable <code>edge_ids</code> list</strong> (string id → the u32 index used
+  by binary frames) and its inverse <code>edge_index</code>, and a cached <code>baseline()</code> run (the
+  compare reference).</li>
+<li><strong><code>ScenarioStore</code></strong> is per-scenario CRUD + <code>run</code>/<code>preview</code>/<code>compare</code> orchestration over
+  <code>simulate_scenario</code>. <code>edge_records(state, graph)</code> builds the <code>(idx, load, eff_speed,
+  pressure, closed)</code> tuples — note effective speed is derived as <code>speed × base/current</code>.</li>
+</ul>
+<h3 id="endpoints">Endpoints</h3>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /healthz</code>, <code>GET /debug/state</code></td>
+<td>health + counts</td>
+</tr>
+<tr>
+<td><code>GET /edges</code></td>
+<td>the once-uploaded edge table: <code>idx → edge_id + geometry/name/class</code></td>
+</tr>
+<tr>
+<td><code>POST/GET/PATCH/DELETE /scenarios[/{id}]</code></td>
+<td>scenario CRUD (UUID ids, optional disk snapshots)</td>
+</tr>
+<tr>
+<td><code>POST /scenarios/{id}/run</code></td>
+<td>run with <code>{engine, congestion_model, backend, recompute, iterations}</code>; validates edge ids; returns <code>summary</code> + <code>blast_stats</code> + <code>rgap</code></td>
+</tr>
+<tr>
+<td><code>POST /scenarios/{id}/preview</code></td>
+<td>run a hypothetical set <strong>without</strong> mutating stored state (asserts no scenario was added)</td>
+</tr>
+<tr>
+<td><code>GET /scenarios/{id}/compare?against=baseline</code></td>
+<td>summary delta + most-impacted edges</td>
+</tr>
+<tr>
+<td><code>GET /scenarios/{id}/records</code></td>
+<td>per-edge records of the last run (Edit-mode repaint)</td>
+</tr>
+<tr>
+<td><code>POST /copilot/plan</code>, <code>POST /copilot/explain</code></td>
+<td>copilot (501 if not installed)</td>
+</tr>
+<tr>
+<td><code>POST /optimize</code></td>
+<td>optimizer proposals (501 if not installed)</td>
+</tr>
+<tr>
+<td><code>GET /transit/{routes,trajectories}</code></td>
+<td>real cached feed → demo fallback</td>
+</tr>
+<tr>
+<td><code>GET /demo/run?scenario=baseline\|wc_surge\|wc_fix</code></td>
+<td>the FIFA WC demo on the real graph; deterministic → cached per scenario with a lock</td>
+</tr>
+<tr>
+<td><code>GET /jobs/{id}</code></td>
+<td>async job polling (<code>jobs.py</code> thread pool)</td>
+</tr>
+<tr>
+<td><code>WS /scenarios/{id}/stream</code></td>
+<td>binary tick frames, one per captured propagation frame, then close</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-binary-tick-contract-encodingpy">The binary tick contract (<code>encoding.py</code>)</h3>
+<p>The reason the UI stays at 60 fps: geometry is uploaded <strong>once</strong> via <code>/edges</code>, then each
+edge tick is packed as a fixed 17-byte little-endian record
+<code>struct("&lt;IfffB")</code> = <code>edge_idx:u32, load:f32, speed:f32, pressure:f32, closure:u8</code>,
+framed as <code>[count:u32][record × count]</code>. React never deserializes tick data — the
+typed-array store does.</p>
+<p>Startup uses a lifespan hook that <strong>warms only the baseline</strong> scenario in a daemon
+thread (warming all three would delay the first graph response); surge and fix are
+computed on demand and cached.</p>
+<hr />
+<h2 id="13-the-frontend">13. The frontend</h2>
+<p><strong>Package:</strong> <code>frontend/</code> · <strong>Specs:</strong> <code>docs/specs/07-frontend.md</code>, <code>docs/specs/VISUAL_TESTING.md</code></p>
+<p>React 18 + Vite + TypeScript, <strong>two independent HTML entries</strong> (a Vite MPA build) so the
+heavy map/3D code never bloats the marketing page:</p>
+<ul>
+<li><strong><code>index.html</code> → <code>landing/</code></strong> — the marketing landing: Framer Motion + Lenis smooth
+  scroll, react-three-fiber 3D scenes (CN Tower, World Cup trophy with image-based
+  lighting), and sections (Hero, Numbers, Scenario, TwoModes, Engine, HowItWorks, CTA).</li>
+<li><strong><code>app.html</code> → <code>main.tsx → App.tsx</code></strong> — the live planner's IDE.</li>
+</ul>
+<h3 id="the-app-shell">The app shell</h3>
+<pre><code>&lt;TopBar/&gt;      brand · Simulate|Edit tabs · status chip · dock toggles · theme
+&lt;ToolRail/&gt;    Edit tools (Closure=1, Surge=2, Select=Esc)
+&lt;LeftDock/&gt;    Saved sims (Simulate) | tool picker + scene outliner (Edit)
+&lt;MapCanvas/&gt;   Mapbox Standard basemap + deck.gl overlay (the heart)
+&lt;BottomDock/&gt;  timeline scrubber · playback · day-of-year picker · congestion chart
+&lt;RightDock/&gt;   warnings ↔ details (Simulate) · Copilot chat (Nemotron)
+&lt;StatusBar/&gt;   edges · recompute ms · subgraph edges · LLM latency · FPS · &quot;DGX Spark · GB10&quot;
+&lt;FirstRun/&gt;    boot splash → &quot;Load the twin&quot;
+</code></pre>
+<h3 id="state-zustand">State (Zustand)</h3>
+<ul>
+<li><strong><code>appStore.ts</code></strong> — the single UI store: theme/layout, machine state
+  (<code>loaded</code>/<code>recomputing</code>/<code>status</code>/<code>planStaged</code>), graph + <code>edges</code>, a <code>pressureSeq</code> nonce
+  that drives deck.gl <code>updateTriggers</code>, saved sims, Simulate selection
+  (<code>selectedRoadId</code>), Edit state (<code>activeTool</code>, <code>objects</code>, <code>pendingVertices</code>), copilot
+  log, timeline (<code>scrubberMinute</code>, <code>dayOfYear</code>, <code>playing</code>, <code>speed</code>), and telemetry.
+  Actions include <code>loadTwin</code>, <code>applyEdits</code>, <code>placeAt</code>, <code>copilotAsk</code>, <code>applyPlan</code>,
+  <code>selectRoad</code>, <code>recenter</code>, <code>toggleTilt</code>.</li>
+<li><strong><code>tickStore.ts</code></strong> — module-level <strong>typed arrays</strong> (<code>load/speed/pressure/closure</code>)
+  living <em>outside</em> React. <code>ingestFrame(buffer)</code> decodes a binary frame in place;
+  <code>consumeDirty()</code> is checked once per rAF. This is the hot path — bypassing React
+  re-renders entirely.</li>
+</ul>
+<h3 id="the-map-mapcanvastsx">The map (<code>MapCanvas.tsx</code>)</h3>
+<p>Mapbox <strong>Standard</strong> style (time-of-day lighting via <code>lightPresetForMinute()</code> from
+Toronto sunrise/sunset, early 3D buildings) with a deck.gl <code>MapboxOverlay</code> interleaved in
+the "middle" slot. Layers: the roads <code>PathLayer</code> colored by <code>pressureRamp(pressure[idx])</code>
+(green→amber→red, dark-mode aware) and widened by road class; selected-road highlight;
+closure overlays; transit routes (mode-colored, Simulate only); the BMO Field stadium
+marker; pending-closure vertices; surge demand streets + directional "➤" arrows; and
+intervention pins. <strong>Simulate</strong> mode tilts to a 3D angle (pitch 52°); <strong>Edit</strong> mode is
+top-down (pitch 0°). A recompute overlay shows Demand → Assign → Pressure → Bylaw →
+Render progress.</p>
+<h3 id="client-decoding-apiclientts-libdecodeframets-apigraphts">Client + decoding (<code>api/client.ts</code>, <code>lib/decodeFrame.ts</code>, <code>api/graph.ts</code>)</h3>
+<p><code>client.ts</code> wraps every REST endpoint and <code>connectStream(scenarioId)</code> opens the
+WebSocket; <code>decodeFrameInto()</code> mirrors the Python 17-byte format exactly. <code>graph.ts</code>
+reconstructs an intersection graph client-side (vertices via coordinate hashing) to power
+Edit-mode geometry: <code>corridorBetween()</code> (Dijkstra by road length, for closures),
+<code>streetsByDirection()</code>/<code>compassOf()</code> (for surge direction), and <code>describeSegment()</code>
+(human-readable "Road — From → To" labels, optionally upgraded via Mapbox Tilequery).</p>
+<h3 id="the-two-modes">The two modes</h3>
+<ul>
+<li><strong>Simulate</strong> — view-only: scrub the matchday, watch egress build, click a road to chart
+  its pressure over time, monitor warnings.</li>
+<li><strong>Edit</strong> — place a <strong>closure</strong> (click two intersections → Dijkstra corridor + reverse
+  twins → <code>close_edge</code> interventions) or a <strong>surge</strong> (click a street → compass radiator →
+  <code>demand_surge</code>), which auto-calls <code>applyEdits()</code> → <code>POST /scenarios/{id}/run</code> (blast or
+  full) → <code>GET …/records</code> → <code>writeRecords()</code> → <code>pressureSeq++</code> → recolor.</li>
+</ul>
+<hr />
+<h2 id="14-gnn-surrogate">14. GNN surrogate</h2>
+<p><strong>Package:</strong> <code>models/gnn/</code> · <strong>Spec:</strong> <code>docs/specs/stretch/S3-gnn-surrogate.md</code></p>
+<p>A stretch upgrade to the demand path: <code>model.py</code> defines <code>GraphSAGEEdgePredictor</code> — a
+multi-layer GraphSAGE node encoder feeding an edge-level head that predicts congestion
+pressure directly (node embeddings of both endpoints + edge features + time context).
+<code>gnn_to_sim_adapter.predict_gnn_edge_state()</code> returns <code>{edge_id: {predicted_load,
+predicted_pressure, predicted_time_min, risk}}</code> and can seed the live graph. It's gated
+behind the <code>gnn</code> extra (torch + PyG) and selected via <code>FLOWTO_DEMAND_MODEL=gnn</code>; any
+failure falls back to XGBoost, then the heuristic. Training runs on the Spark
+(<code>train_on_gx10.sh</code>, <code>requirements-gx10.txt</code> for the aarch64/cu13 wheels).</p>
+<hr />
+<h2 id="15-performance-determinism">15. Performance &amp; determinism</h2>
+<p><strong>Package:</strong> <code>src/torontosim/perf/</code> · <strong>Spec:</strong> <code>docs/specs/11-profiling-and-perf.md</code></p>
+<ul>
+<li><strong><code>timing.py</code></strong> — near-zero-overhead instrumentation: a <code>timer()</code> context manager and
+  <code>@timed</code> decorator append <code>{label, ms}</code> to a process-global registry; <code>summary()</code>
+  aggregates by label. Uses <code>perf_counter</code>, never sim state.</li>
+<li><strong><code>bench.py</code></strong> — <code>benchmark()</code> closes the highest-pressure edge and times
+  <code>simulate_scenario(recompute="full")</code> vs <code>recompute="blast"</code>, reporting <code>speedup</code> and
+  <code>affected_subgraph_fraction</code>. <code>to_markdown()</code> renders the evidence table; results land
+  in <code>data/bench/</code>.</li>
+</ul>
+<p><strong>Determinism</strong> is enforced everywhere and is load-bearing for the before/after demo and
+the 130-test suite: stable sorts in the CSR build, sorted origin iteration, heap ties
+broken by node id, equal-cost path ties broken by lowest link index (an <code>index × 1e-9</code>
+epsilon in the scipy/GPU backends), <code>Date</code>/<code>random</code>-free model state, and <code>fetched_at</code>
+timestamps passed in rather than read from the clock.</p>
+<hr />
+<h2 id="16-cpu-vs-gpu-vs-llm">16. CPU vs GPU vs LLM</h2>
+<p>The single most important architectural decision: <strong>the CPU path is the demo path.</strong>
+Accelerated and external dependencies are strictly additive.</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Local / CPU default</th>
+<th>Accelerated upgrade</th>
+<th>Fallback on failure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shortest paths / assignment</td>
+<td>heap Dijkstra + scipy (<code>csgraph</code>)</td>
+<td>cuGraph SSSP (<code>gpu</code> extra, Spark)</td>
+<td>GPU → scipy → CPU, identical results</td>
+</tr>
+<tr>
+<td>Demand model</td>
+<td>committed XGBoost pkl</td>
+<td>XGBoost <code>device=cuda</code>; GraphSAGE GNN</td>
+<td>XGBoost → <code>HeuristicDemandModel</code> (closed form)</td>
+</tr>
+<tr>
+<td>Copilot</td>
+<td>deterministic router + bylaw checker + TF-IDF RAG</td>
+<td>Nemotron-33B via Ollama; sentence-transformers/chromadb</td>
+<td>live model → deterministic router</td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>greedy + sim-as-verifier</td>
+<td>cuOpt VRP client (Spark)</td>
+<td>cuOpt → heuristic</td>
+</tr>
+<tr>
+<td>Transit</td>
+<td>hand-authored demo routes</td>
+<td>real baked GTFS feeds</td>
+<td>real feed → demo set</td>
+</tr>
+</tbody>
+</table>
+<p>The Spark (GB10) GPU/LLM paths are validated over an SSH smoke harness
+(<code>scripts/spark/*</code>, <code>make spark-test</code>) against host <code>gx10-4f5f</code>, kept out of CI.</p>
+<hr />
+<h2 id="17-build-test-deploy">17. Build, test, deploy</h2>
+<pre><code class="language-bash">make install          # py3.12/3.13 venv + pip install -e &quot;.[dev,api,data]&quot;
+make test             # pytest -q -m &quot;not spark&quot;  → ~130 tests, CPU only
+scripts/run_api.sh    # serve() loads the real graph + baseline → http://localhost:8000 (/docs)
+cd frontend &amp;&amp; npm install &amp;&amp; npm run dev   # Vite proxies /api → :8000 → http://localhost:5173
+
+# headless evidence
+.venv/bin/python -m torontosim.demo.wc_surge --scenario all   # baseline → surge → fix
+.venv/bin/python -m torontosim.perf.bench                     # full-city vs blast-radius
+</code></pre>
+<ul>
+<li><strong>CI</strong> (<code>.github/workflows/ci.yml</code>): Python 3.12, install <code>[dev,data,api]</code>, ruff +
+  black, <code>pytest -m "not spark"</code>. GPU/AI/sim extras are intentionally excluded —
+  the oracle test runs against committed TNTP fixtures and the AequilibraE cross-check is
+  import-skipped.</li>
+<li><strong>Tests</strong> (<code>tests/</code>, ~130): engine oracle + integration, blast-radius parity,
+  IPF/ODME, determinism, API scenarios/demo/WS frames, copilot plan/RAG/constraints,
+  data-pipeline bake, GTFS, packaging. Markers: <code>spark</code> (skipped in CI), <code>slow</code>,
+  <code>network</code>.</li>
+<li><strong>Frontend tests</strong> (<code>frontend/tests/</code>, Vitest): <code>decodeFrame</code>, <code>pressureRamp</code>,
+  <code>tickStore</code>, <code>transit</code>, <code>redesign</code>.</li>
+<li><strong>Config knobs:</strong> <code>TS_DATA_DIR</code>, <code>TS_GRAPH_JSON</code>, <code>TS_GRAPH_SOURCE</code>
+  (<code>osmnx</code>|<code>centreline</code>), <code>TS_PARQUET_DIR</code>, <code>TS_MAX_PAIRS</code> (default 12000 OD pairs),
+  <code>FLOWTO_DEMAND_MODEL</code> (<code>gnn</code>|<code>xgboost</code>), <code>VITE_API_TARGET</code>, <code>VITE_MAPBOX_TOKEN</code>.</li>
+</ul>
+<hr />
+<h2 id="18-glossary">18. Glossary</h2>
+<ul>
+<li><strong>BPR</strong> — Bureau of Public Roads volume-delay function <code>t = t0·(1 + α(v/c)^β)</code>; turns
+  link volume into congested travel time.</li>
+<li><strong>User Equilibrium (UE)</strong> — Wardrop's first principle: a flow state where no driver can
+  unilaterally find a faster route. Computed by Frank-Wolfe on the convex Beckmann program.</li>
+<li><strong>Frank-Wolfe / Conjugate-FW</strong> — iterative convex solvers; CFW uses the BPR Hessian for
+  a conjugate descent direction and converges faster.</li>
+<li><strong>All-or-nothing (AON)</strong> — load all of an OD pair's demand onto its single current
+  shortest path; the per-iteration subproblem of Frank-Wolfe.</li>
+<li><strong>OD matrix</strong> — origin→destination trip table; what demand the network must carry.</li>
+<li><strong>IPF / Furness</strong> — iterative proportional fitting; balances an OD matrix to known
+  row/column totals.</li>
+<li><strong>ODME</strong> — OD matrix estimation; nudges a seed OD so assigned link flows match observed
+  counts.</li>
+<li><strong>Blast-radius</strong> — the bounded subgraph around an edit where shortest paths actually
+  change; recomputing only it keeps edits interactive.</li>
+<li><strong>Pressure</strong> — <code>load / capacity</code> (v/c ratio); 0 = free-flow, ≥ 1 = gridlock; the value
+  the map colors.</li>
+<li><strong>TNTP</strong> — Transportation Networks for Research file format; the academic fixtures
+  (SiouxFalls, etc.) the engine is validated against.</li>
+<li><strong>CSR</strong> — compressed-sparse-row adjacency; the cache-friendly graph layout the backends
+  traverse.</li>
+<li><strong>Tick frame</strong> — the 17-byte-per-edge binary record streamed over WebSocket to recolor
+  the map without touching React.
+```</li>
+</ul>
+  <footer>
+    FlowTO architecture reference · generated from <code>docs/ARCHITECTURE.md</code> · 2026-05-31
+  </footer>
+</main>
+</div>
+</body>
+</html>

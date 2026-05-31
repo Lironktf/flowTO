@@ -7,8 +7,14 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy API + WS to the P06 FastAPI backend during dev.
-      "/api": { target: "http://localhost:8000", changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") },
+      // Proxy /api to the FastAPI backend. Target defaults to :8000 but is
+      // overridable (e.g. VITE_PROXY_TARGET=http://localhost:8010 when the
+      // backend runs on a non-default port, like on the shared Spark).
+      "/api": {
+        target: process.env.VITE_PROXY_TARGET || "http://localhost:8000",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api/, ""),
+      },
     },
   },
   test: {

@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
+import { api } from "../api/client";
 import { useAppStore } from "../state/appStore";
-
-const BOOT_LINES = [
-  "› booting FlowTO runtime…",
-  "› loading Toronto network · 18,190 edges",
-  "› warming Nemotron-on-device · GB10…",
-  "› ready ▸ press “Load the twin”",
-];
 
 export function FirstRun() {
   const loadTwin = useAppStore((s) => s.loadTwin);
@@ -14,12 +8,34 @@ export function FirstRun() {
   const loading = useAppStore((s) => s.loading);
   const error = useAppStore((s) => s.error);
   const [line, setLine] = useState(0);
+  // Live edge count from the running backend — reflects whichever graph is
+  // loaded (18k OSMnx baseline or the ~88k citywide Centreline), not a hardcode.
+  const [edges, setEdges] = useState<number | null>(null);
 
   useEffect(() => {
-    if (line >= BOOT_LINES.length) return;
+    let alive = true;
+    api
+      .health()
+      .then((h) => alive && setEdges(h.edges))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const edgesLabel = edges != null ? edges.toLocaleString() : "…";
+  const bootLines = [
+    "› booting FlowTO runtime…",
+    `› loading Toronto network · ${edgesLabel} edges`,
+    "› warming Nemotron-on-device · GB10…",
+    "› ready ▸ press “Load the twin”",
+  ];
+
+  useEffect(() => {
+    if (line >= bootLines.length) return;
     const t = setTimeout(() => setLine((n) => n + 1), line === 0 ? 420 : 760);
     return () => clearTimeout(t);
-  }, [line]);
+  }, [line, bootLines.length]);
 
   return (
     <div id="firstrun" className={loaded ? "hide" : ""}>
@@ -36,7 +52,7 @@ export function FirstRun() {
         <div className="fr-meta">
           <div className="m">
             <div className="k">Road edges</div>
-            <div className="v">18,190</div>
+            <div className="v">{edgesLabel}</div>
           </div>
           <div className="m">
             <div className="k">Egress demand</div>
@@ -55,7 +71,7 @@ export function FirstRun() {
             {error}
           </div>
         ) : (
-          <div className="fr-loadline" dangerouslySetInnerHTML={{ __html: BOOT_LINES.slice(0, line + 1).join("&nbsp;&nbsp;") }} />
+          <div className="fr-loadline" dangerouslySetInnerHTML={{ __html: bootLines.slice(0, line + 1).join("&nbsp;&nbsp;") }} />
         )}
       </div>
     </div>

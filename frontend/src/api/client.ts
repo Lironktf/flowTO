@@ -9,12 +9,20 @@ import { ingestFrame } from "../state/tickStore";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
+/** Closure guardrail: a restricted road may not carry a full closure. */
+export interface RestrictedRoad {
+  category: "mto_prohibited" | "municipal_expressway";
+  label?: string | null;
+  reason: string;
+}
+
 export interface EdgeMeta {
   idx: number;
   edge_id: string;
   geometry: [number, number][] | null; // [[lat, lng], ...] (Liron's stored form)
   road_name?: string;
   road_class?: string;
+  restricted?: RestrictedRoad; // present only on MTO/municipal expressway edges
 }
 
 // A tick record: [edge_idx, load, speed, pressure, closure].

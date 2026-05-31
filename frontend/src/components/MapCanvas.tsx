@@ -18,6 +18,7 @@ import { buildTransitLayers, type RouteGeom } from "../layers/transit";
 import {
   addEarlyBuildings,
   applyLightPreset,
+  CONGESTION_SLOT,
   HAS_MAPBOX_TOKEN,
   lightPresetForMinute,
   MAPBOX_TOKEN,
@@ -148,6 +149,7 @@ export function MapCanvas() {
       new PathLayer({
         id: "roads",
         parameters: { depthCompare: "always" },
+        slot: CONGESTION_SLOT,
         data: edgePaths,
         pickable: true,
         autoHighlight: true,
@@ -174,6 +176,7 @@ export function MapCanvas() {
         new PathLayer({
           id: "road-selected",
           parameters: { depthCompare: "always" },
+          slot: CONGESTION_SLOT,
           data: [{ path: selSeg.geometry.map(([la, ln]) => [ln, la] as [number, number]) }],
           getPath: (d: { path: [number, number][] }) => d.path,
           getColor: [36, 85, 214],
@@ -202,6 +205,7 @@ export function MapCanvas() {
           new PathLayer({
             id: "closure-edges",
             parameters: { depthCompare: "always" },
+            slot: CONGESTION_SLOT,
             data: closurePaths,
             getPath: (d: { path: [number, number][] }) => d.path,
             getColor: dark ? [120, 128, 138] : [140, 140, 140],

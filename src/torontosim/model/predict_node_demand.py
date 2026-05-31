@@ -83,9 +83,18 @@ def load_demand_model(model_path: str = MODEL_PATH):
     if os.path.exists(model_path):
         import joblib
 
-        payload = joblib.load(model_path)
-        return payload
-    print(f"[predict] no trained model at {model_path}; using HeuristicDemandModel")
+        try:
+            return joblib.load(model_path)
+        except Exception as exc:
+            # The committed model may use an optional backend such as XGBoost.
+            # Keep the CPU demo runnable when that backend or its native runtime
+            # is unavailable.
+            print(
+                f"[predict] trained model at {model_path} could not be loaded "
+                f"({type(exc).__name__}); using HeuristicDemandModel"
+            )
+    else:
+        print(f"[predict] no trained model at {model_path}; using HeuristicDemandModel")
     return {
         "model": HeuristicDemandModel(),
         "feature_order": FEATURE_ORDER,

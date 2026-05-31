@@ -1,4 +1,5 @@
-import { useAppStore } from "../state/appStore";
+import { useEffect, useState } from "react";
+import { useAppStore, type SceneObject } from "../state/appStore";
 import { Icon, type IconKey } from "./Icons";
 
 const TYPE_COLOR: Record<string, string> = {
@@ -15,38 +16,143 @@ const SEV_ICON: Record<string, IconKey> = {
   info: "check",
 };
 
-/** Simulate → Warnings (bylaw conflicts + risk bands from live pressures). */
-function Warnings() {
+/** Warnings list (bylaw conflicts + risk bands from live pressures). */
+function WarningsBody() {
   const warnings = useAppStore((s) => s.warnings);
+  if (warnings.length === 0)
+    return (
+      <div className="insp-empty">
+        <div className="big">All clear</div>
+        <div className="sm">No bylaw conflicts or risk flags for the current model.</div>
+      </div>
+    );
+  return (
+    <>
+      {warnings.map((w) => {
+        const I = Icon[SEV_ICON[w.severity] ?? "info"];
+        return (
+          <div key={w.id} className={`warn-row ${w.severity}`}>
+            <I />
+            <div className="wt">
+              <b>{w.title}</b>
+              <div>{w.detail}</div>
+              {w.ref && <span className="wref">{w.ref}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Read-only summary of a selected object — the Inspector's view-mode twin. */
+function ObjectDetails({ sel }: { sel: SceneObject | undefined }) {
+  if (!sel)
+    return (
+      <div className="insp-empty">
+        <div className="big">Nothing selected</div>
+        <div className="sm">Click an intervention pin on the map to see its details.</div>
+      </div>
+    );
+  const dirs =
+    sel.surge &&
+    ((["n", "e", "s", "w"] as const).filter((d) => sel.surge!.dirs[d]).map((d) => d.toUpperCase()).join(" / ") || "—");
+  return (
+    <>
+      <div className="insp-head">
+        <span className="ih-ico" style={{ background: TYPE_COLOR[sel.type] ?? "var(--cobalt)" }}>
+          {(() => {
+            const I = Icon[TOOL_ICON[sel.type] ?? "closure"];
+            return <I />;
+          })()}
+        </span>
+        <div className="ih-tx">
+          <div className="a">{sel.name}</div>
+          <div className="b">{sel.type}</div>
+        </div>
+      </div>
+
+      <div className="prop">
+        <span className="pk">Street</span>
+        <span className="pv">{sel.roadName ?? "—"}</span>
+      </div>
+      <div className="prop">
+        <span className="pk">Location</span>
+        <span className="pv mono">
+          {sel.coord[1].toFixed(4)}, {sel.coord[0].toFixed(4)}
+        </span>
+      </div>
+      {sel.type === "closure" ? (
+        <div className="prop">
+          <span className="pk">Sealed edges</span>
+          <span className="pv mono">{sel.edgeIds?.length ?? 0}</span>
+        </div>
+      ) : (
+        <div className="prop">
+          <span className="pk">Typical</span>
+          <span className="pv mono">
+            {sel.baselinePressure != null ? `${sel.baselinePressure.toFixed(2)} pressure` : "—"}
+          </span>
+        </div>
+      )}
+
+      {sel.type === "surge" && sel.surge && (
+        <>
+          <div className="section-label mt">Demand change</div>
+          <div className="prop">
+            <span className="pk">Kind</span>
+            <span className="pv">{sel.surge.kind === "relief" ? "Relief" : "Surge"}</span>
+          </div>
+          <div className="prop">
+            <span className="pk">Directions</span>
+            <span className="pv">{dirs}</span>
+          </div>
+          <div className="prop">
+            <span className="pk">{sel.surge.mode === "relative" ? "Percent" : "Vehicles"}</span>
+            <span className="pv mono">
+              {sel.surge.mode === "relative" ? `${sel.surge.amount}%` : `${sel.surge.amount}/hour`}
+            </span>
+          </div>
+          <div className="hint">
+            {(() => {
+              const verb = sel.surge.kind === "relief" ? "Remove" : "Add";
+              const along = sel.roadName ? ` along ${sel.roadName}` : "";
+              return sel.surge.mode === "absolute"
+                ? `${verb} ${sel.surge.amount} vehicles/hour${along} toward ${dirs}.`
+                : `${sel.surge.kind === "relief" ? "Reduce" : "Increase"} demand${along} by ${sel.surge.amount}% toward ${dirs}.`;
+            })()}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Simulate → Warnings ⇄ Details (read-only). Selecting a pin opens Details. */
+function SimPanel() {
+  const warnings = useAppStore((s) => s.warnings);
+  const objects = useAppStore((s) => s.objects);
+  const selectedId = useAppStore((s) => s.selectedId);
+  const sel = objects.find((o) => o.id === selectedId);
+  const [tab, setTab] = useState<"warnings" | "details">("warnings");
+  // Selecting an object opens Details; deselecting returns to Warnings.
+  useEffect(() => setTab(selectedId ? "details" : "warnings"), [selectedId]);
+
   return (
     <section className="region grow v-sim">
       <div className="region-hd">
-        <span className="lbl">Warnings</span>
+        <span className="tabset">
+          <button className={tab === "warnings" ? "on" : ""} onClick={() => setTab("warnings")}>
+            Warnings
+          </button>
+          <button className={tab === "details" ? "on" : ""} onClick={() => setTab("details")}>
+            Details
+          </button>
+        </span>
         <span className="spacer" />
-        <span className="meta">{warnings.length}</span>
+        {tab === "warnings" && <span className="meta">{warnings.length}</span>}
       </div>
-      <div className="region-body">
-        {warnings.length === 0 ? (
-          <div className="insp-empty">
-            <div className="big">All clear</div>
-            <div className="sm">No bylaw conflicts or risk flags for the current model.</div>
-          </div>
-        ) : (
-          warnings.map((w) => {
-            const I = Icon[SEV_ICON[w.severity] ?? "info"];
-            return (
-              <div key={w.id} className={`warn-row ${w.severity}`}>
-                <I />
-                <div className="wt">
-                  <b>{w.title}</b>
-                  <div>{w.detail}</div>
-                  {w.ref && <span className="wref">{w.ref}</span>}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+      <div className="region-body">{tab === "warnings" ? <WarningsBody /> : <ObjectDetails sel={sel} />}</div>
     </section>
   );
 }
@@ -215,7 +321,7 @@ function Inspector() {
 export function RightDock() {
   return (
     <>
-      <Warnings />
+      <SimPanel />
       <Inspector />
     </>
   );

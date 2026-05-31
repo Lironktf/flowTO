@@ -300,6 +300,10 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 /* ============================================================ VIEWPORT / MAP */
 #viewport { position: relative; overflow: hidden; background: var(--map-bg); }
 #map { position: absolute; inset: 0; background: var(--map-bg); }
+/* Edit-mode placement: crosshair only while hovering a street (the edge that
+   highlights blue), forced over mapbox's own interaction cursor. */
+#map.on-street .mapboxgl-canvas-container,
+#map.on-street canvas.mapboxgl-canvas { cursor: crosshair !important; }
 .maplibregl-map { font-family: 'Public Sans', sans-serif; }
 .maplibregl-ctrl-attrib, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { display: none !important; }
 

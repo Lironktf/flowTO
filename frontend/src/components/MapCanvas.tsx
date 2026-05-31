@@ -28,14 +28,15 @@ import {
   STANDARD_STYLE,
 } from "../lib/mapbox";
 import { pressureRamp } from "../lib/pressureRamp";
+import { nearestNode, streetsByDirection } from "../api/graph";
 import { RECOMPUTE_STEPS, useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
 
-function DeckOverlay(props: { layers: unknown[] }) {
+function DeckOverlay(props: { layers: unknown[]; onClick?: (info: { layer?: { id?: string } | null }) => void }) {
   const overlay = useControl(() => new MapboxOverlay({ interleaved: true, layers: [] }));
   // @ts-expect-error deck layer typing is loose here
-  overlay.setProps({ layers: props.layers });
+  overlay.setProps({ layers: props.layers, onClick: props.onClick });
   return null;
 }
 
@@ -45,6 +46,26 @@ const WIDTH_BY_CLASS: Record<string, number> = {
 const PIN_COLOR: Record<string, [number, number, number]> = {
   closure: [210, 58, 50], surge: [224, 112, 27],
 };
+const SURGE_COLOR: [number, number, number] = [224, 112, 27];
+const RELIEF_COLOR: [number, number, number] = [245, 184, 122];
+
+/** deck.gl TextLayer angle (degrees, CCW from east) for travel from a→b ([lng,lat]). */
+function travelAngle(a: [number, number], b: [number, number]): number {
+  return (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+}
+
+/** A few flow-arrow markers placed along a [lng,lat] polyline, angled with travel. */
+function arrowMarkers(path: [number, number][]): { position: [number, number]; angle: number }[] {
+  const n = path.length;
+  if (n < 2) return [];
+  const fracs = n <= 2 ? [0.5] : [0.35, 0.6, 0.85];
+  return fracs.map((f) => {
+    const i = Math.min(n - 2, Math.max(0, Math.floor(f * (n - 1))));
+    const a = path[i];
+    const b = path[i + 1];
+    return { position: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as [number, number], angle: travelAngle(a, b) };
+  });
+}
 
 interface EdgePath { edge_id: string; idx: number; road_class: string; path: [number, number][]; }
 
@@ -76,6 +97,13 @@ export function MapCanvas() {
   const discardPlan = useAppStore((s) => s.discardPlan);
   const dark = theme === "dark";
   const placing = view === "edit" && activeTool !== "select";
+  // Mirror `placing` into a ref so the deck click handler reads the *pre-click*
+  // value (effects commit after click handlers run) — a placement click then
+  // can't be misread as a deselect.
+  const placingRef = useRef(placing);
+  useEffect(() => { placingRef.current = placing; }, [placing]);
+  const [hoverStreet, setHoverStreet] = useState(false);
+  const [hoverPinId, setHoverPinId] = useState<string | null>(null);
   const [overlays, setOverlays] = useState({ poi: true, transit: true, roadLabels: true, placeLabels: true, buildings3d: true });
   const [layersOpen, setLayersOpen] = useState(false);
 
@@ -166,6 +194,13 @@ export function MapCanvas() {
         onClick: (info: { object?: EdgePath }) => {
           if (useAppStore.getState().view === "sim" && info.object) selectRoad(info.object.edge_id);
         },
+        onHover: (info: { object?: EdgePath }) => {
+          // In Edit placement, only show the crosshair while over a street (the
+          // edge that highlights blue); idempotent sets so React bails when unchanged.
+          const st = useAppStore.getState();
+          const placingNow = st.view === "edit" && st.activeTool !== "select";
+          setHoverStreet(placingNow && !!info.object);
+        },
       }),
     );
 
@@ -247,22 +282,77 @@ export function MapCanvas() {
     }
 
     const visible = objects.filter((o) => o.visible);
+
+    // Demand flow: highlight the streets each surge affects and draw arrows showing
+    // which way (and along which streets) the demand flows — outward from its anchor
+    // intersection along the chosen compass directions.
+    if (graph) {
+      const demandStreets: { path: [number, number][]; relief: boolean }[] = [];
+      const demandArrows: { position: [number, number]; angle: number; relief: boolean }[] = [];
+      for (const o of visible) {
+        if (o.type !== "surge" || !o.surge) continue;
+        const anchorKey = o.anchorKey ?? nearestNode(graph, o.coord[0], o.coord[1])?.key;
+        if (!anchorKey) continue;
+        const byDir = streetsByDirection(graph, anchorKey);
+        const relief = o.surge.kind === "relief";
+        for (const d of ["n", "e", "s", "w"] as const) {
+          if (!o.surge.dirs[d]) continue;
+          const st = byDir[d];
+          if (!st) continue;
+          demandStreets.push({ path: st.path, relief });
+          for (const m of arrowMarkers(st.path)) demandArrows.push({ ...m, relief });
+        }
+      }
+      if (demandStreets.length) {
+        out.push(
+          new PathLayer({
+            id: "demand-streets",
+            parameters: { depthCompare: "always" },
+            slot: CONGESTION_SLOT,
+            data: demandStreets,
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: (d: { relief: boolean }) => (d.relief ? RELIEF_COLOR : SURGE_COLOR),
+            getWidth: 7,
+            widthUnits: "meters",
+            widthMinPixels: 4,
+            widthMaxPixels: 12,
+            capRounded: true,
+            jointRounded: true,
+          }),
+          new TextLayer({
+            id: "demand-flow-arrows",
+            data: demandArrows,
+            getPosition: (a: { position: [number, number] }) => a.position,
+            getText: () => "➤",
+            getAngle: (a: { angle: number }) => a.angle,
+            getColor: (a: { relief: boolean }) => (a.relief ? RELIEF_COLOR : SURGE_COLOR),
+            getSize: 18,
+            characterSet: ["➤"],
+            fontFamily: "IBM Plex Mono, monospace",
+          }),
+        );
+      }
+    }
+
     if (visible.length) {
       out.push(
         new ScatterplotLayer({
           id: "pins", data: visible, pickable: true,
           getPosition: (o: (typeof visible)[number]) => o.coord,
-          getRadius: (o: (typeof visible)[number]) => (o.id === selectedId ? 20 : 14),
+          getRadius: (o: (typeof visible)[number]) =>
+            o.id === selectedId ? 20 : o.id === hoverPinId ? 17 : 14,
           radiusUnits: "meters", radiusMinPixels: 5, radiusMaxPixels: 16,
           getFillColor: (o: (typeof visible)[number]) =>
             o.type === "surge" && o.surge?.kind === "relief"
               ? [245, 184, 122]
               : PIN_COLOR[o.type] ?? [36, 85, 214],
           stroked: true,
-          getLineColor: (o: (typeof visible)[number]) => (o.id === selectedId ? [36, 85, 214] : [255, 255, 255]),
-          lineWidthMinPixels: 2,
-          updateTriggers: { getRadius: [selectedId], getLineColor: [selectedId] },
+          getLineColor: (o: (typeof visible)[number]) =>
+            o.id === selectedId || o.id === hoverPinId ? [36, 85, 214] : [255, 255, 255],
+          lineWidthMinPixels: 2.5,
+          updateTriggers: { getRadius: [selectedId, hoverPinId], getLineColor: [selectedId, hoverPinId] },
           onClick: (info: { object?: (typeof visible)[number] }) => info.object && selectObject(info.object.id),
+          onHover: (info: { object?: (typeof visible)[number] }) => setHoverPinId(info.object?.id ?? null),
         }),
         new TextLayer({
           id: "pin-labels", data: visible,
@@ -270,28 +360,10 @@ export function MapCanvas() {
           getText: (o: (typeof visible)[number]) => String(o.n),
           getSize: 12, getColor: [255, 255, 255], fontFamily: "IBM Plex Mono, monospace",
         }),
-        new TextLayer({
-          id: "demand-arrows",
-          data: visible.flatMap((o) =>
-            o.type === "surge" && o.surge
-              ? (["n", "e", "s", "w"] as const)
-                  .filter((d) => o.surge!.dirs[d])
-                  .map((d) => ({ coord: o.coord, d }))
-              : [],
-          ),
-          getPosition: (a: { coord: [number, number] }) => a.coord,
-          getText: (a: { d: string }) =>
-            (({ n: "▲", e: "▶", s: "▼", w: "◀" }) as Record<string, string>)[a.d] ?? "",
-          getColor: [224, 112, 27],
-          getSize: 13,
-          getPixelOffset: (a: { d: string }) =>
-            (({ n: [0, -20], e: [20, 0], s: [0, 20], w: [-20, 0] }) as Record<string, [number, number]>)[a.d] ?? [0, 0],
-          fontFamily: "IBM Plex Mono, monospace",
-        }),
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (
@@ -308,14 +380,14 @@ export function MapCanvas() {
 
   return (
     <>
-      <div id="map" style={{ position: "absolute", inset: 0 }}>
+      <div id="map" className={placing && hoverStreet ? "on-street" : ""} style={{ position: "absolute", inset: 0 }}>
         <Map
           ref={mapRef}
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
           mapStyle={STANDARD_STYLE}
           reuseMaps
-          cursor={placing ? "crosshair" : "grab"}
+          cursor="grab"
           onLoad={(e) => {
             const m = e.target;
             const st = useAppStore.getState();
@@ -328,7 +400,17 @@ export function MapCanvas() {
           }}
           style={{ position: "absolute", inset: 0 }}
         >
-          <DeckOverlay layers={layers} />
+          <DeckOverlay
+            layers={layers}
+            onClick={(info) => {
+              // Click-away deselect: any non-pin click while not placing clears the
+              // current object selection. Placement clicks are handled by <Map onClick>.
+              if (placingRef.current) return;
+              if (info.layer?.id === "pins") return;
+              const st = useAppStore.getState();
+              if (st.selectedId != null) st.selectObject(null);
+            }}
+          />
         </Map>
       </div>
 

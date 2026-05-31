@@ -26,6 +26,7 @@ from ..model.features import normalize_time_context
 from ..model.odme_calibrate import build_grounded_od
 from ..model.predict_node_demand import load_demand_model, predict_node_demand
 from ..simulation.simulate_traffic import simulate_scenario
+from . import residual_edit
 from .store import edge_records
 
 # Graph-mutation ops applied to the network (everything else is demand-side).
@@ -72,6 +73,15 @@ def recompute_scenario(
         cached = _cache_get(state, key)
         if cached is not None:
             return {**cached, "cached": True}
+        # Residual closure-GNN edit path. INERT by default: only entered when the
+        # app-local gate ships closures AND torch+a checkpoint are present AND the
+        # edit is closures-only (see residual_edit.should_use_residual). On any
+        # failure it falls back to the identical sim path below.
+        if residual_edit.should_use_residual(interventions):
+            residual = _run_residual(state, model_kind, tc, interventions, iterations)
+            if residual is not None:
+                _cache_put(state, key, residual)
+                return {**residual, "cached": False}
         result = _run(state, model_kind, tc, interventions, iterations)
         _cache_put(state, key, result)
         return {**result, "cached": False}
@@ -113,6 +123,54 @@ def _run(state, model_kind: str, tc: dict, interventions: List[dict], iterations
         "rgap": result.get("rgap"),
         "model_actual": model_actual,
     }
+
+
+def _run_residual(
+    state, model_kind: str, tc: dict, interventions: List[dict], iterations: int
+) -> Optional[dict]:
+    """Instant closure preview via the residual GNN, on top of the open-road sim.
+
+    sim_open SOURCE: the model's ``sim_open`` channels are fed the APP's cached
+    no-edit **sim** equilibrium solve (``recompute_scenario(..., interventions=[])``
+    — itself cached), NOT Liron's pressure-GNN baseline. Each closure is then one
+    GNN forward on top of that single open-road solve.
+
+    SIM-AS-VERIFIER: the GNN output is an instant *preview*; the deterministic sim
+    remains the source of truth and should still run to reconcile (async, or on
+    commit) — the verdict's own gate metrics are computed from such held-out sim
+    comparisons. While the gate is OFF this function is never reached, so the
+    default behaviour is byte-identical to the sim path. Returns ``None`` on any
+    error so the caller transparently falls back to the full sim.
+    """
+    try:
+        # The open-road baseline is the no-edit sim solve for this (model, tc).
+        # Routed back through recompute_scenario so it shares the LRU cache and the
+        # per-key lock (computed once, reused across every closure on this view).
+        baseline = recompute_scenario(
+            state,
+            model_kind=model_kind,
+            time_context=tc,
+            interventions=[],
+            iterations=iterations,
+        )
+        records = residual_edit.predict_closure_records(
+            state,
+            baseline["records"],
+            interventions=interventions,
+            time_context=tc,
+        )
+        summary = dict(baseline.get("summary") or {})
+        summary["predictor"] = "residual_gnn"
+        return {
+            "records": records,
+            "summary": summary,
+            "rgap": None,
+            "model_actual": baseline.get("model_actual"),
+            "predictor": "residual_gnn",
+            "verified": False,  # sim-as-verifier reconciliation not yet run
+        }
+    except Exception:
+        return None
 
 
 # ── cache plumbing ───────────────────────────────────────────────────────────

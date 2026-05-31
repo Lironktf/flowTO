@@ -260,6 +260,10 @@ def build_interventions_and_observed(graph, factory_rows: pd.DataFrame):
             "split": r.get("split"),
             "has_baseline": r.get("has_baseline"),
             "observed": float(obs),
+            # closure-window weather (when the runner joined it) → the context channel
+            "weather": r.get("weather"),
+            "temperature_c": r.get("temperature_c"),
+            "precipitation_mm": r.get("precipitation_mm"),
         }
 
     active_ids = {iv_id for (iv_id, _e) in observed}
@@ -351,7 +355,17 @@ def build_real_residuals(
 
     closed_by_id = {iv["ID"]: iv["closed_edge"] for iv in interventions}
     res["closed_edge"] = res["ID"].map(closed_by_id)
-    for col in ("centreline_id", "StartTime", "split", "has_baseline", "observed"):
+    carry = (
+        "centreline_id",
+        "StartTime",
+        "split",
+        "has_baseline",
+        "observed",
+        "weather",
+        "temperature_c",
+        "precipitation_mm",
+    )
+    for col in carry:
         res[col] = [meta.get((row.ID, row.edge_id), {}).get(col) for row in res.itertuples()]
 
     coverage["n_residual_rows"] = int(len(res))

@@ -57,6 +57,45 @@ def _load_tmc_df(csv_path):
     raise FileNotFoundError(f"no TMC at {csv_path} or {TMC_PARQUET}")
 
 
+def _join_weather(factory_rows, during):
+    """Attach closure-window weather (Open-Meteo) to the factory rows for the context.
+
+    Graceful: any failure (network, empty join) logs and returns the rows unchanged so
+    the context simply falls back to its defaults. Adds ``weather``/``temperature_c``/
+    ``precipitation_mm`` per (ID, centreline_id).
+    """
+    from torontosim.feedback.groundtruth.confounders import aggregate_weather, survey_weather
+    from torontosim.feedback.weather import fetch_weather_openmeteo, weather_label
+
+    try:
+        d = during.dropna(subset=["dt"])
+        start = d["dt"].min().date().isoformat()
+        end = d["dt"].max().date().isoformat()
+        wx = fetch_weather_openmeteo(start, end)
+        wagg = aggregate_weather(survey_weather(during, wx))
+        if wagg.empty:
+            print("[weather] join empty — context falls back to defaults")
+            return factory_rows
+        rows = factory_rows.merge(
+            wagg[["ID", "centreline_id", "temp_c", "precip_mm", "snow"]],
+            on=["ID", "centreline_id"],
+            how="left",
+        )
+        rows["temperature_c"] = rows["temp_c"]
+        rows["precipitation_mm"] = rows["precip_mm"]
+        rows["weather"] = [
+            weather_label(snow=s, precip_mm=p) for s, p in zip(rows["snow"], rows["precip_mm"])
+        ]
+        n_wx = int(rows["temperature_c"].notna().sum())
+        print(
+            f"[weather] {start}..{end}: {len(wx):,} hourly rows · {n_wx}/{len(rows)} factory rows got weather"
+        )
+        return rows.drop(columns=["temp_c", "precip_mm", "snow"])
+    except Exception as exc:  # noqa: BLE001 — weather is best-effort enrichment
+        print(f"[weather] skipped ({exc!r}) — context falls back to defaults")
+        return factory_rows
+
+
 def _finite_triples(held):
     """Drop any held-out edge with a non-finite residual before the gate."""
     keep = [
@@ -111,6 +150,11 @@ def main(argv=None) -> int:
         default=0,
         help="cap #restrictions (0 = all) to bound the CLOSED-solve count",
     )
+    p.add_argument(
+        "--weather",
+        action="store_true",
+        help="fetch Open-Meteo closure-window weather and feed it to the context channel",
+    )
     args = p.parse_args(argv)
 
     t_all = time.time()
@@ -127,6 +171,8 @@ def main(argv=None) -> int:
     dagg = during_aggregate(pairs, obs)
     closures = build_labels(dagg, during, pre)
     factory_rows = assemble_factory_rows(closures, pairs)
+    if args.weather and len(factory_rows):
+        factory_rows = _join_weather(factory_rows, during)
     if args.limit_closures and len(factory_rows):
         keep_ids = sorted(factory_rows["ID"].unique())[: args.limit_closures]
         factory_rows = factory_rows[factory_rows["ID"].isin(keep_ids)].reset_index(drop=True)

@@ -149,7 +149,7 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 }
 .tb-zone { display: flex; align-items: center; min-width: 0; height: 100%; }
 .tb-left   { gap: 14px; padding-left: 14px; }
-.tb-center { justify-content: center; padding: 0 16px; border-left: 1px solid var(--hair); border-right: 1px solid var(--hair); }
+.tb-center { justify-content: center; padding: 0 20px; }
 .tb-right  { gap: 7px; justify-content: flex-end; padding-right: 12px; }
 
 .brand { display: flex; align-items: baseline; gap: 9px; }
@@ -179,10 +179,12 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .viewseg button.on svg { color: var(--cobalt-ink); }
 
 /* ---- map search omnibox (topbar center) ---- */
-.searchbar { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; max-width: 460px;
-  height: 32px; padding: 0 9px 0 10px; border-radius: 999px;
-  background: var(--chrome-2); border: 1px solid var(--hair); transition: border-color .15s, background .15s; }
-.searchbar:focus-within { border-color: var(--cobalt-line); background: var(--chrome-hi); }
+.searchbar { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; max-width: 680px;
+  height: 34px; padding: 0 10px 0 12px; border-radius: 999px;
+  background: var(--chrome-2); border: 1px solid var(--hair); box-shadow: var(--inset);
+  transition: border-color .15s, background .15s, box-shadow .15s; }
+.searchbar:hover { border-color: var(--ink-4); }
+.searchbar:focus-within { border-color: var(--cobalt-line); background: var(--chrome-hi); box-shadow: 0 0 0 3px var(--cobalt-wash); }
 .sb-ico { display: grid; place-items: center; color: var(--ink-4); flex: none; }
 .sb-ico svg { width: 15px; height: 15px; }
 .searchbar:focus-within .sb-ico { color: var(--cobalt-ink); }
@@ -561,6 +563,10 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 
 /* latency bar */
 .copilot-latbar { padding: 3px 12px; font-size: 11px; opacity: .6; font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--hair); flex: none; }
+
+/* "warming the twin" gate (until the compare baseline is primed) */
+.copilot-warming { display: flex; align-items: center; gap: 7px; padding: 6px 12px; font-size: 11px; color: var(--ink-3); font-style: italic; border-top: 1px solid var(--hair); flex: none; }
+.copilot-warming .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cobalt); animation: pulse 1s infinite; flex: none; }
 
 /* "thinking / investigating" indicator */
 .copilot-thinking { display: inline-flex; align-items: center; gap: 5px; }

@@ -168,6 +168,7 @@ interface AppState {
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
   deepMode: boolean; // 🧠 Deep → force the Agent investigate-loop; else auto-route
+  copilotReady: boolean; // false until the backend's compare baseline is warm
   copilotThinking: boolean;
   copilotLatency: CopilotLatency | null;
   scrubberMinute: number;
@@ -269,6 +270,23 @@ function paintRecords(set: SetFn, records: [number, number, number, number, numb
 async function paintScenario(set: SetFn, sid: string) {
   const rec = await api.scenarioRecords(sid);
   paintRecords(set, rec.records);
+}
+
+/** Poll /healthz until the backend's compare baseline is warm, then ungate the
+ *  copilot. The full baseline is ~minutes on the 81k graph; this hides that
+ *  behind a "warming up" state instead of a hung first request. */
+function pollBaselineReady(set: SetFn) {
+  let tries = 0;
+  const tick = async () => {
+    try {
+      const h = await api.health();
+      if (h.baseline_ready) return set({ copilotReady: true });
+    } catch {
+      /* ignore — retry */
+    }
+    if (++tries < 120) setTimeout(tick, 3000); // give up after ~6 min
+  };
+  void tick();
 }
 
 /** Build an Edit-mode closure scene object from copilot-proposed edge_ids, so a
@@ -380,6 +398,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pendingVertices: [],
   copilotLog: [],
   deepMode: false,
+  copilotReady: false,
   copilotThinking: false,
   copilotLatency: null,
   scrubberMinute: TIMELINE.defaultMin,
@@ -445,6 +464,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
       void get().loadSavedSims();
+      pollBaselineReady(set); // ungate the copilot once the compare baseline is warm
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       set({ error: `Could not reach the API (${msg}). Start scripts/run_api.sh.` });

@@ -150,7 +150,7 @@ async function jdelete<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  health: () => jget<{ status: string; edges: number }>("/healthz"),
+  health: () => jget<{ status: string; edges: number; baseline_ready?: boolean }>("/healthz"),
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string, signal?: AbortSignal) =>

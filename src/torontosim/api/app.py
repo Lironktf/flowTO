@@ -88,7 +88,12 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     # ---- health / debug ------------------------------------------------- #
     @app.get("/healthz")
     def healthz():
-        return {"status": "ok", "edges": len(state.edge_ids), "scenarios": len(store.scenarios)}
+        return {
+            "status": "ok",
+            "edges": len(state.edge_ids),
+            "scenarios": len(store.scenarios),
+            "baseline_ready": state.baseline_ready,  # gates the copilot UI until warm
+        }
 
     @app.get("/debug/state")
     def debug_state():

@@ -32,6 +32,7 @@ export function CopilotRegion() {
   const stop = useAppStore((s) => s.copilotStop);
   const latency = useAppStore((s) => s.copilotLatency);
   const thinking = useAppStore((s) => s.copilotThinking);
+  const ready = useAppStore((s) => s.copilotReady);
   const [text, setText] = useState("");
 
   const logRef = useRef<HTMLDivElement>(null);
@@ -44,8 +45,9 @@ export function CopilotRegion() {
   // Thinking bubble only before a bot reply has started (streaming supersedes it).
   const showThinking = thinking && (log.length === 0 || log[log.length - 1].role === "user");
 
+  const busy = thinking || !ready;
   const submit = (value: string) => {
-    if (!value.trim() || thinking) return;
+    if (!value.trim() || busy) return;
     void ask(value.trim());
     setText("");
   };
@@ -79,7 +81,7 @@ export function CopilotRegion() {
               constraints first.
             </div>
             <div className="copilot-welcome-chips">
-              <ChipRow disabled={thinking} onPick={submit} />
+              <ChipRow disabled={busy} onPick={submit} />
             </div>
           </div>
         )}
@@ -187,18 +189,24 @@ export function CopilotRegion() {
           </div>
         )}
       </div>
+      {!ready && (
+        <div className="copilot-warming">
+          <span className="dot" />
+          warming the twin… (priming the baseline)
+        </div>
+      )}
       {log.length > 0 && (
         <div className="copilot-chips">
-          <ChipRow disabled={thinking} onPick={submit} />
+          <ChipRow disabled={busy} onPick={submit} />
         </div>
       )}
       <div className="copilot-input">
         <input
           value={text}
-          disabled={thinking}
+          disabled={busy}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit(text)}
-          placeholder={thinking ? "Working…" : "Ask in plain English…"}
+          placeholder={!ready ? "Warming the twin…" : thinking ? "Working…" : "Ask in plain English…"}
         />
         {thinking ? (
           <button className="btn copilot-send copilot-stop" onClick={stop} aria-label="Stop" title="Stop">
@@ -208,6 +216,7 @@ export function CopilotRegion() {
           <button
             className="btn primary copilot-send"
             onClick={() => submit(text)}
+            disabled={!ready}
             aria-label="Send"
           >
             <Icon.send />

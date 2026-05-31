@@ -32,6 +32,10 @@ sim = ["aequilibrae>=1.0"]
 model = ["xgboost>=2.0"]
 # GPU acceleration — installed ONLY on the Spark, never locally.
 gpu = ["cudf-cu13", "cugraph-cu13"]
+# GraphSAGE demand/congestion model. torch + PyG; CPU build works locally, CUDA
+# (aarch64/cu13) wheels used on the Spark for GPU training. The GNN demand path
+# falls back to xgboost when these aren't installed, so the group is optional.
+gnn = ["torch>=2.0", "torch-geometric>=2.5"]
 # Local AI stack — Spark only.
 ai = ["ollama>=0.3", "sentence-transformers>=3.0", "chromadb>=0.5"]
 # Backend API.

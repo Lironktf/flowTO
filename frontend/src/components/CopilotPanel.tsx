@@ -1,13 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { COPILOT_CHIPS } from "../config";
-import { useAppStore, type CopilotMode } from "../state/appStore";
+import { useAppStore } from "../state/appStore";
 import { Icon } from "./Icons";
-
-const MODES: { id: CopilotMode; label: string; title: string }[] = [
-  { id: "plan", label: "Plan", title: "Turn the request into a validated, confirmable intervention" },
-  { id: "chat", label: "Chat", title: "Ask a question — streamed answer grounded in the bylaws" },
-  { id: "agent", label: "Agent", title: "Nemotron chains tools (investigate → propose) before recommending" },
-];
 
 const fmtDelta = (v: number) => (v > 0 ? `+${v}` : `${v}`);
 const DELTA_ROWS: [string, string][] = [
@@ -20,8 +14,8 @@ export function CopilotRegion() {
   const ask = useAppStore((s) => s.copilotAsk);
   const confirm = useAppStore((s) => s.copilotConfirm);
   const revert = useAppStore((s) => s.copilotRevert);
-  const mode = useAppStore((s) => s.copilotMode);
-  const setMode = useAppStore((s) => s.setCopilotMode);
+  const deepMode = useAppStore((s) => s.deepMode);
+  const toggleDeep = useAppStore((s) => s.toggleDeep);
   const stop = useAppStore((s) => s.copilotStop);
   const latency = useAppStore((s) => s.copilotLatency);
   const thinking = useAppStore((s) => s.copilotThinking);
@@ -47,20 +41,14 @@ export function CopilotRegion() {
     <section className="region grow" id="copilot-region">
       <div className="region-hd">
         <span className="lbl copilot-title">Copilot · Nemotron</span>
-        <div className="copilot-modes" role="tablist" aria-label="Copilot mode">
-          {MODES.map((m) => (
-            <button
-              key={m.id}
-              className={`mode-tab ${mode === m.id ? "active" : ""}`}
-              role="tab"
-              aria-selected={mode === m.id}
-              title={m.title}
-              onClick={() => setMode(m.id)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+        <button
+          className={`mode-tab deep-toggle ${deepMode ? "active" : ""}`}
+          aria-pressed={deepMode}
+          title="Deep: let Nemotron investigate (simulate / optimize) before it proposes. Off: quick answer or a single action."
+          onClick={toggleDeep}
+        >
+          🧠 Deep {deepMode ? "on" : "off"}
+        </button>
       </div>
       {latency && (
         <div className="copilot-latbar">
@@ -178,7 +166,7 @@ export function CopilotRegion() {
               <span className="dot" />
               <span className="dot" />
               <span className="dot" />
-              <span className="think-label">{mode === "agent" ? "investigating…" : "thinking…"}</span>
+              <span className="think-label">{deepMode ? "investigating…" : "thinking…"}</span>
             </div>
           </div>
         )}

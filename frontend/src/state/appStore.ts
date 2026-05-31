@@ -167,7 +167,7 @@ interface AppState {
   pendingVertices: PendingVertex[];
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
-  copilotMode: CopilotMode;
+  deepMode: boolean; // 🧠 Deep → force the Agent investigate-loop; else auto-route
   copilotThinking: boolean;
   copilotLatency: CopilotLatency | null;
   scrubberMinute: number;
@@ -197,7 +197,7 @@ interface AppState {
   discardPlan: () => void;
   copilotConfirm: (msgIndex: number) => Promise<void>;
   copilotRevert: (msgIndex: number) => Promise<void>;
-  setCopilotMode: (mode: CopilotMode) => void;
+  toggleDeep: () => void;
   copilotStop: () => void;
   // editor
   selectTool: (id: EditTool) => void;
@@ -376,7 +376,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedId: null,
   pendingVertices: [],
   copilotLog: [],
-  copilotMode: "plan",
+  deepMode: false,
   copilotThinking: false,
   copilotLatency: null,
   scrubberMinute: TIMELINE.defaultMin,
@@ -517,7 +517,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setCurrentName: (name) => set({ currentName: name, dirty: true }),
 
-  setCopilotMode: (mode) => set({ copilotMode: mode }),
+  toggleDeep: () => set((s) => ({ deepMode: !s.deepMode })),
 
   copilotStop: () => {
     copilotAbort?.abort();
@@ -533,7 +533,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   copilotAsk: async (text) => {
-    const mode = get().copilotMode;
+    // Auto-route: Deep → agent; a question → chat (stream); else → plan (which
+    // internally resolves close/segment/congestion commands or makes a plan).
+    const isQuestion =
+      /\?\s*$/.test(text) ||
+      /^(why|what|how|when|where|who|which|is|are|does|do|can|could|should|tell|explain)\b/i.test(text.trim());
+    const mode: CopilotMode = get().deepMode ? "agent" : isQuestion ? "chat" : "plan";
     set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }], copilotThinking: true }));
     const controller = new AbortController();
     copilotAbort = controller;

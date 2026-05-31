@@ -513,6 +513,8 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .mode-tab { appearance: none; cursor: pointer; border: 0; background: transparent; color: var(--ink-3); font-size: 10px; font-weight: 600; letter-spacing: .02em; padding: 4px 10px; border-radius: 999px; transition: background .14s, color .14s; }
 .mode-tab:hover { color: var(--cobalt-ink); }
 .mode-tab.active { background: var(--cobalt); color: #fff; }
+.deep-toggle { margin-left: auto; border: 1px solid var(--hair); flex: 0 0 auto; }
+.deep-toggle.active { border-color: var(--cobalt); }
 
 /* per-reply mode badge */
 .mode-badge { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--chrome-2); border: 1px solid var(--hair); color: var(--ink-3); font-size: 8px; letter-spacing: .08em; }

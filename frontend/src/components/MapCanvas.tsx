@@ -89,6 +89,7 @@ export function MapCanvas() {
   const recomputeTitle = useAppStore((s) => s.recomputeTitle);
   const recenterNonce = useAppStore((s) => s.recenterNonce);
   const flyNonce = useAppStore((s) => s.flyNonce);
+  const fitNonce = useAppStore((s) => s.fitNonce);
   const tiltOn = useAppStore((s) => s.tiltOn);
   const scrubMin = useAppStore((s) => s.scrubberMinute);
   const dayOfYear = useAppStore((s) => s.dayOfYear);
@@ -150,13 +151,20 @@ export function MapCanvas() {
     if (!m || recenterNonce === 0) return;
     m.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
   }, [recenterNonce]);
-  // Search → fly the camera to a hit (street / place); zoom defaults to a street-level view.
+  // Search → fly the camera to a point hit (place); zoom defaults to a street-level view.
   useEffect(() => {
     const m = mapRef.current?.getMap();
     const t = useAppStore.getState().flyTarget;
     if (!m || flyNonce === 0 || !t) return;
     m.flyTo({ center: [t.lng, t.lat], zoom: t.zoom ?? 15.5, duration: 1100, essential: true });
   }, [flyNonce]);
+  // Search → frame an entire street: fit the camera to the road's full extent.
+  useEffect(() => {
+    const m = mapRef.current?.getMap();
+    const b = useAppStore.getState().fitTarget;
+    if (!m || fitNonce === 0 || !b) return;
+    m.fitBounds(b, { padding: 96, duration: 1100, maxZoom: 16, essential: true });
+  }, [fitNonce]);
 
   // Time of day → Mapbox Standard light preset (dawn/day/dusk/night), shifted by season.
   useEffect(() => {

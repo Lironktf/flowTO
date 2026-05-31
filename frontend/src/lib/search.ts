@@ -12,14 +12,19 @@ import { MAPBOX_TOKEN } from "./mapbox";
 import { TORONTO_BBOX } from "../config";
 import type { RoadGraph } from "../api/graph";
 
+/** [[west, south], [east, north]] in lng/lat — a Mapbox fitBounds-ready box. */
+export type BBox = [[number, number], [number, number]];
+
 export interface SearchHit {
   id: string;
   /** Display name. */
   label: string;
   /** "street" (local graph) or a Mapbox place kind ("place", "poi", "address", …). */
   kind: string;
-  /** [lng, lat] for the camera. */
+  /** [lng, lat] for the camera (point fly-to / fallback). */
   coord: [number, number];
+  /** Streets: the whole road's extent, so the camera frames the entire street. */
+  bbox?: BBox;
   /** Present for local streets so the result can highlight the road. */
   edgeId?: string;
   /** Closer ≈ better when ranking; lower is better. */
@@ -30,27 +35,54 @@ export interface RoadIndexEntry {
   name: string;
   lower: string;
   edgeId: string;
-  coord: [number, number];
+  coord: [number, number]; // bbox center
+  bbox: BBox; // full extent of every segment sharing this name
 }
 
 /**
- * One entry per unique road name. Representative coordinate = the midpoint of
- * the segment's polyline (geometry is stored as [lat, lng]; we emit [lng, lat]).
+ * One entry per unique road name, with the bounding box spanning ALL segments
+ * of that name — so a hit can frame the entire street, not one block.
+ * (geometry is stored as [lat, lng]; bbox/coord are emitted as [lng, lat].)
  */
 export function buildRoadIndex(graph: RoadGraph): RoadIndexEntry[] {
-  const seen = new Set<string>();
-  const out: RoadIndexEntry[] = [];
+  interface Acc {
+    name: string;
+    edgeId: string;
+    minLng: number;
+    minLat: number;
+    maxLng: number;
+    maxLat: number;
+  }
+  const acc = new Map<string, Acc>();
   for (const seg of graph.edges) {
     const name = seg.road_name?.trim();
     if (!name) continue;
     const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const geo = seg.geometry;
-    const mid = geo[Math.floor(geo.length / 2)] ?? geo[0];
-    if (!mid) continue;
-    const [lat, lng] = mid;
-    out.push({ name, lower: key, edgeId: seg.edge_id, coord: [lng, lat] });
+    let a = acc.get(key);
+    if (!a) {
+      a = { name, edgeId: seg.edge_id, minLng: Infinity, minLat: Infinity, maxLng: -Infinity, maxLat: -Infinity };
+      acc.set(key, a);
+    }
+    for (const [lat, lng] of seg.geometry) {
+      if (lng < a.minLng) a.minLng = lng;
+      if (lat < a.minLat) a.minLat = lat;
+      if (lng > a.maxLng) a.maxLng = lng;
+      if (lat > a.maxLat) a.maxLat = lat;
+    }
+  }
+  const out: RoadIndexEntry[] = [];
+  for (const [lower, a] of acc) {
+    if (!Number.isFinite(a.minLng)) continue;
+    out.push({
+      name: a.name,
+      lower,
+      edgeId: a.edgeId,
+      coord: [(a.minLng + a.maxLng) / 2, (a.minLat + a.maxLat) / 2],
+      bbox: [
+        [a.minLng, a.minLat],
+        [a.maxLng, a.maxLat],
+      ],
+    });
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;
@@ -66,7 +98,15 @@ export function searchRoads(index: RoadIndexEntry[], query: string, limit = 6): 
     if (at === -1) continue;
     // prefix (0) ranks above interior; tie-break by name length.
     const score = (at === 0 ? 0 : 100) + at + e.name.length / 100;
-    hits.push({ id: `road:${e.edgeId}`, label: e.name, kind: "street", coord: e.coord, edgeId: e.edgeId, score });
+    hits.push({
+      id: `road:${e.edgeId}`,
+      label: e.name,
+      kind: "street",
+      coord: e.coord,
+      bbox: e.bbox,
+      edgeId: e.edgeId,
+      score,
+    });
     if (hits.length > 200) break; // cap scan cost on very short queries
   }
   hits.sort((a, b) => a.score - b.score);

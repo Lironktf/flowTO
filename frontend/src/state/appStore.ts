@@ -181,6 +181,8 @@ interface AppState {
   tiltOn: boolean;
   flyTarget: { lng: number; lat: number; zoom?: number } | null;
   flyNonce: number;
+  fitTarget: [[number, number], [number, number]] | null;
+  fitNonce: number;
 
   setTheme: (t: "light" | "dark") => void;
   setDensity: (d: "comfortable" | "compact") => void;
@@ -219,6 +221,7 @@ interface AppState {
   setSpeed: (s: number) => void;
   recenter: () => void;
   flyToLocation: (lng: number, lat: number, zoom?: number) => void;
+  fitToBounds: (bounds: [[number, number], [number, number]]) => void;
   toggleTilt: () => void;
   reset: () => Promise<void>;
 }
@@ -409,6 +412,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   recenterNonce: 0,
   flyTarget: null,
   flyNonce: 0,
+  fitTarget: null,
+  fitNonce: 0,
   tiltOn: true,
 
   setTheme: (t) => {
@@ -896,6 +901,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   recenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1 })),
   flyToLocation: (lng, lat, zoom) =>
     set((s) => ({ flyTarget: { lng, lat, zoom }, flyNonce: s.flyNonce + 1 })),
+  fitToBounds: (bounds) => set((s) => ({ fitTarget: bounds, fitNonce: s.fitNonce + 1 })),
   toggleTilt: () => set((s) => ({ tiltOn: !s.tiltOn })),
 
   reset: async () => {

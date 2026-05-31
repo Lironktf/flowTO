@@ -14,6 +14,7 @@ const kindLabel = (kind: string) =>
 export function SearchBar() {
   const graph = useAppStore((s) => s.graph);
   const flyToLocation = useAppStore((s) => s.flyToLocation);
+  const fitToBounds = useAppStore((s) => s.fitToBounds);
   const selectRoad = useAppStore((s) => s.selectRoad);
 
   const [query, setQuery] = useState("");
@@ -73,7 +74,9 @@ export function SearchBar() {
 
   const choose = (h: SearchHit | undefined) => {
     if (!h) return;
-    flyToLocation(h.coord[0], h.coord[1], h.kind === "street" ? 15.5 : 14.5);
+    // Streets: frame the whole road. Places: fly to the point.
+    if (h.bbox) fitToBounds(h.bbox);
+    else flyToLocation(h.coord[0], h.coord[1], 14.5);
     if (h.edgeId) selectRoad(h.edgeId);
     setOpen(false);
     setQuery(h.label);

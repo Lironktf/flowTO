@@ -222,8 +222,19 @@ def _make_estimator(backend: str, params: Optional[dict] = None):
     return HistGradientBoostingRegressor(**defaults), "HistGradientBoostingRegressor"
 
 
-def _save(model, kind, mae, r2, model_path, extra=None, *, seed=None,
-          backend=None, training_data_path=None, training_rows=None):
+def _save(
+    model,
+    kind,
+    mae,
+    r2,
+    model_path,
+    extra=None,
+    *,
+    seed=None,
+    backend=None,
+    training_data_path=None,
+    training_rows=None,
+):
     import json
 
     import joblib
@@ -290,8 +301,14 @@ def train_demand_model(
     print(f"  holdout MAE={mae:.1f} vehicles, R^2={r2:.3f}")
 
     _save(
-        model, kind, mae, r2, model_path,
-        seed=42, backend=backend, training_data_path=training_data_path,
+        model,
+        kind,
+        mae,
+        r2,
+        model_path,
+        seed=42,
+        backend=backend,
+        training_data_path=training_data_path,
         training_rows=len(X_tr),
     )
     return model

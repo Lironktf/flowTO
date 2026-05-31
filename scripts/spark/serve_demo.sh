@@ -10,6 +10,10 @@
 #   scripts/spark/serve_demo.sh                # push + serve
 #   scripts/spark/serve_demo.sh --no-push      # serve what's already on the Spark
 #   API_PORT=8011 WEB_PORT=5181 scripts/spark/serve_demo.sh
+#
+# Export VITE_MAPBOX_TOKEN (a Mapbox public pk.* token) before running, or the
+# basemap renders a "token required" placeholder. The token is forwarded to Vite
+# as an env var — never committed.
 set -euo pipefail
 HERE="$(dirname "$0")"
 source "$HERE/env.sh"
@@ -34,7 +38,7 @@ tmux send-keys -t "$SESSION:api" \
   "cd $REMOTE_DIR && PYTHONPATH=$REMOTE_DIR/src TS_BACKEND=$BACKEND TS_MAX_PAIRS=$MAX_PAIRS PORT=$API_PORT $REMOTE_VENV/bin/python scripts/serve_demo_api.py 2>&1 | tee /tmp/demo_api.log" C-m
 tmux new-window -t "$SESSION" -n web
 tmux send-keys -t "$SESSION:web" \
-  "cd $REMOTE_DIR/frontend && VITE_PROXY_TARGET=http://localhost:$API_PORT npm run dev -- --port $WEB_PORT --strictPort 2>&1 | tee /tmp/demo_web.log" C-m
+  "cd $REMOTE_DIR/frontend && VITE_PROXY_TARGET=http://localhost:$API_PORT VITE_MAPBOX_TOKEN=$VITE_MAPBOX_TOKEN npm run dev -- --port $WEB_PORT --strictPort 2>&1 | tee /tmp/demo_web.log" C-m
 echo "[demo] tmux '$SESSION' started: api :$API_PORT, web :$WEB_PORT"
 EOF
 

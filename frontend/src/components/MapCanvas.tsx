@@ -363,7 +363,7 @@ export function MapCanvas() {
 
   return (
     <>
-      <div id="map" style={{ position: "absolute", inset: 0 }}>
+      <div id="map" className={placing ? "placing" : ""} style={{ position: "absolute", inset: 0 }}>
         <Map
           ref={mapRef}
           mapboxAccessToken={MAPBOX_TOKEN}

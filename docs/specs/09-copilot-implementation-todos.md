@@ -10,6 +10,66 @@ Current contract recap: one `classify()` → dispatch; `ToolCall` already carrie
 
 ---
 
+## Tier 0 — Confirm/preview UX bugs (from live testing — DO FIRST)
+
+Surfaced testing "block dubarry ave": a staged plan shows **two** apply surfaces (one broken),
+**no preview highlight** of the proposed road, and a confusing **"2 changes"** label. These are
+correctness bugs in the apply flow — fix before new features.
+
+### 0a. Two confirm surfaces, one wired to the wrong source
+**Symptom:** chat shows "Confirm & run (2 changes)" *and* the map shows a "Copilot plan ready ·
+Apply & recompute / Discard" banner — two ways to apply one plan.
+**Root cause:**
+- Chat button → `copilotConfirm(msgIndex)` reads `m.interventions`, materializes a closure scene
+  object, and applies via `applyEdits()` — **correct**.
+- Map banner → `applyPlan()` → `set({planStaged:false}); applyEdits()`. `applyEdits()` flattens
+  **`get().objects`** — but staging never adds the plan to `objects`. So the banner applies whatever
+  scene objects pre-existed (a prior Edit), **not** the staged copilot plan. Wrong source.
+**Fix (single source of truth for the staged plan):**
+- Add state `stagedPlan: { msgIndex: number; interventions: Intervention[]; edgeIds: string[] } | null`,
+  set in `afterPlan`/`renderPlan` when a plan stages (replaces the bare `planStaged` boolean; keep a
+  derived `planStaged = !!stagedPlan`).
+- **One apply path:** both the chat button and the map banner call `copilotConfirm(stagedPlan.msgIndex)`.
+  Delete `applyPlan()`'s `applyEdits()`-on-objects path. `discardPlan` clears `stagedPlan`.
+- **Decision (consolidate):** keep the **chat confirm** as the primary (it carries the rationale,
+  citations, result card, revert). Make the **map banner non-duplicative** — either (rec.) a
+  preview-only indicator ("Plan staged — review in chat", no apply button), or a thin mirror that
+  also calls `copilotConfirm`. Do not keep two independent apply buttons.
+**Files:** `appStore.ts` (`stagedPlan` state, `afterPlan`/`renderPlan`, `applyPlan`/`discardPlan`,
+`copilotConfirm` clears it), `MapCanvas.tsx` (banner → preview-only or `copilotConfirm`),
+`CopilotPanel.tsx` (confirm button unchanged or reads `stagedPlan`).
+**Tests:** vitest — staging sets `stagedPlan`; banner-apply and chat-confirm both go through
+`copilotConfirm` and apply the **plan's** edges (not pre-existing objects); discard clears it.
+**Effort:** M.
+
+### 0b. No preview highlight of the proposed closure
+**Symptom:** staging only frames the camera (`applyView → fitToBounds`); the road to be closed isn't
+highlighted. The grey road + "1" marker on the map is a *previously applied* closure; the blue road
+is `selectedRoadId` from an earlier selection — neither is the staged Dubarry plan.
+**Fix:** render a distinct **staged-preview overlay** for `stagedPlan.edgeIds` (e.g. dashed/amber
+outline, visually separate from applied grey closures and the blue selection) so "preview before
+apply" is literally visible. Clear on confirm/discard.
+**Files:** `appStore.ts` (`stagedPlan.edgeIds` from the plan's `close_edge` ops / `view.edge_ids`),
+`MapCanvas.tsx` (new preview `PathLayer` keyed on `stagedPlan`), `flowto.css` (preview style).
+**Tests:** vitest — staging populates `edgeIds`; component renders the preview layer; clears on apply.
+**Effort:** S–M. **Note:** pairs with 0a (both hang off the new `stagedPlan` state).
+
+### 0c. "2 changes" reads wrong for one road
+**Symptom:** closing one road (2 directional segments) shows "Confirm & run (2 **changes**)".
+**Fix:** make the label road-centric. Count **distinct roads** vs **segments**: button
+"Confirm & run" with a sub-line like "Close Dubarry Avenue · 2 segments" (rationale already says
+"2 road segment(s)"). Don't label directional twins as "changes." For mixed plans, summarize by op
+type ("close 1 road · scale 1 road"). Keep the "Sealed edges: N" tile (accurate) but it's
+*edges/segments*, not *changes*.
+**Files:** `CopilotPanel.tsx` (confirm label from the plan's interventions — group by `road_name`/op),
+optionally a small `summarizeInterventions(interventions)` helper.
+**Tests:** vitest — 2 close_edge on one road → label says 1 road / 2 segments, not "2 changes".
+**Effort:** S.
+
+**Sequence for Tier 0:** 0a (the `stagedPlan` state) first — 0b and 0c both build on it.
+
+---
+
 ## Tier 1 — Capabilities (deliver what the taxonomy promises)
 
 ### 1. `demand_surge` backend op  *(unblocks the agent + the Edit surge tool)*
@@ -173,6 +233,7 @@ short rolling summary so "now close it" resolves the prior road.
 ---
 
 ## Suggested sequence
+0. **Tier 0** (0a→0b→0c) — fix the broken/duplicate apply + preview + wording FIRST (correctness) →
 1. **#1 demand_surge** (capability the UI already pretends to have) →
 2. **#5 keep-alive** + **#6 confirm-saves** (quick, high-felt-quality) →
 3. **#2 explain/inspect** (data already there) →

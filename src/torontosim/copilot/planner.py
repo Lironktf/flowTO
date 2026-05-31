@@ -1,20 +1,21 @@
 """API-facing copilot entry (P09): ``plan_intervention(prompt, state)``.
 
-A deterministic router handles the two rehearsed demo intents (hero mitigation,
-blocked closure) so the stage demo never depends on live decoding; arbitrary
-prompts fall through to live Nemotron (Ollama) when reachable, and to a safe
-generic preview otherwise. Always read-only / preview-first.
+A single classifier (``classify.classify``) is the sole intent authority; its
+result dispatches to a deterministic handler (resolve / congestion / optimize /
+focus) or, for conversational/compound asks, to the live freeform planner. Hard
+constraint refusal stays deterministic so it holds even offline. Always
+read-only / preview-first.
 """
 
 from __future__ import annotations
 
-import json
 import os
 
 from ..api.schemas import Intervention
-from . import ollama_client, rag
+from . import rag
+from .classify import ClassifyResult
 from .constraints import check_request
-from .tools import Citation, ToolCall
+from .tools import Citation, ToolCall, ViewDirective
 
 # The rehearsed mitigation plan (matches design/js/data.js copilotHero).
 _HERO_STEPS = [
@@ -134,50 +135,6 @@ def _optimize_call(state, prompt: str) -> ToolCall:
     )
 
 
-# --- Intent router (adapted from PR #31) ------------------------------------ #
-# The model classifies intent and extracts only NAMES; resolve.py does the exact
-# graph work (name → node/edges), so no edge_id is ever invented. Whole-road and
-# A→B segment closures + a read-only congestion query.
-_COMMAND_HINTS = (
-    "close",
-    "reopen",
-    "shut",
-    "block",
-    "congest",
-    "worst",
-    "bottleneck",
-    "busiest",
-    "between",
-)
-_INTENT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "intent": {
-            "type": "string",
-            "enum": [
-                "close_road",
-                "reopen_road",
-                "close_segment",
-                "reopen_segment",
-                "query_congestion",
-                "other",
-            ],
-        },
-        "road_name": {"type": "string"},
-        "from_intersection": {"type": "string"},
-        "to_intersection": {"type": "string"},
-    },
-    "required": ["intent"],
-}
-_INTENT_SYSTEM = (
-    "Classify the user's traffic request into one intent and extract the names it mentions. "
-    "Intents: 'close_road'/'reopen_road' act on an ENTIRE named road (put its name in 'road_name', "
-    "e.g. 'Gardiner Expressway'); 'close_segment'/'reopen_segment' act only between two intersections "
-    "(put them in 'from_intersection'/'to_intersection', e.g. 'Yonge & Bloor'); 'query_congestion' asks "
-    "where traffic is worst; 'other' for anything else. Return JSON only."
-)
-
-
 def _answer_congestion(state) -> str:
     """Read the cached baseline and describe the most congested roads (read-only)."""
     try:
@@ -211,40 +168,26 @@ def _answer_congestion(state) -> str:
     return "Congestion is worst on: " + "; ".join(parts) + "."
 
 
-def _try_command(prompt: str, state, model_call) -> ToolCall | None:
-    """Route close/reopen/query intents to a ToolCall via deterministic resolution.
+def _resolve_command(state, cls) -> ToolCall:
+    """A close/reopen intent → a preview ToolCall via deterministic resolution.
 
-    The model only classifies intent + parses names; ``resolve.py`` maps names to
-    real edge_ids (never invented). Returns None to fall through to the planner.
+    The classifier extracted only the NAMES; ``resolve.py`` maps them to real
+    edge_ids (never invented). No extra model call here.
     """
     from .resolve import road_between, road_edges_by_name
 
     graph = getattr(state, "graph", None)
     if graph is None:
-        return None
-    try:
-        cmd = json.loads(model_call(_INTENT_SYSTEM, prompt, _INTENT_SCHEMA))
-    except Exception:  # noqa: BLE001 — model/parse failure → not a command
-        return None
-    intent = str(cmd.get("intent", "other")).lower()
-
-    if intent == "query_congestion":
-        return ToolCall(
-            tool="answer", rationale=_answer_congestion(state), requires_user_confirmation=False
-        )
-
+        return _generic_preview()
+    intent = cls.intent
     if intent in ("close_road", "reopen_road"):
-        res = road_edges_by_name(graph, cmd.get("road_name"))
-        op = "close_edge" if intent == "close_road" else "reopen_edge"
-        verb = "Close" if intent == "close_road" else "Reopen"
-        label = res.get("road_name", cmd.get("road_name"))
-    elif intent in ("close_segment", "reopen_segment"):
-        res = road_between(graph, cmd.get("from_intersection"), cmd.get("to_intersection"))
-        op = "close_edge" if intent == "close_segment" else "reopen_edge"
-        verb = "Close" if intent == "close_segment" else "Reopen"
+        res = road_edges_by_name(graph, cls.road_name)
+        label = res.get("road_name", cls.road_name)
+    else:  # close_segment / reopen_segment
+        res = road_between(graph, cls.from_intersection, cls.to_intersection)
         label = f"{res.get('from_name')} → {res.get('to_name')}" if res.get("found") else None
-    else:
-        return None  # 'other' → general planner
+    op = "close_edge" if intent.startswith("close") else "reopen_edge"
+    verb = "Close" if intent.startswith("close") else "Reopen"
 
     if not res.get("found"):
         return ToolCall(
@@ -257,56 +200,115 @@ def _try_command(prompt: str, state, model_call) -> ToolCall | None:
         tool="preview_intervention",
         interventions=interventions,
         rationale=f"{verb} {label} ({len(interventions)} road segment(s)). Confirm to apply.",
+        view=ViewDirective(action="fit", road_name=label, edge_ids=res["edge_ids"]),
         requires_user_confirmation=True,
     )
 
 
-def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> dict:
-    """Return a validated, JSON-serializable copilot tool call for ``prompt``.
+def _capacity_command(state, cls) -> ToolCall:
+    """A change_capacity intent → scale every segment of the named road."""
+    from .resolve import road_edges_by_name
 
-    The two rehearsed intents (blocked closure, hero mitigation) resolve
-    deterministically as a stage safety net; everything else goes to live
-    Nemotron when enabled (``TS_COPILOT_LIVE``, default on), degrading to a safe
-    generic preview if the model is unreachable. Always cites the bylaw corpus.
-    """
-    text = (prompt or "").lower()
-    live = _live_enabled() if use_live is None else use_live
+    graph = getattr(state, "graph", None)
+    res = road_edges_by_name(graph, cls.road_name) if graph is not None else {"found": False}
+    if not res.get("found"):
+        return ToolCall(
+            tool="answer",
+            rationale=f"I couldn't find a road matching {cls.road_name!r}.",
+            requires_user_confirmation=False,
+        )
+    mult = cls.multiplier if cls.multiplier and cls.multiplier > 0 else 0.5
+    label = res.get("road_name", cls.road_name)
+    interventions = [
+        Intervention(op="change_capacity", edge_id=e, multiplier=mult) for e in res["edge_ids"]
+    ]
+    pct = round((mult - 1) * 100)
+    change = f"{'+' if pct >= 0 else ''}{pct}% capacity"
+    return ToolCall(
+        tool="preview_intervention",
+        interventions=interventions,
+        rationale=f"Set {label} to {change} ({len(interventions)} segment(s)). Confirm to apply.",
+        view=ViewDirective(action="fit", road_name=label, edge_ids=res["edge_ids"]),
+        requires_user_confirmation=True,
+    )
 
-    # 1) Hard-constraint refusal (the "blocked" demo path).
+
+def _focus_call(state, cls) -> ToolCall:
+    """A focus/show intent → a read-only camera move (no plan, no confirm)."""
+    name = (cls.road_name or "").strip()
+    if not name:
+        return _generic_preview()
+    return ToolCall(
+        tool="answer",
+        rationale=f"Showing {name} on the map.",
+        view=ViewDirective(action="fit", road_name=name),
+        requires_user_confirmation=False,
+    )
+
+
+def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
+    """Map a classified intent to a ToolCall. Hard-constraint refusal is checked
+    first (deterministic, model-independent) so it holds even offline."""
+    # Hard-constraint refusal (the "blocked" path) — owned by the deterministic
+    # checker, never the model. (De-hardcode / warn-don't-block is a later step.)
     if check_request(prompt, state=state):
-        call = _blocked_call(prompt, state)
-    # 2) Hero mitigation intent (ease/mitigate gridlock / post-match egress).
-    elif any(kw in text for kw in ("ease", "mitigat", "gridlock", "post-match", "egress")):
-        call = _hero_call(state)
-    # 3) Optimizer intent — let cuOpt/heuristic search propose the plan.
-    elif any(
-        kw in text for kw in ("optimize", "optimise", "optimal", "best plan", "recommend a plan")
-    ):
+        return _blocked_call(prompt, state)
+
+    intent = cls.intent if cls is not None else "chat"
+    if intent == "query_congestion":
+        return ToolCall(
+            tool="answer", rationale=_answer_congestion(state), requires_user_confirmation=False
+        )
+    if intent == "mitigate":
+        return _hero_call(state)
+    if intent == "optimize":
         try:
-            call = _optimize_call(state, prompt)
+            return _optimize_call(state, prompt)
         except (ImportError, OSError, ValueError):
-            call = _generic_preview()
-    elif live:
+            return _generic_preview()
+    if intent in ("close_road", "reopen_road", "close_segment", "reopen_segment"):
+        return _resolve_command(state, cls)
+    if intent == "change_capacity":
+        return _capacity_command(state, cls)
+    if intent == "focus":
+        return _focus_call(state, cls)
+
+    # chat / investigate / unresolved → a live freeform plan, else a safe default.
+    if live:
         from .plan import PlanError, plan
 
-        call = None
-        # Close/reopen a road or A→B segment, or "where's congestion?" — the model
-        # only classifies + names, resolve.py maps to real edges (no hallucination).
-        if any(h in text for h in _COMMAND_HINTS):
-            try:
-                call = _try_command(prompt, state, ollama_client.generate)
-            except (OSError, ValueError):
-                call = None
-        if call is None:
-            try:
-                call = plan(prompt, state)
-            except (PlanError, OSError, ValueError):
-                call = _generic_preview()  # model unreachable / no valid call → safe default
-    else:
-        call = _generic_preview()
+        try:
+            return plan(prompt, state)
+        except (PlanError, OSError, ValueError):
+            return _generic_preview()
+    return _generic_preview()
 
-    # Attach top RAG citations (grounding) if the call didn't carry its own.
+
+def plan_intervention(
+    prompt: str, state, *, use_live: bool | None = None, classification=None
+) -> dict:
+    """Return a validated, JSON-serializable copilot tool call for ``prompt``.
+
+    A single classifier (``classify.classify``) is the sole intent authority; its
+    result dispatches to a deterministic handler (resolve / congestion / optimize /
+    focus) or, for conversational/compound asks, to the live freeform planner. A
+    pre-computed ``classification`` (e.g. from ``/copilot/route``) is reused so we
+    never classify twice. Always cites the bylaw corpus.
+    """
+    live = _live_enabled() if use_live is None else use_live
+
+    cls = classification
+    if cls is not None and not isinstance(cls, ClassifyResult):
+        cls = ClassifyResult.model_validate(cls)
+    if cls is None and live:
+        from .classify import classify
+
+        cls = classify(prompt)
+
+    call = _dispatch(prompt, state, cls, live)
+
     retrieved = rag.retrieve(prompt, k=3)
     out = call.model_dump()
     out["retrieved_policy"] = retrieved
+    out["intent"] = cls.intent if cls is not None else "chat"
     return out

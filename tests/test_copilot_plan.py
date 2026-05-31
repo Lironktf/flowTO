@@ -61,14 +61,19 @@ def test_plan_refuses_hard_constraint_breach():
 
 
 def test_router_hero_returns_cited_preview():
+    # The classifier maps "ease gridlock" to the mitigate intent; we pass it
+    # directly so the test is deterministic without a live model.
     out = plan_intervention(
-        "Ease post-match gridlock near BMO Field without breaking bylaws.", _FakeState()
+        "Ease post-match gridlock near BMO Field without breaking bylaws.",
+        _FakeState(),
+        classification={"intent": "mitigate"},
     )
     assert out["tool"] == "preview_intervention"
     assert out["requires_user_confirmation"] is True
     refs = [c["ref"] for c in out["citations"]]
     assert any("950" in r for r in refs)
     assert "retrieved_policy" in out
+    assert out["intent"] == "mitigate"
 
 
 def test_router_blocked_request_refuses_unchanged():

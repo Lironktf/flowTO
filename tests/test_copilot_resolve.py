@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
-
 import networkx as nx
 
 from torontosim.api.store import AppState
 from torontosim.copilot import planner, resolve
+from torontosim.copilot.classify import ClassifyResult
 from torontosim.graph import schema
 
 
@@ -70,34 +69,60 @@ def test_resolve_node_by_name_handles_ampersand_variants():
         assert hit is not None and hit[0] == 1
 
 
-# ---- intent router --------------------------------------------------------- #
+# ---- classify-driven dispatch ---------------------------------------------- #
 
 
-def _model(payload: dict):
-    return lambda _s, _p, _sc: json.dumps(payload)
+def _cls(**kw):
+    return ClassifyResult(**kw)
 
 
-def test_router_close_road_resolves_all_segments():
-    call = planner._try_command(
-        "close lake shore", _state(), _model({"intent": "close_road", "road_name": "Lake Shore"})
+def test_dispatch_close_road_resolves_all_segments():
+    # "close lake shore" (single direction) isn't a hard-block; it resolves.
+    call = planner._dispatch(
+        "close lake shore", _state(), _cls(intent="close_road", road_name="Lake Shore"), live=False
     )
     assert call.tool == "preview_intervention"
     assert call.requires_user_confirmation is True
     assert {iv.edge_id for iv in call.interventions} == {"ls1", "ls2"}
     assert all(iv.op == "close_edge" for iv in call.interventions)
+    # A focus/fit view directive rides along so the map frames the closure.
+    assert call.view is not None and call.view.action == "fit"
 
 
-def test_router_query_congestion_is_read_only_answer():
-    call = planner._try_command(
-        "where is congestion worst", _state(), _model({"intent": "query_congestion"})
+def test_dispatch_change_capacity_scales_named_road():
+    call = planner._dispatch(
+        "halve capacity on lake shore",
+        _state(),
+        _cls(intent="change_capacity", road_name="Lake Shore", multiplier=0.5),
+        live=False,
+    )
+    assert call.tool == "preview_intervention"
+    assert {iv.edge_id for iv in call.interventions} == {"ls1", "ls2"}
+    assert all(iv.op == "change_capacity" and iv.multiplier == 0.5 for iv in call.interventions)
+
+
+def test_dispatch_focus_returns_view_no_plan():
+    call = planner._dispatch(
+        "show me King", _state(), _cls(intent="focus", road_name="King Street West"), live=False
+    )
+    assert call.tool == "answer"
+    assert not call.interventions
+    assert call.view is not None and call.view.action == "fit"
+    assert call.view.road_name == "King Street West"
+
+
+def test_dispatch_query_congestion_is_read_only_answer():
+    call = planner._dispatch(
+        "where is congestion worst", _state(), _cls(intent="query_congestion"), live=False
     )
     assert call.tool == "answer"
     assert call.requires_user_confirmation is False
 
 
-def test_router_other_falls_through():
-    call = planner._try_command("reduce capacity on King", _state(), _model({"intent": "other"}))
-    assert call is None
+def test_dispatch_chat_offline_is_generic_answer():
+    call = planner._dispatch("hello there", _state(), _cls(intent="chat"), live=False)
+    assert call.tool == "answer"
+    assert call.requires_user_confirmation is False
 
 
 def test_answer_congestion_survives_tied_pressure_and_unnamed_edges():
@@ -115,9 +140,12 @@ def test_answer_congestion_survives_tied_pressure_and_unnamed_edges():
     assert isinstance(out, str) and "Congestion is worst" in out
 
 
-def test_router_unresolvable_road_answers_not_found():
-    call = planner._try_command(
-        "close the moon", _state(), _model({"intent": "close_road", "road_name": "Moon Base Alpha"})
+def test_dispatch_unresolvable_road_answers_not_found():
+    call = planner._dispatch(
+        "close the moon",
+        _state(),
+        _cls(intent="close_road", road_name="Moon Base Alpha"),
+        live=False,
     )
     assert call.tool == "answer"
     assert "couldn't resolve" in call.rationale

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MODE_COLOR, modeColor } from "../src/layers/transit";
+import { buildTransitLayers, MODE_COLOR, modeColor } from "../src/layers/transit";
+import { CONGESTION_SLOT } from "../src/lib/mapbox";
 
 describe("transit modeColor", () => {
   it("maps each known mode to a distinct color", () => {
@@ -16,5 +17,10 @@ describe("transit modeColor", () => {
   it("transit colors are not the congestion green/amber/red", () => {
     // Sanity: streetcar isn't pure congestion-red rgb(210,58,50).
     expect(MODE_COLOR.streetcar).not.toEqual([210, 58, 50]);
+  });
+
+  it("renders ground lines in Mapbox Standard's middle slot", () => {
+    const [layer] = buildTransitLayers([{ route_id: "501", mode: "streetcar", path: [[-79.4, 43.65], [-79.39, 43.66]] }]);
+    expect((layer as { props: { slot?: string } }).props.slot).toBe(CONGESTION_SLOT);
   });
 });

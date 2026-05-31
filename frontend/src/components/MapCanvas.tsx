@@ -17,6 +17,7 @@ import { MAP_CENTER, MAP_ZOOM, RECOMPUTE_STEPS_LABEL, STADIUM } from "../config"
 import { buildTransitLayers, type RouteGeom } from "../layers/transit";
 import {
   applyLightPreset,
+  CONGESTION_SLOT,
   HAS_MAPBOX_TOKEN,
   lightPresetForMinute,
   MAPBOX_TOKEN,
@@ -129,6 +130,7 @@ export function MapCanvas() {
         getWidth: (e: EdgePath) => WIDTH_BY_CLASS[e.road_class] ?? 2,
         widthUnits: "pixels",
         widthMinPixels: 1,
+        slot: CONGESTION_SLOT,
         capRounded: true,
         jointRounded: true,
         updateTriggers: { getColor: [pressureSeq, intensity, dark] },
@@ -149,6 +151,7 @@ export function MapCanvas() {
           getColor: [36, 85, 214],
           getWidth: 6,
           widthUnits: "pixels",
+          slot: CONGESTION_SLOT,
           capRounded: true,
           jointRounded: true,
         }),
@@ -174,6 +177,7 @@ export function MapCanvas() {
             getColor: [210, 58, 50],
             getWidth: 5,
             widthUnits: "pixels",
+            slot: CONGESTION_SLOT,
             capRounded: true,
             jointRounded: true,
           }),

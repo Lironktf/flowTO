@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -41,16 +42,14 @@ def _load_real_feed(agency: str, *, date: str):
 def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        # Pre-run the three demo scenarios in a background thread so the first
-        # click is instant (a full-graph kpath run is ~tens of seconds).
-        import threading
-
+        # Warm only the initial baseline. Warming all three demo scenarios here
+        # delays the first graph response and spends CPU on data the map does not
+        # need yet.
         def warm():
-            for sc in ("baseline", "wc_surge", "wc_fix"):
-                try:
-                    _app.state.demo_cache.setdefault(sc, _compute_demo(sc))
-                except Exception:  # noqa: BLE001 — warmup is best-effort
-                    pass
+            try:
+                _get_demo("baseline")
+            except Exception:  # noqa: BLE001 — warmup is best-effort
+                pass
 
         threading.Thread(target=warm, daemon=True).start()
         yield
@@ -258,6 +257,9 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
 
     # ---- FIFA WC demo: real engine runs on the real graph (P12) --------- #
     app.state.demo_cache = {}
+    app.state.demo_locks = {
+        scenario: threading.Lock() for scenario in ("baseline", "wc_surge", "wc_fix")
+    }
 
     def _compute_demo(scenario: str) -> dict:
         from ..demo import wc_surge
@@ -273,6 +275,19 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             "records": edge_records(state, res["graph"]),
         }
 
+    def _get_demo(scenario: str) -> dict:
+        cached = app.state.demo_cache.get(scenario)
+        if cached is not None:
+            return cached
+        # The startup warm-up and an early browser request may arrive together.
+        # Compute each scenario once and let the second caller reuse the result.
+        with app.state.demo_locks[scenario]:
+            cached = app.state.demo_cache.get(scenario)
+            if cached is None:
+                cached = _compute_demo(scenario)
+                app.state.demo_cache[scenario] = cached
+            return cached
+
     @app.get("/demo/run")
     def demo_run(scenario: str = "baseline"):
         """Run baseline | wc_surge | wc_fix on the real graph; return per-edge records.
@@ -283,9 +298,7 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         """
         if scenario not in ("baseline", "wc_surge", "wc_fix"):
             raise HTTPException(422, f"unknown demo scenario: {scenario!r}")
-        if scenario not in app.state.demo_cache:
-            app.state.demo_cache[scenario] = _compute_demo(scenario)
-        return app.state.demo_cache[scenario]
+        return _get_demo(scenario)
 
     # ---- jobs ----------------------------------------------------------- #
     @app.get("/jobs/{job_id}")

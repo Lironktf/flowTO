@@ -6,6 +6,10 @@
  */
 export const RECORD_SIZE = 17;
 
+// Day-stream frames prepend a 5-byte (hour:u8, epoch:u32) tag to the body — see
+// backend api/encoding.py `pack_day_frame`. Decode the body from this offset.
+export const DAY_TAG_SIZE = 5;
+
 export interface TickArrays {
   load: Float32Array;
   speed: Float32Array;
@@ -22,9 +26,10 @@ export function makeTickArrays(n: number): TickArrays {
   };
 }
 
-/** Decode a frame buffer into `arrays` (indexed by edge_idx). Returns #records. */
-export function decodeFrameInto(buffer: ArrayBuffer, arrays: TickArrays): number {
-  const dv = new DataView(buffer);
+/** Decode a frame buffer into `arrays` (indexed by edge_idx). Returns #records.
+ * `byteOffset` skips a leading tag (0 for plain frames, DAY_TAG_SIZE for day frames). */
+export function decodeFrameInto(buffer: ArrayBuffer, arrays: TickArrays, byteOffset = 0): number {
+  const dv = new DataView(buffer, byteOffset);
   const count = dv.getUint32(0, true);
   let off = 4;
   for (let i = 0; i < count; i++) {

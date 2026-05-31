@@ -225,6 +225,9 @@ export function MapCanvas() {
   const layers = useMemo(() => {
     const out: unknown[] = [];
     const pressure = getArrays().pressure;
+    // Roads with no tracked activity (pressure 0 = no TMC-measured volume) recede to
+    // a faint neutral tint, so clusters of measured congestion read clearly against them.
+    const dimColor: [number, number, number, number] = dark ? [150, 160, 172, 46] : [120, 128, 140, 48];
     out.push(
       new PathLayer({
         id: "roads",
@@ -235,7 +238,12 @@ export function MapCanvas() {
         autoHighlight: true,
         highlightColor: [36, 85, 214, 160],
         getPath: (e: EdgePath) => e.path,
-        getColor: (e: EdgePath) => pressureRamp(pressure[e.idx] ?? 0, { intensity, dark }),
+        getColor: (e: EdgePath): [number, number, number, number] => {
+          const p = pressure[e.idx] ?? 0;
+          if (p <= 1e-4) return dimColor; // untracked → faint background road
+          const [r, g, b] = pressureRamp(p, { intensity, dark });
+          return [r, g, b, 255];
+        },
         getWidth: (e: EdgePath) => WIDTH_BY_CLASS[e.road_class] ?? 2,
         widthUnits: "meters",
         widthMinPixels: 2,

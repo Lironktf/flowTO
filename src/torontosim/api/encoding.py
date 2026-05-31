@@ -47,3 +47,23 @@ def unpack_frame(buf: bytes):
         records.append(_RECORD.unpack_from(buf, offset))
         offset += _RECORD.size
     return records
+
+
+# Day-stream frames (WS /day/stream): one frame per hour of a day. A 5-byte tag
+# (hour, view-epoch) is prepended to an ordinary ``pack_frame`` body so the
+# client can route each frame into the right hour slot and drop stale-epoch
+# frames after the view changes. The body decode path is unchanged (it just
+# starts at byte ``DAY_TAG_SIZE`` instead of 0).
+_DAY_TAG = struct.Struct("<BI")  # hour:u8, view_epoch:u32
+DAY_TAG_SIZE = _DAY_TAG.size  # 5
+
+
+def pack_day_frame(hour: int, view_epoch: int, records) -> bytes:
+    """Prepend an (hour, epoch) tag to a normal frame body."""
+    return _DAY_TAG.pack(int(hour) & 0xFF, int(view_epoch) & 0xFFFFFFFF) + pack_frame(records)
+
+
+def unpack_day_frame_header(buf: bytes):
+    """Return ``(hour, view_epoch, body_offset)`` for a day frame."""
+    hour, epoch = _DAY_TAG.unpack_from(buf, 0)
+    return hour, epoch, _DAY_TAG.size

@@ -17,7 +17,10 @@ InterventionType = Literal[
     "change_capacity",
     "close_node",
     "add_edge",
-    "demand_surge",
+    # Demand-side op (front-end wiring): injects/relieves trips around an anchor
+    # node BEFORE OD generation — see model/demand_surge.py. Not a graph
+    # mutation, so it is exempt from the edge-existence validation in app.py.
+    "demand_change",
 ]
 
 
@@ -33,12 +36,14 @@ class Intervention(BaseModel):
     speed_kmh: Optional[float] = None
     lanes: Optional[float] = None
     capacity: Optional[float] = None
-    # demand_surge fields — inject/scale OD trips at a node or point (lng/lat).
-    amount: Optional[float] = None  # trips to add (absolute) or scale factor (relative)
-    mode: Optional[str] = None  # "absolute" (default) | "relative"
+    # demand_change fields: anchor (edge_id and/or lng/lat) + a signed amount
+    # that radiates along the chosen compass directions. `amount` is signed
+    # (negative = relief); `mode` is "absolute" (trips) or "relative" (fraction).
+    directions: Optional[list[str]] = None
+    amount: Optional[float] = None
+    mode: Optional[str] = None
     lng: Optional[float] = None
     lat: Optional[float] = None
-    directions: Optional[list[str]] = None  # optional compass bias: n/e/s/w
 
     def to_op(self) -> dict:
         return self.model_dump(exclude_none=True)
@@ -78,6 +83,28 @@ class RunResult(BaseModel):
     recompute: str
     blast_stats: Optional[dict] = None
     rgap: Optional[float] = None
+
+
+class SimulateRequest(BaseModel):
+    """A stateless, param-driven run: predict demand for ``time_context`` with the
+    chosen model, apply the user's modifications, then simulate. Result is cached
+    on (demand_model, time_context, interventions) — see api/recompute.py.
+    """
+
+    demand_model: Literal["xgboost", "gnn"] = "xgboost"
+    time_context: dict = Field(default_factory=dict)  # weather forced to "clear" server-side
+    interventions: list[Intervention] = Field(default_factory=list)
+    iterations: int = 4
+
+
+class SimulateResult(BaseModel):
+    records: list[list]  # Record5 rows [edge_idx, load, speed, pressure, closure]
+    summary: dict
+    rgap: Optional[float] = None
+    # Which demand model actually produced this — guards the silent heuristic
+    # fallback (e.g. "XGBRegressor(...)", "gnn", or "HeuristicDemandModel").
+    model_actual: str = ""
+    cached: bool = False
 
 
 class CompareResult(BaseModel):

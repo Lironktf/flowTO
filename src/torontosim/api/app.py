@@ -6,15 +6,20 @@
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-from .encoding import pack_frame
+from ..datapipeline.tmc_baseline import build_baseline_model
+from .daycompute import DayCompute, base_time_context, hour_order
+from .encoding import pack_day_frame, pack_frame
 from .jobs import JobManager
+from .prewarm import PrewarmManager
+from .recompute import recompute_scenario
 from .schemas import (
     CompareResult,
     CopilotConfirm,
@@ -25,6 +30,8 @@ from .schemas import (
     Scenario,
     ScenarioCreate,
     ScenarioPatch,
+    SimulateRequest,
+    SimulateResult,
 )
 from .store import AppState, ScenarioStore, edge_records
 
@@ -46,12 +53,16 @@ def _load_real_feed(agency: str, *, date: str):
 def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        # Warm only the initial baseline. Warming all three demo scenarios here
-        # delays the first graph response and spends CPU on data the map does not
-        # need yet.
+        # Warm the GNN baseline (the no-edit "usual congestion" view): load the
+        # 175 MB tensor bundle once and precompute the default day's 24-frame blob so
+        # the first /baseline/predicted is instant. Best-effort + non-blocking; once
+        # the bundle is warm any day/month is ~0.3s. (Edits use the equilibrium
+        # day-stream — a separate path.)
         def warm():
+            from . import gnn_baseline as gb
+
             try:
-                _get_demo("baseline")
+                gb.warm_default(state)
             except Exception:  # noqa: BLE001 — warmup is best-effort
                 pass
             # Pre-warm the copilot's compare baselines so congestion queries,
@@ -101,8 +112,24 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     )
     store = ScenarioStore(state, snapshot_dir=snapshot_dir)
     jobs = JobManager()
+    prewarm = PrewarmManager(state)
+    daycompute = DayCompute(state)
     app.state.store = store
     app.state.jobs = jobs
+    app.state.prewarm = prewarm
+    app.state.daycompute = daycompute
+
+    # Measured-baseline index (built once, lazily). See /baseline/day below.
+    _baseline = {"model": None}
+    _baseline_lock = threading.Lock()
+
+    def build_baseline_now():
+        with _baseline_lock:
+            if _baseline["model"] is None:
+                _baseline["model"] = build_baseline_model(state.graph, state.edge_index)
+            return _baseline["model"]
+
+    app.state.build_baseline = build_baseline_now
 
     # ---- health / debug ------------------------------------------------- #
     @app.get("/healthz")
@@ -143,6 +170,45 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 meta = {**meta, "restricted": restricted}
             out.append({"idx": i, "edge_id": eid, **meta})
         return {"edges": out}
+
+    @app.get("/baseline/day")
+    def baseline_day(dow: int = 2, month: int = 6):
+        """Measured 24-hour baseline for a month + day-of-week, from raw TMC (no ML).
+
+        Returns 24 concatenated day-frames (``pack_day_frame(hour, epoch=0, recs)``);
+        the client walks them and ingests each into its hourly buffer. Hours/days/
+        months with no survey data return empty frames (free-flow). ``dow`` is
+        Monday=0; ``month`` is 1..12. Coverage varies by month (honest, no fallback).
+        """
+        if dow < 0 or dow > 6:
+            raise HTTPException(400, "dow must be 0..6 (Monday=0)")
+        if month < 1 or month > 12:
+            raise HTTPException(400, "month must be 1..12")
+        model = build_baseline_now()
+        day = model.day(month, dow)
+        body = b"".join(pack_day_frame(h, 0, recs) for h, recs in enumerate(day))
+        return Response(content=body, media_type="application/octet-stream")
+
+    @app.get("/baseline/predicted")
+    def baseline_predicted(dow: int = 2, month: int = 6):
+        """Full-coverage *predicted* baseline day (GNN, no interventions): 24 frames.
+
+        The GraphSAGE model predicts a per-edge pressure for EVERY edge directly, so
+        this is the no-edit "usual congestion" view — same blob shape as
+        ``/baseline/day`` (the client reuses ``ingestBaselineDay``). Computed on
+        demand (~0.3s once the bundle is warm) and cached; the default day is warmed
+        and persisted at startup. ``dow`` is Monday=0; ``month`` is 1..12. (Edits use
+        the equilibrium ``/day/stream`` so closures/surges reroute.)
+        """
+        if dow < 0 or dow > 6:
+            raise HTTPException(400, "dow must be 0..6 (Monday=0)")
+        if month < 1 or month > 12:
+            raise HTTPException(400, "month must be 1..12")
+        from . import gnn_baseline as gb
+
+        return Response(
+            content=gb.day_blob(state, dow, month), media_type="application/octet-stream"
+        )
 
     # ---- scenario CRUD -------------------------------------------------- #
     @app.post("/scenarios", response_model=Scenario)
@@ -244,6 +310,124 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         if result is None:
             raise HTTPException(409, "scenario has not been run yet")
         return {"records": edge_records(state, result["graph"]), "summary": result["summary"]}
+
+    # ---- param-driven simulate (front-end wiring) ----------------------- #
+    @app.post("/simulate", response_model=SimulateResult)
+    def simulate(req: SimulateRequest):
+        """Predict demand for ``time_context`` with the chosen model, apply the
+        user's modifications (closures + demand surges), simulate, and return
+        per-edge records. Pure function of the inputs → cached (see recompute).
+        """
+        ops = [iv.to_op() for iv in req.interventions]
+        _validate_edges(ops)  # demand_change is exempt (not an edge op)
+        res = recompute_scenario(
+            state,
+            model_kind=req.demand_model,
+            time_context=req.time_context,
+            interventions=ops,
+            iterations=req.iterations,
+        )
+        return SimulateResult(**res)
+
+    @app.post("/simulate/prewarm")
+    def simulate_prewarm(req: SimulateRequest):
+        """Speculatively warm the cache for a *pending* param state + likely-next
+        states (adjacent hours, the other model) so a later Run is instant.
+        Non-blocking; stale queued warms are cancelled. See api/prewarm.py.
+        """
+        ops = [iv.to_op() for iv in req.interventions]
+        _validate_edges(ops)
+        queued = prewarm.request(
+            model_kind=req.demand_model,
+            time_context=req.time_context,
+            interventions=ops,
+            iterations=req.iterations,
+        )
+        return {"queued": queued}
+
+    # ---- day time-series stream (free playback) ------------------------- #
+    _GRAPH_EDGE_OPS = ("close_edge", "reopen_edge", "remove_edge", "change_capacity")
+
+    @app.websocket("/day/stream")
+    async def day_stream(ws: WebSocket):
+        """Stream a whole day as 24 hourly binary frames so the front-end can play
+        a view back without ever recomputing on a scrub.
+
+        The client sends one JSON spec
+        ``{demand_model, time_context{day_of_week,month,...}, interventions,
+        current_hour, epoch, iterations}`` then receives, per hour: a tagged binary
+        frame (``pack_day_frame``) as it completes — current hour first. A view
+        change = the client opening a new socket; this handler cancels its
+        not-yet-started hours and returns. ``epoch`` tags every frame so the client
+        can drop any straggler from a superseded view.
+        """
+        await ws.accept()
+        try:
+            spec = await ws.receive_json()
+            model_kind = str(spec.get("demand_model", "xgboost"))
+            base_tc = base_time_context(spec.get("time_context", {}))
+            raw_iv = spec.get("interventions", []) or []
+            # Drop graph ops referencing unknown edges (the per-hour pipeline would
+            # otherwise raise); demand_change + valid edge ops pass through.
+            interventions = [
+                iv
+                for iv in raw_iv
+                if not (
+                    iv.get("op") in _GRAPH_EDGE_OPS and iv.get("edge_id") not in state.edge_index
+                )
+            ]
+            tc_hour = (spec.get("time_context") or {}).get("hour", 8)
+            current_hour = int(spec.get("current_hour", tc_hour) or 0)
+            epoch = int(spec.get("epoch", 0) or 0)
+            iterations = int(spec.get("iterations", 4) or 4)
+        except Exception:  # noqa: BLE001 — malformed spec or client vanished mid-handshake
+            # The client may have already closed (it supersedes by reconnecting);
+            # closing an already-closed socket raises, so guard it.
+            try:
+                await ws.close(code=4400)
+            except Exception:  # noqa: BLE001
+                pass
+            return
+
+        dc = app.state.daycompute
+        loop = asyncio.get_running_loop()
+        futures = [
+            loop.run_in_executor(
+                dc.pool, dc.compute_hour, model_kind, base_tc, interventions, hour, iterations
+            )
+            for hour in hour_order(current_hour)
+        ]
+
+        sent_meta = False
+        try:
+            for fut in asyncio.as_completed(futures):
+                try:
+                    hour, res = await fut
+                except Exception:  # noqa: BLE001 — a single hour failed; skip it
+                    continue
+                if not sent_meta:
+                    await ws.send_json(
+                        {
+                            "type": "meta",
+                            "total": 24,
+                            "epoch": epoch,
+                            "model_actual": res.get("model_actual", ""),
+                        }
+                    )
+                    sent_meta = True
+                await ws.send_bytes(pack_day_frame(hour, epoch, res["records"]))
+            try:
+                await ws.send_json({"type": "done", "epoch": epoch})
+            except Exception:  # noqa: BLE001
+                pass
+        except (WebSocketDisconnect, RuntimeError):
+            # Client opened a new view (or the socket dropped): stop streaming.
+            pass
+        finally:
+            # Cancel queued-but-not-started hours; in-flight ones finish into the
+            # cache (CPU-bound, can't be interrupted) and may help on return.
+            for fut in futures:
+                fut.cancel()
 
     # ---- copilot / optimizer placeholders (P09/P10 fill in) ------------- #
     @app.post("/copilot/plan")
@@ -456,6 +640,7 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
 
         from ..demo import wc_surge
 
+        state.ensure_od()  # legacy demo path: build the shared baseline OD on first use
         res = wc_surge.run_scenario(
             scenario,
             graph=state.graph,
@@ -529,6 +714,19 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
 
 def serve(host: str = "0.0.0.0", port: int = 8000):  # pragma: no cover - runtime entry
     """Production entry: load the full graph + baseline OD, then run uvicorn."""
+    import os
+
+    # Belt-and-suspenders for scripts/run_api.sh's BLAS pinning: only takes
+    # effect if serve() is the first thing to import numpy in this process
+    # (env must be set before the numpy import). setdefault → the shell wins.
+    for _var in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
+        os.environ.setdefault(_var, "1")
+
     import uvicorn
 
     from ._bootstrap import load_default_state

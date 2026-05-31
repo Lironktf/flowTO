@@ -15,9 +15,17 @@ A "row" describes one (node, time-context) pair:
 
 from __future__ import annotations
 
+import weakref
 from typing import Dict
 
 from ..graph.config import haversine_m
+
+# Static node features depend only on graph geometry/topology, never on time, so
+# they're identical across all 24 hours of a day (and every re-run). Memoize by
+# graph identity so a full-day fill computes them once instead of 24×. A
+# WeakKeyDictionary drops the entry automatically when the graph is GC'd, so
+# short-lived test graphs don't leak.
+_STATIC_FEATURE_CACHE: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
 
 # Downtown reference point (roughly the financial core / Union area). Used for
 # the `distance_to_downtown` feature and for time-of-day OD biasing.
@@ -136,6 +144,16 @@ def compute_static_node_features(graph) -> Dict[object, dict]:
     These depend only on the graph geometry/topology, so the simulator caches
     them and reuses across every time context.
     """
+    try:
+        cached = _STATIC_FEATURE_CACHE.get(graph)
+    except TypeError:  # graph not weak-referenceable — skip the cache entirely
+        cached = None
+        graph_cacheable = False
+    else:
+        graph_cacheable = True
+    if cached is not None:
+        return cached
+
     dlat, dlon = DOWNTOWN_LATLON
     feats: Dict[object, dict] = {}
     for node, data in graph.nodes(data=True):
@@ -161,6 +179,8 @@ def compute_static_node_features(graph) -> Dict[object, dict]:
             "road_class_rank": int(best_rank),
             "name": data.get("name"),
         }
+    if graph_cacheable:
+        _STATIC_FEATURE_CACHE[graph] = feats
     return feats
 
 

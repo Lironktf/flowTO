@@ -11,6 +11,38 @@ const TOOL_ICON: Record<string, IconKey> = {
   surge: "surge",
 };
 
+/**
+ * Restricted-road closure guardrail. Pops in the left menu the moment a closure
+ * lands on a "Completely Prohibited" provincial highway (MTO) or a City of
+ * Toronto municipal expressway. Dismisses when the offending closure is removed.
+ */
+function ClosureWarnings() {
+  const warnings = useAppStore((s) => s.warnings);
+  const restricted = warnings.filter((w) => w.kind === "restricted");
+  if (restricted.length === 0) return null;
+  return (
+    <section className="region v-edit">
+      <div className="region-hd">
+        <span className="lbl">Restricted road</span>
+        <span className="spacer" />
+        <span className="meta">{restricted.length}</span>
+      </div>
+      <div className="region-body">
+        {restricted.map((w) => (
+          <div key={w.id} className={`warn-row ${w.severity}`}>
+            <Icon.warn />
+            <div className="wt">
+              <b>{w.title}</b>
+              <div>{w.detail}</div>
+              {w.ref && <span className="wref">{w.ref}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /** Simulate → Saved simulations (live scenario CRUD). */
 function SavedSims() {
   const savedSims = useAppStore((s) => s.savedSims);
@@ -174,6 +206,7 @@ function EditPanels() {
 export function LeftDock() {
   return (
     <>
+      <ClosureWarnings />
       <SavedSims />
       <EditPanels />
     </>

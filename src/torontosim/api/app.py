@@ -82,6 +82,8 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     @app.get("/edges")
     def edges_index():
         """The once-uploaded edge table: index -> edge_id + geometry."""
+        from .restricted_roads import classify_edge
+
         out = []
         geo = {
             d.get("edge_id"): {
@@ -93,6 +95,9 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         }
         for i, eid in enumerate(state.edge_ids):
             meta = geo.get(eid, {})
+            restricted = classify_edge(eid)
+            if restricted:
+                meta = {**meta, "restricted": restricted}
             out.append({"idx": i, "edge_id": eid, **meta})
         return {"edges": out}
 

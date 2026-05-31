@@ -183,6 +183,7 @@ def run_agent(
     open_schema = _open_schema()
     term_schema = _terminal_schema()
     steps: list[dict] = []
+    seen: dict = {}  # (tool, args) → observation, to skip repeated identical work
 
     for i in range(max_steps):
         remaining = max_steps - i
@@ -205,20 +206,32 @@ def run_agent(
                 {"tool": "propose", "thought": step.thought, "observation": "proposed a plan"}
             )
             return _finalize_propose(goal, step, state, steps)
+        # Dedup: if the model re-runs an identical tool call, reuse the cached
+        # observation and nudge it to pick a different action (saves a sim/optimize).
+        key = None
         if step.tool == "retrieve_policy":
-            obs = rag.retrieve(step.query or goal, k=3)
+            key = ("retrieve_policy", step.query or goal)
+            obs = seen[key] if key in seen else rag.retrieve(step.query or goal, k=3)
         elif step.tool == "simulate":
             clean = sanitize_interventions(step.interventions, _valid_edges(state))
-            obs = (
-                _simulate(state, [iv.to_op() for iv in clean])
-                if clean
-                else {"error": "no valid edge_id in the proposed interventions"}
-            )
+            if not clean:
+                obs = {"error": "no valid edge_id in the proposed interventions"}
+            else:
+                ops = [iv.to_op() for iv in clean]
+                key = ("simulate", json.dumps(ops, sort_keys=True))
+                obs = seen[key] if key in seen else _simulate(state, ops)
         elif step.tool == "optimize":
-            obs = _optimize(state)
+            key = ("optimize", "")
+            obs = seen[key] if key in seen else _optimize(state)
         else:  # pragma: no cover — schema-constrained
             break
-        steps.append({"tool": step.tool, "thought": step.thought, "observation": obs})
+        repeated = key is not None and key in seen
+        if key is not None:
+            seen[key] = obs
+        thought = step.thought + (
+            " [repeat — prior result reused; try a different action or finish]" if repeated else ""
+        )
+        steps.append({"tool": step.tool, "thought": thought, "observation": obs})
 
     # Step cap or parse failure: summarize what we learned, no plan committed.
     return AgentResult(

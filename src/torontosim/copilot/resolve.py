@@ -23,6 +23,41 @@ def _tokens(s: str) -> set:
     return {t for t in _norm(s).split() if t != "and" and len(t) > 2}
 
 
+# Generic road-type / directional words that are NOT distinctive on their own — a
+# match driven only by these (e.g. 'Narnia Expressway' -> 'Gardiner Expressway' via
+# the shared word 'expressway') is a false positive: the real name token never matched.
+_GENERIC_ROAD_WORDS = {
+    "street",
+    "road",
+    "avenue",
+    "expressway",
+    "boulevard",
+    "drive",
+    "lane",
+    "way",
+    "court",
+    "crescent",
+    "trail",
+    "parkway",
+    "highway",
+    "circle",
+    "place",
+    "gardens",
+    "square",
+    "terrace",
+    "north",
+    "south",
+    "east",
+    "west",
+    "the",
+}
+
+
+def _distinctive(tokens: set) -> set:
+    """The name-carrying tokens — generic road-type/directional words removed."""
+    return {t for t in tokens if t not in _GENERIC_ROAD_WORDS}
+
+
 # Road-class prominence (higher = more major), for tiebreaking ambiguous name matches.
 _CLASS_RANK = {
     "motorway": 6,
@@ -103,6 +138,14 @@ def road_edges_by_name(graph, road_name) -> dict:
             best_key, best, best_base = key, nm, overlap * 2.0 + ratio
 
     if best is None or best_base < 1.0:
+        return {"found": False, "reason": f"no road matching {road_name!r}"}
+
+    # Reject false positives that match only on a generic word: if the query has a
+    # distinctive name token (e.g. 'narnia'), the matched road must share one of them.
+    # Otherwise 'Narnia Expressway' would resolve to 'Gardiner Expressway' on 'expressway'
+    # alone. (If the query is ONLY generic words, skip the gate and keep the best match.)
+    distinctive_q = _distinctive(q_tokens)
+    if distinctive_q and not (distinctive_q & _distinctive(_tokens(best))):
         return {"found": False, "reason": f"no road matching {road_name!r}"}
 
     edge_ids = [

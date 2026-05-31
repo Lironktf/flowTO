@@ -74,6 +74,16 @@ def test_road_edges_by_name_unknown_returns_not_found():
     assert "reason" in res
 
 
+def test_road_edges_by_name_rejects_generic_word_false_positive():
+    # 'Narnia Expressway' must NOT resolve to 'Gardiner Expressway' just because they
+    # share the generic word 'expressway' — the distinctive token ('narnia') never
+    # matched, so the copilot must not confidently close the wrong real road.
+    g = nx.MultiDiGraph()
+    g.add_edge(0, 1, key=0, road_name="Gardiner Expressway", road_class="motorway", edge_id="gx1")
+    res = resolve.road_edges_by_name(g, "Narnia Expressway")
+    assert res["found"] is False
+
+
 def test_resolve_node_by_name_handles_ampersand_variants():
     g = _state().graph
     for q in ("Lake Shore & Bathurst", "lake shore boulevard west and bathurst"):

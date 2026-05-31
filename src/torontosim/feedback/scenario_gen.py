@@ -20,8 +20,16 @@ import pandas as pd
 
 # arterials/collectors reroute more → sample them more often (bias, not exclusivity)
 ROAD_CLASS_WEIGHT = {
-    "motorway": 6, "trunk": 5, "primary": 5, "secondary": 4, "tertiary": 3,
-    "residential": 2, "service": 1, "unclassified": 2, "living_street": 1, "other": 2,
+    "motorway": 6,
+    "trunk": 5,
+    "primary": 5,
+    "secondary": 4,
+    "tertiary": 3,
+    "residential": 2,
+    "service": 1,
+    "unclassified": 2,
+    "living_street": 1,
+    "other": 2,
 }
 
 
@@ -101,17 +109,45 @@ def generate_pairs(
             )
     return pd.DataFrame(
         rows,
-        columns=["scenario_id", "edge_id", "closed_edge", "sign", "sim_open", "sim_int", "delta_flow"],
+        columns=[
+            "scenario_id",
+            "edge_id",
+            "closed_edge",
+            "sign",
+            "sim_open",
+            "sim_int",
+            "delta_flow",
+        ],
     )
 
 
-def generate_from_sim(graph, od_matrix, *, n: int, seed: int, **sim_kwargs) -> pd.DataFrame:  # pragma: no cover - sim on GB10
-    """Real adapter: solve the open equilibrium, sample interventions biased toward
-    LOADED edges (so each one actually reroutes), and run the sim. ``sim_kwargs``
-    (backend / max_iter / rgap) tune the equilibrium solve for speed."""
-    from .groundtruth.counterfactual import simulate_open_intervened
+def generate_from_sim(
+    graph, od_matrix, *, n: int, seed: int, solver: str = "full", **sim_kwargs
+) -> pd.DataFrame:  # pragma: no cover - sim on GB10
+    """Real adapter: solve the open network, sample interventions biased toward
+    LOADED edges (so each one actually reroutes), and run the sim.
 
-    simulate_open, simulate_intervened = simulate_open_intervened(graph, od_matrix, **sim_kwargs)
+    ``solver``: ``"full"`` re-solves the whole equilibrium per scenario
+    (``counterfactual.simulate_open_intervened``; supports openings). ``"blast"``
+    re-routes only the affected bundles over a shared cache
+    (``blast_sim.simulate_open_intervened_blast``; ~10× faster, AON fidelity,
+    **closures only** — so Stage-1 stays method-consistent with a blast Stage-2).
+    ``sim_kwargs`` (backend / max_iter / rgap) tune the underlying solve.
+    """
+    if solver == "blast":
+        from .blast_sim import simulate_open_intervened_blast
+
+        simulate_open, simulate_intervened = simulate_open_intervened_blast(
+            graph, od_matrix, backend=sim_kwargs.get("backend", "cpu")
+        )
+        # blast models closures only → sample full closures (no openings/partials)
+        sample_kwargs = dict(p_closure=1.0, capacity_down=0.0)
+    else:
+        from .groundtruth.counterfactual import simulate_open_intervened
+
+        simulate_open, simulate_intervened = simulate_open_intervened(graph, od_matrix, **sim_kwargs)
+        sample_kwargs = {}
+
     sim_open = simulate_open()  # {edge_id: load} — used to weight the sampling
     edges = pd.DataFrame(
         [
@@ -123,5 +159,5 @@ def generate_from_sim(graph, od_matrix, *, n: int, seed: int, **sim_kwargs) -> p
             for u, v, k, d in graph.edges(keys=True, data=True)
         ]
     )
-    interventions = sample_interventions(edges, n=n, seed=seed)
+    interventions = sample_interventions(edges, n=n, seed=seed, **sample_kwargs)
     return generate_pairs(interventions, simulate_open, simulate_intervened)

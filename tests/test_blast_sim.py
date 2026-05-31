@@ -61,3 +61,16 @@ def test_blast_matches_full_aon_on_residual_signs():
     # detour edges gain flow, the closed corridor loses it
     assert c["ac"] - o["ac"] > 0
     assert c["ab"] - o["ab"] < 0
+
+
+def test_generate_from_sim_blast_is_closures_only():
+    """Blast scenario-gen yields closure pairs (no openings) with a real reroute."""
+    from torontosim.feedback.scenario_gen import generate_from_sim
+
+    g = _diamond()
+    od = [{"origin": "A", "destination": "D", "trips": 100.0}]
+    pairs = generate_from_sim(g, od, n=2, seed=0, solver="blast", backend="cpu")
+    assert not pairs.empty
+    assert set(pairs["sign"].unique()) <= {"closure"}      # no openings under blast
+    # at least one scenario actually moves flow (sim_int != sim_open somewhere)
+    assert (pairs["delta_flow"].abs() > 1e-9).any()

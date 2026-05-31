@@ -38,7 +38,6 @@ import {
   buildRoadIndex,
   resolveQuery,
   retrievePlace,
-  searchRoads,
   type RoadIndexEntry,
   type SearchHit,
 } from "../lib/search";
@@ -430,17 +429,10 @@ function bboxForView(
   view: ViewDirective,
 ): [[number, number], [number, number]] | null {
   if (!graph) return null;
+  // Frame the exact backend-resolved segments. (Name-only / place views never
+  // reach here — applyView routes those through the shared omnibox resolver.)
   const ids = view.edge_ids ?? [];
-  // No backend edge_ids → resolve the road name through the SAME index the search
-  // bar uses (one source of truth), and take that road's full extent directly.
-  // A non-road name (a place) yields no road hit → null, and applyView falls
-  // through to the place geocoder. (Replaces a blind substring scan that could
-  // frame the wrong street.)
-  if (!ids.length) {
-    if (!view.road_name) return null;
-    const hit = searchRoads(roadIndexFor(graph), view.road_name, 1)[0];
-    return hit?.bbox ?? null;
-  }
+  if (!ids.length) return null;
   let minLng = Infinity,
     minLat = Infinity,
     maxLng = -Infinity,
@@ -835,18 +827,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     // Execute a read-only camera move from the copilot (auto-focus on the road it
     // proposes / the place you asked to see). No confirm — it only moves the view.
-    const applyView = (view?: ViewDirective | null) => {
+    // `highlight` = also blue-select the framed road (like the search bar). Off for
+    // confirmable plans, where the amber staged preview is the highlight instead.
+    const applyView = (view?: ViewDirective | null, highlight = true) => {
       if (!view) return;
       if (view.action === "recenter") return get().recenter();
       if (view.action === "tilt") return get().toggleTilt();
       if (view.action === "time" && view.minute != null) return get().setScrubber(view.minute);
       if (view.action === "fly" && view.lng != null && view.lat != null)
         return get().flyToLocation(view.lng, view.lat, view.zoom ?? undefined);
-      const bbox = bboxForView(get().graph, view);
-      if (bbox) return get().fitToBounds(bbox);
-      // No edge_ids and no matching road → fall through to the SAME resolver the
-      // omnibox uses (local roads, then Mapbox places), so the copilot can fly to
-      // anything the search bar can ("show me High Park", "fly to the CN Tower").
+      const ids = view.edge_ids ?? [];
+      if (ids.length) {
+        const bbox = bboxForView(get().graph, view);
+        if (bbox) get().fitToBounds(bbox);
+        if (highlight) get().selectRoad(ids[0]); // highlights the whole road by name
+        return;
+      }
+      // No backend edge_ids → resolve through the SAME omnibox chain (local roads,
+      // then Mapbox places): a street frames + highlights, a place flies + pins. So
+      // the copilot can show anything the search bar can ("High Park", "CN Tower").
       if (view.road_name) void get().focusQuery(view.road_name);
     };
     const renderPlan = (resp: CopilotResponse) => {
@@ -866,7 +865,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ],
         copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
       }));
-      applyView(resp.view);
+      applyView(resp.view, !confirmable); // amber staged preview owns the highlight for plans
       pushWarnings(resp.warnings);
       afterPlan(
         confirmable ? resp.interventions : undefined,

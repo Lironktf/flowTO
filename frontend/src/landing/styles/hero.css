@@ -1,0 +1,101 @@
+/* Hero section styles — owned by the Hero agent. */
+
+/* Shared positioning context for Hero + Numbers so the CN Tower can rise out
+   from behind the stats band. */
+.hero-stack {
+  position: relative;
+}
+
+/* Let the tower layer extend past the hero's bottom edge. */
+.hero {
+  overflow: visible;
+}
+
+/* Dimmed transit/road backdrop — sits behind the copy + tower, faded at the
+   edges so it reads as a subtle texture rather than a foreground map. */
+.hero__transit {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  -webkit-mask-image: radial-gradient(
+    130% 105% at 60% 32%,
+    #000 38%,
+    transparent 86%
+  );
+  mask-image: radial-gradient(130% 105% at 60% 32%, #000 38%, transparent 86%);
+}
+.hero__transit svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* Dimming: roads barely-there, subway lines the visible "transit" signal. */
+.hero__transit .tb-roads {
+  opacity: 0.07;
+}
+.hero__transit .tb-subway {
+  opacity: 0.22;
+}
+.hero__transit .tb-stations {
+  opacity: 0.32;
+}
+.hero__transit .tb-interchange {
+  opacity: 0.4;
+}
+
+/* Absolutely-positioned tower layer: right side, behind the copy column,
+   extending below the hero so its base reaches down into the Numbers band. */
+.hero__art {
+  position: absolute;
+  top: 0;
+  right: -2%;
+  width: 56%;
+  height: 128%;
+  z-index: 0;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
+  mask-image: linear-gradient(to bottom, #000 72%, transparent);
+}
+
+/* Numbers band rides above the tower and pulls up to overlap → the opaque
+   surface bg occludes the tower base for the "emerging" effect. */
+.numbers-band {
+  position: relative;
+  z-index: 2;
+  margin-top: -56px;
+}
+
+/* ----------------------------------------------------------- responsive */
+@media (max-width: 1024px) {
+  /* Single-column hero — drop the downward extension + overlap so nothing
+     reaches into the stats band. The tower returns to its in-flow stage,
+     stacked above the copy. */
+  .hero {
+    flex-direction: column;
+  }
+  /* the in-grid placeholder column collapses; the tower stacks above copy */
+  .hero__stage {
+    display: none;
+  }
+  .hero__art {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: 100%;
+    height: 360px;
+    order: -1;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .numbers-band {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero__art {
+    height: 300px;
+  }
+}

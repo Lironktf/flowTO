@@ -36,6 +36,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from ._gpu import cudf_or_none
 from .features import (
     FEATURE_ORDER,
     compute_static_node_features,
@@ -138,14 +139,26 @@ def generate_synthetic_training_data(
             }
         )
 
-    df = pd.DataFrame(rows)
+    df = _make_df(rows)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    df.to_csv(out_path, index=False)
+    df.to_csv(out_path, index=False)  # cuDF's to_csv is ~30× faster, see benchmarks/
     print(
         f"  wrote {out_path}  ({len(df):,} rows, "
-        f"vehicle_count mean={df['vehicle_count'].mean():.0f})"
+        f"vehicle_count mean={float(df['vehicle_count'].mean()):.0f})"
     )
     return out_path
+
+
+def _make_df(rows: list[dict]):
+    """Build the synthetic frame, preferring cuDF (~6× incl. to_csv). cuDF wants
+    a dict-of-columns rather than a list-of-dicts; falls back to pandas."""
+    cudf = cudf_or_none()
+    if cudf is not None and rows:
+        try:
+            return cudf.DataFrame({k: [r[k] for r in rows] for k in rows[0]})
+        except Exception:  # noqa: BLE001 — fall back to pandas
+            pass
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +167,17 @@ def generate_synthetic_training_data(
 
 
 def _load_xy(path: str):
-    df = pd.read_csv(path)
+    # cuDF reads + selects on the GPU when available (~3.8×, see benchmarks/);
+    # to_numpy returns host arrays either way, so sklearn downstream is unchanged.
+    df, xp = _read_features_df(path)
     if "weather_code" not in df.columns and "weather" in df.columns:
-        df["weather_code"] = df["weather"].map(weather_code).fillna(0).astype(int)
+        if xp is pd:
+            df["weather_code"] = df["weather"].map(weather_code).fillna(0).astype(int)
+        else:
+            # cuDF Series.map needs a dict; replicate weather_code()'s normalisation.
+            from .features import DEFAULT_WEATHER_CODE, WEATHER_CODE
+            w = df["weather"].astype(str).str.strip().str.lower()
+            df["weather_code"] = w.map(WEATHER_CODE).fillna(DEFAULT_WEATHER_CODE).astype(int)
     missing = [c for c in FEATURE_ORDER if c not in df.columns]
     if missing:
         raise ValueError(f"CSV {path} missing feature columns: {missing}")
@@ -165,6 +186,17 @@ def _load_xy(path: str):
     X = df[FEATURE_ORDER].to_numpy(dtype=float)
     y = df["vehicle_count"].to_numpy(dtype=float)
     return X, y
+
+
+def _read_features_df(path: str):
+    """Read the feature CSV, preferring cuDF. Returns (df, backend_module)."""
+    cudf = cudf_or_none()
+    if cudf is not None:
+        try:
+            return cudf.read_csv(path), cudf
+        except Exception as e:  # noqa: BLE001 — fall back to pandas
+            print(f"  [load] cuDF read unavailable ({e}); using pandas")
+    return pd.read_csv(path), pd
 
 
 def _train_val_arrays(training_data_path: str, val_path: Optional[str]):

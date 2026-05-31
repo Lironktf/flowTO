@@ -10,11 +10,31 @@ read-only / preview-first.
 from __future__ import annotations
 
 import os
+import re
 
 from ..api.schemas import Intervention
 from . import rag
 from .classify import ClassifyResult
 from .tools import Citation, ToolCall, ViewDirective
+
+# Referential phrases that mean "the worst / busiest road" rather than a named one.
+# The classifier is told to emit road_name='worst' for these, but real models still
+# sometimes echo the surface phrase ('the worst road') or a bare generic noun, so we
+# match defensively here and resolve to the actual most-congested road below.
+_SUPERLATIVE_RE = re.compile(
+    r"\b(worst|most\s+congested|busiest|most\s+traffic|most\s+jammed|"
+    r"heaviest|most\s+gridlock(?:ed)?)\b",
+    re.I,
+)
+_GENERIC_NOUNS = {"street", "road", "the road", "the street", "worst", "the worst"}
+
+
+def _is_superlative_ref(text: str) -> bool:
+    """True if ``text`` refers to 'the worst/busiest road' instead of a named one."""
+    t = (text or "").strip().lower()
+    if not t:
+        return False
+    return bool(_SUPERLATIVE_RE.search(t)) or t in _GENERIC_NOUNS
 
 
 def _live_enabled() -> bool:
@@ -143,6 +163,12 @@ def _worst_road_view(state) -> ViewDirective | None:
         if d.get("road_name") == best_name and d.get("status") != "closed" and d.get("edge_id")
     ]
     return ViewDirective(action="fit", road_name=best_name, edge_ids=edge_ids)
+
+
+def _worst_congested_road_name(state) -> str | None:
+    """Name of the single most-congested road in the baseline (None if unreadable)."""
+    view = _worst_road_view(state)
+    return view.road_name if view is not None else None
 
 
 def _segments_for_road(graph, road_name) -> dict | None:
@@ -319,10 +345,24 @@ def _capacity_command(state, cls) -> ToolCall:
 
 
 def _focus_call(state, cls) -> ToolCall:
-    """A focus/show intent → a read-only camera move (no plan, no confirm)."""
+    """A focus/show intent → a read-only camera move (no plan, no confirm).
+
+    Resolves the typed name to the canonical road + its edge_ids so the camera fits
+    precisely and the segments highlight (a bare name like 'Gardiner' otherwise leaves
+    the frontend to fuzzy-match with no ids to draw)."""
     name = (cls.road_name or "").strip()
     if not name:
         return _generic_preview()
+    graph = _read_graph(state)
+    info = _segments_for_road(graph, name) if graph is not None else None
+    if info is not None:
+        return ToolCall(
+            tool="answer",
+            rationale=f"Showing {info['name']} on the map.",
+            view=ViewDirective(action="fit", road_name=info["name"], edge_ids=info["edge_ids"]),
+            requires_user_confirmation=False,
+        )
+    # Unresolved → still send a best-effort camera move by name (no ids to highlight).
     return ToolCall(
         tool="answer",
         rationale=f"Showing {name} on the map.",
@@ -335,6 +375,18 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
     """Map a classified intent to a ToolCall. Warn-don't-block: constraint conflicts
     are attached as severity-coded warnings (in plan_intervention), never refused."""
     intent = cls.intent if cls is not None else "chat"
+    # Resolve superlative/referential road phrases ('the worst road', 'the busiest
+    # street') to the actual most-congested road BEFORE the deterministic handlers run.
+    # Otherwise resolve.py fuzzy-matches the literal word 'worst'/'street' and either
+    # fails or lands on a nonsense road. This works with no conversation history.
+    if (
+        cls is not None
+        and intent in {"close_road", "reopen_road", "change_capacity", "explain", "inspect", "focus"}
+        and _is_superlative_ref(cls.road_name)
+    ):
+        worst = _worst_congested_road_name(state)
+        if worst:
+            cls = cls.model_copy(update={"road_name": worst})
     if intent == "query_congestion":
         return ToolCall(
             tool="answer",

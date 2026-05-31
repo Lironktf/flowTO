@@ -20,6 +20,7 @@ from .schemas import (
     CopilotConfirm,
     CopilotConfirmResult,
     Intervention,
+    RetimeRequest,
     RunRequest,
     RunResult,
     Scenario,
@@ -507,6 +508,36 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         if scenario not in ("baseline", "wc_surge", "wc_fix"):
             raise HTTPException(422, f"unknown demo scenario: {scenario!r}")
         return _get_demo(scenario)
+
+    @app.post("/baseline/retime")
+    def baseline_retime(req: RetimeRequest):
+        """Rebuild the baseline demand at a new time-of-day / date.
+
+        Time-of-day is encoded in the OD matrix (commute direction + rush factor),
+        so changing the hour/day re-derives demand from the model and re-runs the
+        baseline — not a cheap per-run param. Returns the repaint records for the
+        new baseline. Heavy (model predict + gravity + sim); the UI gates it behind
+        an explicit 'apply' with a loading state, not per-scrub.
+        """
+        tc = {
+            k: v
+            for k, v in {
+                "minute": req.minute,
+                "day_of_year": req.day_of_year,
+                "weather": req.weather,
+            }.items()
+            if v is not None
+        }
+        # Carry forward the current values for whatever wasn't supplied.
+        merged = {**state.time_context, **tc}
+        state.retime(merged)
+        app.state.demo_cache = {}  # demo records were computed from the old OD
+        res = _get_demo("baseline")
+        return {
+            "time_context": state.time_context,
+            "summary": res["summary"],
+            "records": res["records"],
+        }
 
     # ---- jobs ----------------------------------------------------------- #
     @app.get("/jobs/{job_id}")

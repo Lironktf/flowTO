@@ -466,19 +466,17 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
     if intent == "focus":
         return _focus_call(state, cls)
     if intent == "set_time":
+        from ..timeofday import clamp_minute_of_day, hhmm
+
         # Deterministic parse is authoritative (the model's clock math is flaky);
-        # fall back to the model's minute, then to the 5pm peak default.
+        # fall back to the model's minute, then to the 5pm peak default. Clamp to a
+        # valid minute-of-day (never silently wrap an out-of-range value).
         parsed = _parse_minute(prompt)
-        if parsed is not None:
-            minute = parsed % 1440
-        elif cls.minute is not None:
-            minute = int(cls.minute) % 1440
-        else:
-            minute = 1020  # default 5pm peak
-        hh, mm = divmod(minute, 60)
+        raw = parsed if parsed is not None else (cls.minute if cls.minute is not None else 1020)
+        minute = clamp_minute_of_day(raw)
         return ToolCall(
             tool="answer",
-            rationale=f"Showing the network at {hh:02d}:{mm:02d}.",
+            rationale=f"Showing the network at {hhmm(minute)}.",
             view=ViewDirective(action="time", minute=minute),
             requires_user_confirmation=False,
         )

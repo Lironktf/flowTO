@@ -3,54 +3,22 @@ import { TIMELINE } from "../config";
 import { describeSegment } from "../api/graph";
 import { congestionSeries } from "../lib/congestion";
 import { describeSegmentAsync } from "../lib/mapboxCrossStreet";
+import {
+  MONTHS,
+  ORDINALS,
+  WEEKDAYS,
+  dateLabel,
+  dayOfYearToParts,
+  fmtClock,
+  mdToDayOfYear,
+  nthWeekdayOfMonth,
+} from "../lib/time";
 import { useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
 
 const SPAN = TIMELINE.endMin - TIMELINE.startMin;
 const pct = (min: number) => ((min - TIMELINE.startMin) / SPAN) * 100;
-const fmtClock = (min: number) =>
-  `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(Math.round(min) % 60).padStart(2, "0")}`;
-
-function dateLabel(doy: number): string {
-  const d = new Date(Date.UTC(2026, 0, doy));
-  return d
-    .toLocaleDateString("en-CA", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" })
-    .toUpperCase();
-}
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function dayOfYearToMD(doy: number) {
-  const d = new Date(Date.UTC(2026, 0, doy));
-  return { month: d.getUTCMonth(), day: d.getUTCDate() };
-}
-function mdToDayOfYear(month: number, day: number) {
-  return Math.round((Date.UTC(2026, month, day) - Date.UTC(2026, 0, 0)) / 86400000);
-}
-function daysInMonth(month: number) {
-  return new Date(Date.UTC(2026, month + 1, 0)).getUTCDate(); // 2026 non-leap
-}
-
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th"];
-
-// Day-of-month of the `nth` (1-5) occurrence of `weekday` (0=Sun..6=Sat) in `month`.
-// Clamps to the last valid occurrence when the nth overflows the month.
-function nthWeekdayOfMonth(month: number, nth: number, weekday: number): number {
-  const first = new Date(Date.UTC(2026, month, 1)).getUTCDay();
-  let dom = 1 + ((weekday - first + 7) % 7) + (nth - 1) * 7;
-  const max = daysInMonth(month);
-  while (dom > max) dom -= 7;
-  return dom;
-}
-
-// Inverse: which month / nth-occurrence / weekday a dayOfYear lands on.
-function dayOfYearToParts(doy: number): { month: number; nth: number; weekday: number } {
-  const { month, day } = dayOfYearToMD(doy);
-  const weekday = new Date(Date.UTC(2026, month, day)).getUTCDay();
-  const nth = Math.floor((day - 1) / 7) + 1;
-  return { month, nth, weekday };
-}
 
 export function BottomDock() {
   const minute = useAppStore((s) => s.scrubberMinute);

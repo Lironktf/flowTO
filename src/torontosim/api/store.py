@@ -29,6 +29,7 @@ class AppState:
     time_context: dict = field(default_factory=dict)
     edge_ids: list = field(default_factory=list)  # index -> edge_id (str)
     edge_index: dict = field(default_factory=dict)  # edge_id -> index
+    max_pairs: int = 2000  # OD size, remembered so retime() can regenerate demand
     _baseline: dict | None = None
     _blast_baseline: dict | None = None
     # Serialize baseline compute so concurrent callers wait for one run (the full
@@ -41,7 +42,7 @@ class AppState:
         return self._baseline is not None
 
     @classmethod
-    def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None):
+    def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None, max_pairs=2000):
         edge_ids = sorted(
             {d.get("edge_id") for _u, _v, d in graph.edges(data=True) if d.get("edge_id")},
             key=str,
@@ -54,7 +55,33 @@ class AppState:
             time_context=time_context or {},
             edge_ids=edge_ids,
             edge_index=edge_index,
+            max_pairs=max_pairs,
         )
+
+    def retime(self, time_context: dict) -> None:
+        """Regenerate the baseline demand for a new time-of-day / date and drop the
+        cached sims so the next ``baseline()``/run reflects it.
+
+        Time-of-day lives in the OD matrix (commute direction + rush factor), not
+        in the per-run params — so changing the hour/day means re-deriving demand
+        from the model, not just re-simulating. The graph is reused (unchanged);
+        only the OD + cached baselines are rebuilt. Expensive (model predict +
+        gravity + the baseline sim), so callers gate it behind an explicit action.
+        """
+        from ..model.features import normalize_time_context
+        from ..model.generate_od_matrix import generate_od_matrix
+        from ..model.predict_node_demand import load_demand_model, predict_node_demand
+
+        tc = normalize_time_context(time_context)
+        model = load_demand_model()
+        demand = predict_node_demand(self.graph, model, tc)
+        od = generate_od_matrix(self.graph, demand, tc, max_pairs=self.max_pairs)
+        with self._baseline_lock:
+            self.od_matrix = od
+            self.time_context = tc
+            self.weather = tc.get("weather", self.weather)
+            self._baseline = None
+            self._blast_baseline = None
 
     def baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
         """Cached baseline run (no interventions) — the compare reference.

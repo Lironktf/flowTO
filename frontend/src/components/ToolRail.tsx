@@ -5,9 +5,6 @@ import { Icon, type IconKey } from "./Icons";
 
 const TOOL_ICON: Record<string, IconKey> = {
   closure: "closure",
-  lane: "lane",
-  oneway: "oneway",
-  signal: "signal",
   surge: "surge",
 };
 
@@ -16,7 +13,7 @@ export function ToolRail() {
   const activeTool = useAppStore((s) => s.activeTool);
   const selectTool = useAppStore((s) => s.selectTool);
 
-  // Keyboard: 1–5 select interventions; Esc → Select (Edit only).
+  // Keyboard: 1–2 select edit types; Esc → Select (Edit only).
   useEffect(() => {
     if (view !== "edit") return;
     const onKey = (e: KeyboardEvent) => {

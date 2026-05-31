@@ -1,10 +1,13 @@
 /**
- * Transit overlay layers (P08): route PathLayers colored by mode + a TripsLayer
- * animated by the scrubber's currentTime (seconds since midnight — small floats,
- * no TripsLayer float32 jitter). Visual only — decoupled from the traffic math.
+ * Transit overlay (visual only — decoupled from the traffic math).
+ *
+ * Route lines are rendered with a plain deck.gl PathLayer (from @deck.gl/layers).
+ * We deliberately avoid @deck.gl/geo-layers (TripsLayer) and @deck.gl/extensions
+ * here: those packages pull a large peer-dependency tree (mesh-layers, loaders.gl,
+ * h3-js, …) that isn't needed for the redesign and breaks the production bundle.
  */
 import { PathLayer } from "@deck.gl/layers";
-import { TripsLayer } from "@deck.gl/geo-layers";
+import { CONGESTION_SLOT } from "../lib/mapbox";
 
 export type RGB = [number, number, number];
 
@@ -34,40 +37,20 @@ export function modeColor(mode: string): RGB {
   return MODE_COLOR[mode] ?? MODE_COLOR.bus;
 }
 
-export function buildTransitLayers(
-  routes: RouteGeom[],
-  trajectories: Trajectory[],
-  currentTime: number,
-  opts?: { trailLength?: number },
-): unknown[] {
-  const layers: unknown[] = [];
-
-  layers.push(
+/** Transit route lines, colored by mode. */
+export function buildTransitLayers(routes: RouteGeom[]): unknown[] {
+  return [
     new PathLayer({
       id: "transit-routes",
+      parameters: { depthCompare: "always" },
       data: routes,
       getPath: (r: RouteGeom) => r.path,
       getColor: (r: RouteGeom) => modeColor(r.mode),
       getWidth: 2.5,
       widthUnits: "pixels",
-      getDashArray: [6, 4],
-      dashJustified: true,
-    }),
-  );
-
-  layers.push(
-    new TripsLayer({
-      id: "transit-vehicles",
-      data: trajectories,
-      getPath: (t: Trajectory) => t.path,
-      getTimestamps: (t: Trajectory) => t.timestamps,
-      getColor: [196, 86, 47],
-      currentTime,
-      trailLength: opts?.trailLength ?? 180,
-      widthMinPixels: 4,
+      slot: CONGESTION_SLOT,
       capRounded: true,
+      jointRounded: true,
     }),
-  );
-
-  return layers;
+  ];
 }

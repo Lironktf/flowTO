@@ -406,8 +406,14 @@ def _json_num(value):
     return f
 
 
-def import_graph_json(path: str) -> nx.MultiDiGraph:
-    """Rebuild a MultiDiGraph from the clean simulation JSON format."""
+def import_graph_json(path: str, heal: bool = True) -> nx.MultiDiGraph:
+    """Rebuild a MultiDiGraph from the clean simulation JSON format.
+
+    ``heal`` (default on) repairs inconsistent one-way tagging on two-way
+    arterials (see ``graph.repair.heal_oneway_arterials``) so a single-segment
+    closure can't disconnect a node that is two-way in reality. Pass
+    ``heal=False`` to load the raw graph exactly as stored.
+    """
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
 
@@ -447,4 +453,8 @@ def import_graph_json(path: str) -> nx.MultiDiGraph:
         )
 
     build_edge_index(graph)
+    if heal:
+        from .repair import heal_oneway_arterials
+
+        heal_oneway_arterials(graph)  # rebuilds the edge index
     return graph

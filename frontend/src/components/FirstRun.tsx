@@ -27,7 +27,7 @@ export function FirstRun() {
   const bootLines = [
     "› booting FlowTO runtime…",
     `› loading Toronto network · ${edgesLabel} edges`,
-    "› warming Nemotron-on-device · GB10…",
+    "› warming baseline assignment · GB10…",
     "› ready ▸ press “Load the twin”",
   ];
 
@@ -45,9 +45,9 @@ export function FirstRun() {
           A live digital twin of <b>Toronto</b>.
         </h1>
         <div className="fr-lede">
-          Two modes: <b>Simulate</b> the matchday on a video-editor timeline, or <b>Edit</b> the
-          network top-down — drop closures, lane reductions, one-ways, and signal retiming, and watch
-          the twin recompute. 100% on-device.
+          Two modes: <b>Simulate</b> the day on a timeline with time-of-day lighting, or <b>Edit</b>{" "}
+          the network top-down — seal a corridor between two intersections or inject a demand surge,
+          and watch the twin recompute. 100% on-device.
         </div>
         <div className="fr-meta">
           <div className="m">
@@ -60,7 +60,7 @@ export function FirstRun() {
           </div>
           <div className="m">
             <div className="k">Blast-radius</div>
-            <div className="v">766 ms</div>
+            <div className="v">7.47 s</div>
           </div>
         </div>
         <button className="btn primary" onClick={() => void loadTwin()} disabled={loading}>

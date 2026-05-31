@@ -69,3 +69,26 @@ def test_equal_cost_equilibrium_is_deterministic():
     # Byte-identical across runs, and demand conserved across the two branches.
     assert np.array_equal(a.flow, b.flow)
     assert abs((a.flow[0] + a.flow[1]) - 100.0) < 1e-6
+
+
+def test_scipy_backend_matches_cpu_aon_on_siouxfalls():
+    """The vectorized scipy all-or-nothing must agree with the heap-Dijkstra cpu
+    backend on a real network. The full-graph end-to-end sim checks this parity
+    at scale (heavy/nightly); this keeps it on the PR path, fast, on the
+    committed SiouxFalls fixture (link flows agree exactly here; the <5% bound is
+    for equal-cost tie-breaks that can diverge on larger graphs)."""
+    from torontosim.simulation.backends import cpu as cpu_backend
+    from torontosim.simulation.backends import scipy_backend
+    from torontosim.simulation.equilibrium import _od_by_origin
+
+    net = build_network_from_tntp(open(os.path.join(FIX, "SiouxFalls_net.tntp")).read())
+    od = parse_tntp_trips(open(os.path.join(FIX, "SiouxFalls_trips.tntp")).read())
+    od_by_origin = _od_by_origin(od)
+    costs = np.where(net.cap > 0, net.t0, np.inf).astype(np.float64)
+
+    f_cpu = cpu_backend.all_or_nothing(net, costs, od_by_origin)
+    f_scipy = scipy_backend.all_or_nothing(net, costs, od_by_origin)
+
+    total = float(np.abs(f_cpu).sum()) or 1.0
+    rel = float(np.abs(f_cpu - f_scipy).sum()) / total
+    assert rel < 0.05, f"scipy flow diverges {rel:.2%} from cpu (>5%)"

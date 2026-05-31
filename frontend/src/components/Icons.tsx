@@ -37,6 +37,11 @@ export const Icon = {
   calendar: () => S(<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>),
   pin: () => S(<><path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11Z" /><circle cx="12" cy="10" r="2.5" /></>),
   chart: () => S(<><path d="M4 19V5M4 19h16" /><path d="M7 16l4-5 3 3 4-6" /></>),
+  search: () => S(<><circle cx="11" cy="11" r="7" /><path d="m20 20-3.2-3.2" /></>),
+  // dock toggles: framed panel with the toggled edge filled
+  panelLeft: () => S(<><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="3" y="4" width="6.5" height="16" rx="2" fill="currentColor" stroke="none" /></>),
+  panelRight: () => S(<><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="14.5" y="4" width="6.5" height="16" rx="2" fill="currentColor" stroke="none" /></>),
+  panelBottom: () => S(<><rect x="3" y="4" width="18" height="16" rx="2" /><rect x="3" y="13.5" width="18" height="6.5" rx="2" fill="currentColor" stroke="none" /></>),
 };
 
 export type IconKey = keyof typeof Icon;

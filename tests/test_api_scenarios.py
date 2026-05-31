@@ -118,3 +118,18 @@ def test_blast_run_reports_stats(client):
     rr = client.post(f"/scenarios/{sid}/run", json={"recompute": "blast"}).json()
     assert rr["recompute"] == "blast"
     assert rr["blast_stats"] is not None
+
+
+def test_blast_compare_uses_matching_baseline(client):
+    # Regression: a blast scenario must be diffed against the AON/blast baseline,
+    # not the iterative full baseline. The old bug collapsed active_edges (it
+    # compared two different assignment methods). A single capacity change should
+    # not change the count of active edges.
+    r = client.post(
+        "/scenarios",
+        json={"interventions": [{"op": "change_capacity", "edge_id": "e0", "multiplier": 0.5}]},
+    )
+    sid = r.json()["id"]
+    client.post(f"/scenarios/{sid}/run", json={"recompute": "blast"})
+    diff = client.get(f"/scenarios/{sid}/compare").json()
+    assert abs(diff["summary_delta"].get("active_edges", 0)) <= 1

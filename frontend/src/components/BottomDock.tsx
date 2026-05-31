@@ -224,7 +224,14 @@ export function BottomDock() {
         </div>
 
         <div className="tl-right">
-          <span className="cong-readout">
+          <span
+            className="cong-readout"
+            title={
+              selSeg
+                ? "Congestion on the selected road at this time of day"
+                : "Network-wide congestion at this time of day"
+            }
+          >
             <Icon.chart />
             <span className="cr-tx">
               {selSeg ? segLabel || selSeg.road_name || "Selected road" : "Network"} · {(nowV * 100).toFixed(0)}%

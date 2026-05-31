@@ -193,18 +193,31 @@ def _parse_geometry(value: Any):
 
 
 def read_raw_records(path) -> list[dict]:
-    """Read a raw CKAN pull (``.csv`` / ``.geojson`` / ``.json``) to record dicts.
+    """Read a raw CKAN pull (CSV or GeoJSON) to record dicts.
 
     GeoJSON features are flattened to ``properties`` + a shapely ``geometry``;
     CSV rows keep their string cells (a ``geometry`` column, if present, is
     parsed to shapely). Type coercion is the per-dataset normalizer's job.
+
+    The format is detected by **content, not extension**: the Toronto CKAN
+    datastore often serves CSV from a ``.geojson``-labeled resource (the
+    ``/datastore/dump`` URL is always CSV), so a ``.geojson`` file may actually
+    be CSV. We peek the first non-whitespace byte (``{``/``[`` => GeoJSON).
     """
-    ext = os.path.splitext(str(path))[1].lower()
-    if ext in (".geojson", ".json"):
+    if _looks_like_json(path):
         return _read_geojson(path)
-    if ext == ".csv":
-        return _read_csv(path)
-    raise ValueError(f"unsupported raw format {ext!r} for {path}")
+    return _read_csv(path)
+
+
+def _looks_like_json(path) -> bool:
+    """True if the file's first non-whitespace char starts a JSON value."""
+    with open(path, encoding="utf-8-sig") as fh:
+        while True:
+            ch = fh.read(1)
+            if ch == "":
+                return False
+            if not ch.isspace():
+                return ch in "{["
 
 
 def _read_geojson(path) -> list[dict]:
@@ -228,9 +241,14 @@ def _read_geojson(path) -> list[dict]:
 
 def _read_csv(path) -> list[dict]:
     import csv
+    import sys
+
+    # CKAN CSVs carry geometry as one cell; a neighbourhood MultiPolygon blows
+    # past csv's default 131072-char field cap. Lift it to the platform max.
+    csv.field_size_limit(sys.maxsize)
 
     out: list[dict] = []
-    with open(path, newline="") as fh:
+    with open(path, newline="", encoding="utf-8-sig") as fh:
         for row in csv.DictReader(fh):
             r = dict(row)
             if "geometry" in r:

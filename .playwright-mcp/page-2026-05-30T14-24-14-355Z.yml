@@ -1,0 +1,212 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: FlowTO
+      - generic [ref=e6]: Digital Twin · Toronto
+    - tablist [ref=e8]:
+      - tab "Simulate" [ref=e9] [cursor=pointer]:
+        - img [ref=e10]
+        - text: Simulate
+      - tab "Edit" [ref=e12] [cursor=pointer]:
+        - img [ref=e13]
+        - text: Edit
+    - generic [ref=e16]:
+      - generic [ref=e17]: Scenario
+      - generic [ref=e18]: FIFA WC26 — Post-match egress
+    - generic [ref=e19]:
+      - generic [ref=e20]: Mitigated · plan applied
+      - generic [ref=e22]:
+        - button "▘" [ref=e23] [cursor=pointer]
+        - button "▂" [ref=e24] [cursor=pointer]
+        - button "▝" [ref=e25] [cursor=pointer]
+      - button "Theme" [ref=e26] [cursor=pointer]:
+        - img [ref=e27]
+      - button "Reset" [ref=e29] [cursor=pointer]
+  - generic:
+    - button "Select · Esc":
+      - img
+      - generic: Select · Esc
+    - button "Full closure · 1":
+      - img
+      - generic: Full closure · 1
+    - button "Lane reduction · 2":
+      - img
+      - generic: Lane reduction · 2
+    - button "Temporary one-way · 3":
+      - img
+      - generic: Temporary one-way · 3
+    - button "Signal retiming · 4":
+      - img
+      - generic: Signal retiming · 4
+    - button "Demand surge · 5":
+      - img
+      - generic: Demand surge · 5
+  - generic [ref=e31]:
+    - generic [ref=e33]: Scenarios
+    - generic [ref=e35]:
+      - generic [ref=e36] [cursor=pointer]:
+        - generic [ref=e37]: JUN 12
+        - generic [ref=e38]:
+          - generic [ref=e39]: FIFA WC26 — Post-match egress
+          - generic [ref=e40]: Canada vs UEFA-A · 45,000 · FT 17:05
+      - generic [ref=e41] [cursor=pointer]:
+        - generic [ref=e42]: PLAN
+        - generic [ref=e43]:
+          - generic [ref=e44]: Gardiner — Jarvis ramp closure
+          - generic [ref=e45]: Capital works · 6 wks
+      - generic [ref=e46] [cursor=pointer]:
+        - generic [ref=e47]: DRAFT
+        - generic [ref=e48]:
+          - generic [ref=e49]: TTC Line 1 — bus bridge
+          - generic [ref=e50]: St George ↔ Bloor-Yonge
+      - generic [ref=e51] [cursor=pointer]:
+        - generic [ref=e52]: STUDY
+        - generic [ref=e53]:
+          - generic [ref=e54]: King St transit-priority ext.
+          - generic [ref=e55]: Bathurst → Dufferin
+  - generic [ref=e56]:
+    - region "Map" [ref=e59]
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: Simulation
+          - generic: 3-D camera
+    - generic [ref=e61]:
+      - button "Recenter" [ref=e62] [cursor=pointer]:
+        - img [ref=e63]
+      - button "Tilt" [ref=e66] [cursor=pointer]:
+        - img [ref=e67]
+    - generic:
+      - generic:
+        - generic: EDGE PRESSURE
+  - generic [ref=e70]:
+    - generic [ref=e71]:
+      - generic [ref=e72]:
+        - button [ref=e73] [cursor=pointer]:
+          - img [ref=e74]
+        - button [ref=e76] [cursor=pointer]:
+          - img [ref=e77]
+        - button [ref=e79] [cursor=pointer]:
+          - img [ref=e80]
+        - button [ref=e82] [cursor=pointer]:
+          - img [ref=e83]
+        - button [ref=e85] [cursor=pointer]:
+          - img [ref=e86]
+      - generic [ref=e88]:
+        - generic [ref=e89]: 14:00
+        - generic [ref=e90]: f 0
+        - generic [ref=e91]: FRI · 12 JUN 2026
+      - generic [ref=e92]:
+        - generic [ref=e93]: Matchday replay
+        - generic [ref=e94]:
+          - button "0.5×" [ref=e95] [cursor=pointer]
+          - button "1×" [ref=e96] [cursor=pointer]
+          - button "2×" [ref=e97] [cursor=pointer]
+          - button "4×" [ref=e98] [cursor=pointer]
+    - generic [ref=e99]:
+      - generic [ref=e100]:
+        - generic [ref=e102]: 14:00
+        - generic [ref=e107]: 15:00
+        - generic [ref=e112]: 16:00
+        - generic [ref=e117]: 17:00
+        - generic [ref=e122]: 18:00
+        - generic [ref=e127]: 19:00
+        - generic [ref=e132]: 20:00
+      - generic [ref=e133]:
+        - generic "Kickoff" [ref=e134] [cursor=pointer]
+        - generic "Full-time" [ref=e135] [cursor=pointer]
+      - generic [ref=e137]:
+        - generic [ref=e139]: Congest
+        - generic [ref=e143]:
+          - generic [ref=e144]: Demand
+          - generic [ref=e145]:
+            - generic [ref=e147]: MATCH 90'
+            - generic [ref=e149]: EGRESS 45k
+        - generic [ref=e150]:
+          - generic [ref=e151]: Plan
+          - generic [ref=e275]: CONTRAFLOW + 509/511
+  - generic [ref=e155]:
+    - generic [ref=e156]:
+      - generic [ref=e157]:
+        - generic [ref=e158]: Before / After
+        - generic [ref=e227]:
+          - button "Event" [ref=e276] [cursor=pointer]
+          - button "Mitigated" [ref=e277] [cursor=pointer]
+      - generic [ref=e159]:
+        - generic [ref=e160]:
+          - generic [ref=e161]:
+            - generic [ref=e230]:
+              - generic [ref=e231]: Average pressure
+              - generic [ref=e232]: Event → Mitigated
+            - generic [ref=e233]:
+              - text: "1.49"
+              - generic [ref=e234]: avg
+            - generic [ref=e235]:
+              - generic [ref=e236]:
+                - generic [ref=e237]: Event
+                - generic [ref=e240]: "1.64"
+              - generic [ref=e241]:
+                - generic [ref=e242]: Mitigated
+                - generic [ref=e245]: "1.49"
+          - generic [ref=e246]:
+            - generic [ref=e247]: Severe edges
+            - generic [ref=e248]: "808"
+            - generic [ref=e249]: ↓ 2%
+          - generic [ref=e250]:
+            - generic [ref=e251]: High-risk edges
+            - generic [ref=e252]: "206"
+            - generic [ref=e253]: ↑ 72%
+          - generic [ref=e254]:
+            - generic [ref=e255]: Loaded edges
+            - generic [ref=e256]: 2,541
+            - generic [ref=e257]: ↓ 3%
+        - generic [ref=e258]:
+          - img [ref=e278]
+          - generic [ref=e262]: Plan valid. No hard-constraint conflicts; congestion eased vs the unmitigated event.
+    - generic [ref=e163]:
+      - generic [ref=e165]: Copilot · Nemotron · on-device
+      - generic [ref=e166]:
+        - generic [ref=e263]:
+          - generic [ref=e264]: You
+          - generic [ref=e265]: Ease post-match gridlock near BMO Field without breaking bylaws.
+        - generic [ref=e266]:
+          - generic [ref=e267]: Copilot
+          - generic [ref=e268]:
+            - text: "Full-time releases ~45,000 over 25 minutes onto the Lake Shore / Strachan / Dufferin spine with severe spill-over into local streets. A bylaw-valid mitigation: Eastbound contraflow on Lake Shore Blvd W (Strachan → Bathurst), 17:00–18:30; Retime Dufferin and Strachan signals — 110 s cycle, egress-biased splits; Close Princes' Blvd to general traffic (pedestrian egress); hold 509 / 511 transit priority. Projected vs unmitigated: total delay −38%, local infiltration −71%."
+            - generic [ref=e269]:
+              - generic [ref=e270]: § Toronto Municipal Code Ch. 950 — temporary traffic regulation under an approved event TMP
+              - generic [ref=e271]: § King St Transit Priority Corridor — through-traffic restriction preserved
+              - generic [ref=e272]: § Toronto Municipal Code Ch. 880 — fire-route / emergency access lanes maintained
+              - generic [ref=e273]: § AODA 2005 — accessible pedestrian route on Princes' Blvd retained
+        - generic [ref=e280]:
+          - generic [ref=e281]: Copilot
+          - generic [ref=e282]: Applied. Network reassigned with the contraflow + retiming plan — total delay down vs unmitigated; six actions staged on the map.
+      - generic [ref=e170]:
+        - button "Ease post-match gridlock near BMO Field without breaking bylaws." [ref=e171] [cursor=pointer]
+        - button "Just close Lake Shore both ways." [ref=e172] [cursor=pointer]
+        - button "Protect Parkdale local streets from cut-through." [ref=e173] [cursor=pointer]
+      - generic [ref=e174]:
+        - textbox "Ask in plain English…" [ref=e175]
+        - button "Send" [ref=e176] [cursor=pointer]:
+          - img [ref=e177]
+  - generic [ref=e179]:
+    - generic [ref=e180]:
+      - generic [ref=e181]: Network
+      - generic [ref=e182]: 18,190 edges
+    - generic [ref=e183]:
+      - generic [ref=e184]: Recompute
+      - generic [ref=e185]: 73 ms
+    - generic [ref=e186]:
+      - generic [ref=e187]: Subgraph
+      - generic [ref=e188]: 1,284 edges
+    - generic [ref=e189]:
+      - generic [ref=e190]: LLM
+      - generic [ref=e191]: 312 ms
+    - generic [ref=e192]:
+      - generic [ref=e193]: FPS
+      - generic [ref=e194]: "60"
+    - generic [ref=e206]:
+      - generic [ref=e207]: Compute
+      - generic [ref=e208]: DGX Spark · GB10

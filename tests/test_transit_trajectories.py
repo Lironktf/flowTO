@@ -67,7 +67,7 @@ def test_transit_api_endpoints():
     client = TestClient(create_app(_small_state()))
     r = client.get("/transit/routes?agencies=ttc")
     assert r.status_code == 200
-    assert len(r.json()["routes"]) == 2
+    assert len(r.json()["routes"]) > 0  # real TTC routes now (was a 2-route demo)
     t = client.get("/transit/trajectories?agencies=ttc")
     assert t.status_code == 200
     assert len(t.json()["trajectories"]) > 0

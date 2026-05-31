@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { TOOLS } from "../config";
 import { useAppStore } from "../state/appStore";
 import { Icon, type IconKey } from "./Icons";
@@ -10,6 +11,38 @@ const TOOL_ICON: Record<string, IconKey> = {
   closure: "closure",
   surge: "surge",
 };
+
+/**
+ * Restricted-road closure guardrail. Pops in the left menu the moment a closure
+ * lands on a "Completely Prohibited" provincial highway (MTO) or a City of
+ * Toronto municipal expressway. Dismisses when the offending closure is removed.
+ */
+function ClosureWarnings() {
+  const warnings = useAppStore((s) => s.warnings);
+  const restricted = warnings.filter((w) => w.kind === "restricted");
+  if (restricted.length === 0) return null;
+  return (
+    <section className="region v-edit">
+      <div className="region-hd">
+        <span className="lbl">Restricted road</span>
+        <span className="spacer" />
+        <span className="meta">{restricted.length}</span>
+      </div>
+      <div className="region-body">
+        {restricted.map((w) => (
+          <div key={w.id} className={`warn-row ${w.severity}`}>
+            <Icon.warn />
+            <div className="wt">
+              <b>{w.title}</b>
+              <div>{w.detail}</div>
+              {w.ref && <span className="wref">{w.ref}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 /** Simulate → Saved simulations (live scenario CRUD). */
 function SavedSims() {
@@ -47,7 +80,12 @@ function SavedSims() {
         {dirty && <div className="dirty-note">Unsaved changes — Save to {activeId ? "update" : "create"}.</div>}
         <div className="scn">
           {savedSims.length === 0 ? (
-            <div className="outliner-empty">No saved simulations yet. Edit the network, then Save.</div>
+            <div className="outliner-empty">
+              <span className="ee-ico">
+                <Icon.save />
+              </span>
+              No saved simulations yet. Edit the network, then Save.
+            </div>
           ) : (
             savedSims.map((sc) => (
               <div
@@ -81,6 +119,7 @@ function SavedSims() {
 
 /** Edit → edit-type picker + scene outliner. */
 function EditPanels() {
+  const view = useAppStore((s) => s.view);
   const activeTool = useAppStore((s) => s.activeTool);
   const selectTool = useAppStore((s) => s.selectTool);
   const pending = useAppStore((s) => s.pendingVertices);
@@ -88,6 +127,18 @@ function EditPanels() {
   const selectedId = useAppStore((s) => s.selectedId);
   const selectObject = useAppStore((s) => s.selectObject);
   const toggleObjectVis = useAppStore((s) => s.toggleObjectVis);
+
+  // Keyboard: 1–2 select edit types; Esc → Select (Edit only).
+  useEffect(() => {
+    if (view !== "edit") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") selectTool("select");
+      const n = Number(e.key);
+      if (n >= 1 && n <= TOOLS.length) selectTool(TOOLS[n - 1].id);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, selectTool]);
 
   return (
     <>
@@ -97,7 +148,7 @@ function EditPanels() {
         </div>
         <div className="region-body">
           <div className="tool-list">
-            {TOOLS.map((t, i) => {
+            {TOOLS.map((t) => {
               const I = Icon[TOOL_ICON[t.id]];
               return (
                 <button
@@ -112,7 +163,6 @@ function EditPanels() {
                     <span className="nm">{t.name}</span>
                     <span className="ds">{t.desc}</span>
                   </span>
-                  <span className="kbd">{i + 1}</span>
                 </button>
               );
             })}
@@ -138,7 +188,12 @@ function EditPanels() {
         </div>
         <div className="region-body">
           {objects.length === 0 ? (
-            <div className="outliner-empty">No interventions placed. Pick an edit type and click the map.</div>
+            <div className="outliner-empty">
+              <span className="ee-ico">
+                <Icon.pin />
+              </span>
+              No interventions placed. Pick an edit type and click the map.
+            </div>
           ) : (
             <div className="outliner">
               {objects.map((o) => (
@@ -174,6 +229,7 @@ function EditPanels() {
 export function LeftDock() {
   return (
     <>
+      <ClosureWarnings />
       <SavedSims />
       <EditPanels />
     </>

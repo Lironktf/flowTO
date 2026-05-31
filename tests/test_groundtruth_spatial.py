@@ -22,7 +22,7 @@ def test_haversine_known_distance():
 
 def test_bearing_quadrants():
     north = float(bearing_deg(*CLOSURE, 43.6735, -79.3849))  # due N
-    east = float(bearing_deg(*CLOSURE, 43.6725, -79.3837))   # due E
+    east = float(bearing_deg(*CLOSURE, 43.6725, -79.3837))  # due E
     assert north < 5 or north > 355
     assert 85 < east < 95
 
@@ -45,7 +45,7 @@ def _sites():
     return pd.DataFrame(
         {
             "centreline_id": ["A", "B", "C"],
-            "site_lat": [43.6726, 43.6725, 43.7000],   # A ~11m N, B ~97m E, C far
+            "site_lat": [43.6726, 43.6725, 43.7000],  # A ~11m N, B ~97m E, C far
             "site_lon": [-79.3849, -79.3837, -79.3000],
             "location_name": ["A int", "B int", "C int"],
         }

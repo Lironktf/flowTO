@@ -11,7 +11,14 @@ def _edges():
     return pd.DataFrame(
         {
             "edge_id": [f"e{i}" for i in range(6)],
-            "road_class": ["motorway", "primary", "secondary", "residential", "service", "tertiary"],
+            "road_class": [
+                "motorway",
+                "primary",
+                "secondary",
+                "residential",
+                "service",
+                "tertiary",
+            ],
         }
     )
 
@@ -40,13 +47,23 @@ def test_sample_caps_at_edge_count():
 
 def test_generate_pairs_residual_over_open():
     interventions = [
-        {"id": "sim0", "edge_id": "e1", "sign": "closure", "ops": [{"op": "close_edge", "edge_id": "e1"}]}
+        {
+            "id": "sim0",
+            "edge_id": "e1",
+            "sign": "closure",
+            "ops": [{"op": "close_edge", "edge_id": "e1"}],
+        }
     ]
-    sim_open = lambda: {"e1": 100.0, "e2": 50.0}
-    sim_int = lambda ops: {"e1": 0.0, "e2": 140.0}  # close e1 → flow reroutes to e2
+
+    def sim_open():
+        return {"e1": 100.0, "e2": 50.0}
+
+    def sim_int(ops):  # close e1 → flow reroutes to e2
+        return {"e1": 0.0, "e2": 140.0}
+
     df = generate_pairs(interventions, sim_open, sim_int).set_index("edge_id")
-    assert df.loc["e1", "delta_flow"] == -100.0   # closed edge loses its flow
-    assert df.loc["e2", "delta_flow"] == 90.0     # detour gains
+    assert df.loc["e1", "delta_flow"] == -100.0  # closed edge loses its flow
+    assert df.loc["e2", "delta_flow"] == 90.0  # detour gains
     assert df.loc["e1", "closed_edge"] == "e1" and df.loc["e1", "sign"] == "closure"
 
 

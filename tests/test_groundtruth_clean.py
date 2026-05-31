@@ -14,14 +14,25 @@ HEADER = KEEP + ["Notification", "PermitType"]
 
 def _row(**over):
     base = {
-        "ID": "1001", "Road": "Collier St", "Name": "Collier St work",
-        "District": "TORONTO", "RoadClass": "Local Road", "Planned": "1",
-        "Latitude": "43.6725", "Longitude": "-79.3849",
-        "StartTime": "1743075202000",   # ~2025-03-27 (epoch ms)
-        "EndTime": "1893456000000",      # ~2030 (epoch ms)
-        "MaxImpact": "Low", "CurrImpact": "Low", "Type": "CONSTRUCTION",
-        "SubType": "", "DirectionsAffected": "ONE_DIRECTION",
-        "WorkEventType": "", "Signing": "", "Notification": "", "PermitType": "",
+        "ID": "1001",
+        "Road": "Collier St",
+        "Name": "Collier St work",
+        "District": "TORONTO",
+        "RoadClass": "Local Road",
+        "Planned": "1",
+        "Latitude": "43.6725",
+        "Longitude": "-79.3849",
+        "StartTime": "1743075202000",  # ~2025-03-27 (epoch ms)
+        "EndTime": "1893456000000",  # ~2030 (epoch ms)
+        "MaxImpact": "Low",
+        "CurrImpact": "Low",
+        "Type": "CONSTRUCTION",
+        "SubType": "",
+        "DirectionsAffected": "ONE_DIRECTION",
+        "WorkEventType": "",
+        "Signing": "",
+        "Notification": "",
+        "PermitType": "",
     }
     base.update(over)
     return [base[c] for c in HEADER]
@@ -44,14 +55,14 @@ def test_drops_banner_and_keeps_valid(tmp_path):
     assert len(df) == 2
     assert df.attrs["dropped"] == 0
     assert list(df["ID"]) == ["1", "2"]
-    assert list(df.columns)[:len(KEEP)] == KEEP  # banner/header handled, KEEP order
+    assert list(df.columns)[: len(KEEP)] == KEEP  # banner/header handled, KEEP order
 
 
 def test_drops_misaligned_and_unparseable(tmp_path):
     good = _row(ID="ok")
-    short = ["only", "three", "fields"]                 # misaligned → drop
+    short = ["only", "three", "fields"]  # misaligned → drop
     bad_time = _row(ID="badtime", StartTime="not-a-number")  # unparseable → drop
-    bad_latlon = _row(ID="badll", Latitude="xx")             # unparseable → drop
+    bad_latlon = _row(ID="badll", Latitude="xx")  # unparseable → drop
     p = _write_v3(tmp_path, [good, short, bad_time, bad_latlon])
     df = clean_restrictions(p)
     assert list(df["ID"]) == ["ok"]

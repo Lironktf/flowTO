@@ -20,8 +20,16 @@ import pandas as pd
 
 # arterials/collectors reroute more → sample them more often (bias, not exclusivity)
 ROAD_CLASS_WEIGHT = {
-    "motorway": 6, "trunk": 5, "primary": 5, "secondary": 4, "tertiary": 3,
-    "residential": 2, "service": 1, "unclassified": 2, "living_street": 1, "other": 2,
+    "motorway": 6,
+    "trunk": 5,
+    "primary": 5,
+    "secondary": 4,
+    "tertiary": 3,
+    "residential": 2,
+    "service": 1,
+    "unclassified": 2,
+    "living_street": 1,
+    "other": 2,
 }
 
 
@@ -101,11 +109,21 @@ def generate_pairs(
             )
     return pd.DataFrame(
         rows,
-        columns=["scenario_id", "edge_id", "closed_edge", "sign", "sim_open", "sim_int", "delta_flow"],
+        columns=[
+            "scenario_id",
+            "edge_id",
+            "closed_edge",
+            "sign",
+            "sim_open",
+            "sim_int",
+            "delta_flow",
+        ],
     )
 
 
-def generate_from_sim(graph, od_matrix, *, n: int, seed: int, **sim_kwargs) -> pd.DataFrame:  # pragma: no cover - sim on GB10
+def generate_from_sim(
+    graph, od_matrix, *, n: int, seed: int, **sim_kwargs
+) -> pd.DataFrame:  # pragma: no cover - sim on GB10
     """Real adapter: solve the open equilibrium, sample interventions biased toward
     LOADED edges (so each one actually reroutes), and run the sim. ``sim_kwargs``
     (backend / max_iter / rgap) tune the equilibrium solve for speed."""

@@ -84,16 +84,12 @@ def apply_signed_labels(ds: pd.DataFrame, target_mean_col: str, sign: str) -> pd
 
     no_base = ds["has_baseline"] == 0
     ds["direction"] = pd.array(np.where(ds["vol_delta"] >= 0, 1, 0), dtype="Int8")
-    ds["significant"] = pd.array(
-        np.where(ds["vol_sigma"].abs() > SIG_SIGMA, 1, 0), dtype="Int8"
-    )
+    ds["significant"] = pd.array(np.where(ds["vol_sigma"].abs() > SIG_SIGMA, 1, 0), dtype="Int8")
     ds.loc[no_base, ["direction", "significant"]] = pd.NA  # honesty: undefined, not 0
     return ds
 
 
-def build_labels(
-    during_agg: pd.DataFrame, during: pd.DataFrame, pre: pd.DataFrame
-) -> pd.DataFrame:
+def build_labels(during_agg: pd.DataFrame, during: pd.DataFrame, pre: pd.DataFrame) -> pd.DataFrame:
     """Closure labels: during-window vs pre-intervention baseline at the same site."""
     base = build_baseline(during, pre)
     ds = during_agg.merge(base, on=["ID", "centreline_id"], how="left")

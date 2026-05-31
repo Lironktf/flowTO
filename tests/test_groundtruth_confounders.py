@@ -39,9 +39,9 @@ def test_survey_weather_nearest_join_and_aggregate():
     dw = survey_weather(during, weather, tolerance_h=2)
     assert dw["temp_c"].tolist() == [18.0, 20.0]  # nearest hour each
     agg = aggregate_weather(dw).iloc[0]
-    assert agg["temp_c"] == 19.0                  # mean(18, 20)
-    assert agg["visibility_km"] == 10.0           # min
-    assert agg["precip_mm"] == 1.0                # mean(0, 2)
+    assert agg["temp_c"] == 19.0  # mean(18, 20)
+    assert agg["visibility_km"] == 10.0  # min
+    assert agg["precip_mm"] == 1.0  # mean(0, 2)
 
 
 def _labels():
@@ -60,7 +60,7 @@ def _labels():
 def test_incident_flag_spatial_and_temporal():
     incidents = pd.DataFrame(
         {
-            "lat": [43.6726, 43.7000, 43.6726],   # near, far, near
+            "lat": [43.6726, 43.7000, 43.6726],  # near, far, near
             "lon": [-79.3849, -79.3000, -79.3849],
             "date": [_ts("2025-06-05"), _ts("2025-06-05"), _ts("2025-05-01")],  # in, in, before
         }
@@ -81,17 +81,15 @@ def test_no_incident_when_far_or_out_of_window():
 
 
 def test_matched_controls_exclude_near_sites():
-    restrictions = pd.DataFrame(
-        {"ID": ["r1"], "Latitude": [43.6725], "Longitude": [-79.3849]}
-    )
+    restrictions = pd.DataFrame({"ID": ["r1"], "Latitude": [43.6725], "Longitude": [-79.3849]})
     sites = pd.DataFrame(
         {
             "centreline_id": ["near", "farA", "farB"],
-            "site_lat": [43.6726, 43.80, 43.85],     # near is ~11 m; farA/farB are km away
+            "site_lat": [43.6726, 43.80, 43.85],  # near is ~11 m; farA/farB are km away
             "site_lon": [-79.3849, -79.30, -79.25],
         }
     )
     controls = select_matched_controls(restrictions, sites, radius_m=500, n_controls=2)
     picked = set(controls["control_centreline_id"])
-    assert "near" not in picked          # excluded (too close to the closure)
+    assert "near" not in picked  # excluded (too close to the closure)
     assert picked == {"farA", "farB"}

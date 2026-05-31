@@ -57,7 +57,11 @@ def build_manifest(df: pd.DataFrame) -> dict:
     """Counts + honesty caveats describing the artifact."""
     sign = df["intervention_sign"] if "intervention_sign" in df else pd.Series([], dtype="object")
     bl = df[df["has_baseline"] == 1] if "has_baseline" in df else df.iloc[0:0]
-    clean = df["confounder_dominated"] == 0 if "confounder_dominated" in df else pd.Series(True, index=df.index)
+    clean = (
+        df["confounder_dominated"] == 0
+        if "confounder_dominated" in df
+        else pd.Series(True, index=df.index)
+    )
     return {
         "rows": int(len(df)),
         "closures": int((sign == "closure").sum()),

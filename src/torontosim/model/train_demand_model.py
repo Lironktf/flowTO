@@ -176,6 +176,7 @@ def _load_xy(path: str):
         else:
             # cuDF Series.map needs a dict; replicate weather_code()'s normalisation.
             from .features import DEFAULT_WEATHER_CODE, WEATHER_CODE
+
             w = df["weather"].astype(str).str.strip().str.lower()
             df["weather_code"] = w.map(WEATHER_CODE).fillna(DEFAULT_WEATHER_CODE).astype(int)
     missing = [c for c in FEATURE_ORDER if c not in df.columns]

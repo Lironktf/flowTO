@@ -184,6 +184,7 @@ interface AppState {
   flyNonce: number;
   fitTarget: [[number, number], [number, number]] | null;
   fitNonce: number;
+  flyPin: [number, number] | null; // a searched place, marked on the map
 
   setTheme: (t: "light" | "dark") => void;
   setDensity: (d: "comfortable" | "compact") => void;
@@ -214,6 +215,9 @@ interface AppState {
   setSurgeParams: (id: string, patch: Partial<SurgeParams>) => void;
   applyEdits: () => Promise<void>;
   clearPending: () => void;
+  // search → close: seal an entire named street, or arm the corridor tool over it
+  closeStreet: (roadName: string) => Promise<void>;
+  spanOnStreet: (bounds: [[number, number], [number, number]]) => void;
   // simulate
   selectRoad: (edgeId: string | null) => void;
   setScrubber: (m: number) => void;
@@ -453,6 +457,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   recenterNonce: 0,
   flyTarget: null,
   flyNonce: 0,
+  flyPin: null,
   fitTarget: null,
   fitNonce: 0,
   tiltOn: true,
@@ -920,6 +925,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   clearPending: () => set({ pendingVertices: [] }),
 
+  // Search → close the whole named street (every segment, both directions) as one
+  // closure, applied through the shared scenario→blast→repaint path.
+  closeStreet: async (roadName) => {
+    const graph = get().graph;
+    if (!graph) return;
+    const segs = graph.edges.filter((e) => e.road_name === roadName);
+    if (segs.length === 0) return;
+    const edgeIds = Array.from(new Set(withReverseTwins(graph, segs).map((e) => e.edge_id)));
+    const seq = get().objects.length + 1;
+    const obj: SceneObject = { ...closureObjectFromEdges(graph, edgeIds, seq), id: `obj${Date.now()}` };
+    set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select", dirty: true }));
+    await get().applyEdits();
+  },
+
+  // Search → frame the street and arm the two-click corridor tool for a precise span.
+  spanOnStreet: (bounds) => {
+    get().fitToBounds(bounds);
+    get().selectTool("closure"); // also clears any pending vertices
+  },
+
   applyEdits: async () => {
     await recomputeAround(set, "Reassigning affected subgraph…", async () => {
       try {
@@ -948,10 +973,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPlaying: (p) => set({ playing: p }),
   setSpeed: (sp) => set({ speed: sp }),
 
-  recenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1 })),
+  recenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1, flyPin: null })),
   flyToLocation: (lng, lat, zoom) =>
-    set((s) => ({ flyTarget: { lng, lat, zoom }, flyNonce: s.flyNonce + 1 })),
-  fitToBounds: (bounds) => set((s) => ({ fitTarget: bounds, fitNonce: s.fitNonce + 1 })),
+    set((s) => ({ flyTarget: { lng, lat, zoom }, flyNonce: s.flyNonce + 1, flyPin: [lng, lat] })),
+  fitToBounds: (bounds) => set((s) => ({ fitTarget: bounds, fitNonce: s.fitNonce + 1, flyPin: null })),
   toggleTilt: () => set((s) => ({ tiltOn: !s.tiltOn })),
 
   reset: async () => {
@@ -971,6 +996,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       status: { state: "nominal", label: "Baseline · nominal" },
       telemetry: { ...IDLE },
       recenterNonce: get().recenterNonce + 1,
+      flyPin: null,
     });
     try {
       const base = await api.demoRun("baseline");

@@ -90,6 +90,7 @@ export function MapCanvas() {
   const recenterNonce = useAppStore((s) => s.recenterNonce);
   const flyNonce = useAppStore((s) => s.flyNonce);
   const fitNonce = useAppStore((s) => s.fitNonce);
+  const flyPin = useAppStore((s) => s.flyPin);
   const tiltOn = useAppStore((s) => s.tiltOn);
   const scrubMin = useAppStore((s) => s.scrubberMinute);
   const dayOfYear = useAppStore((s) => s.dayOfYear);
@@ -305,6 +306,24 @@ export function MapCanvas() {
       }),
     );
 
+    // Searched place → a marker so a point hit (no road to highlight) is visible.
+    if (flyPin) {
+      out.push(
+        new ScatterplotLayer({
+          id: "search-pin",
+          parameters: { depthCompare: "always" },
+          data: [{ coord: flyPin }],
+          getPosition: (d: { coord: [number, number] }) => d.coord,
+          getRadius: 9,
+          radiusUnits: "pixels",
+          getFillColor: dark ? [111, 155, 255] : [36, 85, 214],
+          stroked: true,
+          getLineColor: [255, 255, 255],
+          lineWidthMinPixels: 2.5,
+        }),
+      );
+    }
+
     // Pending closure vertices (the first picked intersection).
     if (pendingVertices.length) {
       out.push(
@@ -401,7 +420,7 @@ export function MapCanvas() {
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectedRoadPaths, selectRoad, pendingVertices, overlays]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectedRoadPaths, selectRoad, pendingVertices, overlays, flyPin]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (

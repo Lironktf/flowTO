@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../state/appStore";
-import { buildRoadIndex, dedupeHits, geocodePlaces, searchRoads, type SearchHit } from "../lib/search";
+import { buildRoadIndex, dedupeHits, geocodePlaces, retrievePlace, searchRoads, type SearchHit } from "../lib/search";
 import { Icon } from "./Icons";
 
 /** Friendly label for a hit's source. */
@@ -13,9 +13,12 @@ const kindLabel = (kind: string) =>
  */
 export function SearchBar() {
   const graph = useAppStore((s) => s.graph);
+  const view = useAppStore((s) => s.view);
   const flyToLocation = useAppStore((s) => s.flyToLocation);
   const fitToBounds = useAppStore((s) => s.fitToBounds);
   const selectRoad = useAppStore((s) => s.selectRoad);
+  const closeStreet = useAppStore((s) => s.closeStreet);
+  const spanOnStreet = useAppStore((s) => s.spanOnStreet);
 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -72,15 +75,37 @@ export function SearchBar() {
     };
   }, [query, roadIndex]);
 
-  const choose = (h: SearchHit | undefined) => {
-    if (!h) return;
-    // Streets: frame the whole road. Places: fly to the point.
-    if (h.bbox) fitToBounds(h.bbox);
-    else flyToLocation(h.coord[0], h.coord[1], 14.5);
-    if (h.edgeId) selectRoad(h.edgeId);
+  const dismiss = (label: string) => {
     setOpen(false);
-    setQuery(h.label);
+    setQuery(label);
     inputRef.current?.blur();
+  };
+
+  const choose = async (h: SearchHit | undefined) => {
+    if (!h) return;
+    dismiss(h.label);
+    if (h.bbox) {
+      // Street: frame the whole road and highlight it.
+      fitToBounds(h.bbox);
+      if (h.edgeId) selectRoad(h.edgeId);
+    } else if (h.mapboxId) {
+      // Place: resolve coordinates, then fly + drop a pin.
+      const coord = await retrievePlace(h.mapboxId, new AbortController().signal);
+      if (coord) flyToLocation(coord[0], coord[1], 14.5);
+    } else {
+      flyToLocation(h.coord[0], h.coord[1], 14.5);
+    }
+  };
+
+  // Edit-mode actions on a street hit: seal the whole street, or arm the corridor tool.
+  const editStreet = view === "edit";
+  const doClose = (h: SearchHit) => {
+    void closeStreet(h.label);
+    dismiss(h.label);
+  };
+  const doSpan = (h: SearchHit) => {
+    if (h.bbox) spanOnStreet(h.bbox);
+    dismiss(h.label);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -92,7 +117,7 @@ export function SearchBar() {
       e.preventDefault();
       setActive((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
-      choose(hits[active]);
+      void choose(hits[active]);
     } else if (e.key === "Escape") {
       setOpen(false);
       inputRef.current?.blur();
@@ -129,12 +154,39 @@ export function SearchBar() {
               onMouseEnter={() => setActive(i)}
               onMouseDown={(e) => {
                 e.preventDefault(); // keep focus; fire before blur
-                choose(h);
+                void choose(h);
               }}
             >
               <span className="sb-row-ico">{h.kind === "street" ? <Icon.oneway /> : <Icon.pin />}</span>
               <span className="sb-row-label">{h.label}</span>
-              <span className="sb-row-kind">{kindLabel(h.kind)}</span>
+              {editStreet && h.kind === "street" ? (
+                <span className="sb-row-actions">
+                  <button
+                    className="sb-act danger"
+                    title={`Close all of ${h.label}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      doClose(h);
+                    }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    className="sb-act"
+                    title="Frame the street and pick a span to close"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      doSpan(h);
+                    }}
+                  >
+                    Span
+                  </button>
+                </span>
+              ) : (
+                <span className="sb-row-kind">{kindLabel(h.kind)}</span>
+              )}
             </li>
           ))}
         </ul>

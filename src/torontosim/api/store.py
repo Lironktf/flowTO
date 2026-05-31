@@ -31,6 +31,11 @@ class AppState:
     edge_ids: list = field(default_factory=list)  # index -> edge_id (str)
     edge_index: dict = field(default_factory=dict)  # edge_id -> index
     _baseline: dict | None = None
+    # Cached AON/blast baseline + its lock — used by blast_baseline(). These were
+    # dropped in an AppState refactor while blast_baseline() still references them,
+    # so any blast/compare path raised AttributeError; re-declared here.
+    _blast_baseline: dict | None = None
+    _baseline_lock: object = field(default_factory=threading.Lock)
     # Baseline OD is built lazily (see ensure_od) so the server boots without
     # loading the demand model. od_max_pairs is the gravity cap for that build.
     od_max_pairs: int = 800

@@ -178,6 +178,17 @@ export function MapCanvas() {
     setStandardConfig(m, "show3dObjects", overlays.buildings3d);
   }, [overlays]);
 
+  // Selected road → all edges that share its name (the whole street, not one
+  // segment). Memoized on selection/graph so the 81k-edge scan never runs per frame.
+  const selectedRoadPaths = useMemo(() => {
+    if (!selectedRoadId || !graph) return null;
+    const seg = graph.byId.get(selectedRoadId);
+    if (!seg) return null;
+    const name = seg.road_name;
+    const segs = name ? graph.edges.filter((e) => e.road_name === name) : [seg];
+    return segs.map((s) => ({ path: s.geometry.map(([la, ln]) => [ln, la] as [number, number]) }));
+  }, [selectedRoadId, graph]);
+
   const layers = useMemo(() => {
     const out: unknown[] = [];
     const pressure = getArrays().pressure;
@@ -212,15 +223,14 @@ export function MapCanvas() {
       }),
     );
 
-    // Selected-road highlight (sim).
-    const selSeg = selectedRoadId && graph ? graph.byId.get(selectedRoadId) : null;
-    if (selSeg) {
+    // Selected-road highlight (sim) — the full named street.
+    if (selectedRoadPaths) {
       out.push(
         new PathLayer({
           id: "road-selected",
           parameters: { depthCompare: "always" },
           slot: CONGESTION_SLOT,
-          data: [{ path: selSeg.geometry.map(([la, ln]) => [ln, la] as [number, number]) }],
+          data: selectedRoadPaths,
           getPath: (d: { path: [number, number][] }) => d.path,
           getColor: [36, 85, 214],
           getWidth: 14,
@@ -371,7 +381,7 @@ export function MapCanvas() {
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectedRoadPaths, selectRoad, pendingVertices, overlays]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (

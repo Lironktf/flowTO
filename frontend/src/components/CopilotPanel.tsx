@@ -9,10 +9,17 @@ const MODES: { id: CopilotMode; label: string; title: string }[] = [
   { id: "agent", label: "Agent", title: "Nemotron chains tools (investigate → propose) before recommending" },
 ];
 
+const fmtDelta = (v: number) => (v > 0 ? `+${v}` : `${v}`);
+const DELTA_ROWS: [string, string][] = [
+  ["high_risk_edges", "high-risk"],
+  ["severe_edges", "severe"],
+];
+
 export function CopilotRegion() {
   const log = useAppStore((s) => s.copilotLog);
   const ask = useAppStore((s) => s.copilotAsk);
   const confirm = useAppStore((s) => s.copilotConfirm);
+  const revert = useAppStore((s) => s.copilotRevert);
   const mode = useAppStore((s) => s.copilotMode);
   const setMode = useAppStore((s) => s.setCopilotMode);
   const stop = useAppStore((s) => s.copilotStop);
@@ -124,6 +131,41 @@ export function CopilotRegion() {
                           m.interventions.length > 1 ? "s" : ""
                         })`}
                   </button>
+                </div>
+              )}
+              {m.result && (
+                <div className="result-card">
+                  <div className="metric-row">
+                    {typeof m.result.summaryDelta.average_pressure === "number" && (
+                      <span className="metric">
+                        pressure {m.result.summaryDelta.average_pressure <= 0 ? "▼" : "▲"}
+                        {Math.abs(m.result.summaryDelta.average_pressure).toFixed(3)}
+                      </span>
+                    )}
+                    {DELTA_ROWS.map(([k, label]) =>
+                      m.result!.summaryDelta[k] ? (
+                        <span key={k} className="metric">
+                          {label} {fmtDelta(m.result!.summaryDelta[k])}
+                        </span>
+                      ) : null,
+                    )}
+                  </div>
+                  {m.result.mostImpacted.length > 0 && (
+                    <div className="impacted">
+                      Most affected:{" "}
+                      {m.result.mostImpacted
+                        .slice(0, 3)
+                        .map((e) => e.road_name || e.edge_id)
+                        .join(", ")}
+                    </div>
+                  )}
+                  {m.reverted ? (
+                    <span className="aborted-tag">↩ reverted to baseline</span>
+                  ) : (
+                    <button className="btn ghost revert-btn" onClick={() => void revert(i)}>
+                      ↩ Revert to baseline
+                    </button>
+                  )}
                 </div>
               )}
             </div>

@@ -546,6 +546,15 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 /* confirm button spacing */
 .copilot-confirm { margin-top: 9px; }
 
+/* post-confirm result card */
+.result-card { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--hair); border-radius: 8px; background: var(--chrome-2); }
+.result-card .metric-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.result-card .metric { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-2); background: var(--chrome-hi); border: 1px solid var(--hair-2); border-radius: 999px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
+.result-card .impacted { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+.revert-btn { margin-top: 8px; font-size: 11px; padding: 4px 10px; }
+.btn.ghost { background: transparent; border: 1px solid var(--hair); color: var(--ink-2); }
+.btn.ghost:hover { border-color: var(--cobalt-line); color: var(--cobalt-ink); }
+
 /* ============================================================ TIMELINE TRANSPORT (sim) */
 #dock-bottom { padding: 0; }
 .timeline { display: flex; flex-direction: column; height: 100%; }

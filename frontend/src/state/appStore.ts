@@ -92,6 +92,12 @@ interface CopilotMessage {
   // A previewed, confirmable plan (preview-before-apply): the ops to apply.
   interventions?: Intervention[];
   applied?: boolean;
+  reverted?: boolean;
+  // Post-confirm result for the metric card (Δ vs baseline).
+  result?: {
+    summaryDelta: Record<string, number>;
+    mostImpacted: { edge_id: string; road_name?: string | null }[];
+  };
   // Agent-mode investigation trace + live-streaming flag.
   agentSteps?: AgentStepLog[];
   streaming?: boolean;
@@ -189,6 +195,7 @@ interface AppState {
   applyPlan: () => Promise<void>;
   discardPlan: () => void;
   copilotConfirm: (msgIndex: number) => Promise<void>;
+  copilotRevert: (msgIndex: number) => Promise<void>;
   setCopilotMode: (mode: CopilotMode) => void;
   copilotStop: () => void;
   // editor
@@ -248,9 +255,16 @@ function buildWarnings(): Warning[] {
   return out;
 }
 
-function paintBaseline(set: SetFn, records: [number, number, number, number, number][]) {
+/** Push per-edge records into the tick store and trigger a deck.gl recolor. */
+function paintRecords(set: SetFn, records: [number, number, number, number, number][]) {
   writeRecords(records);
   set((s) => ({ pressureSeq: s.pressureSeq + 1, warnings: buildWarnings() }));
+}
+
+/** Repaint the twin from a scenario's last run (fetch records → paint). */
+async function paintScenario(set: SetFn, sid: string) {
+  const rec = await api.scenarioRecords(sid);
+  paintRecords(set, rec.records);
 }
 
 async function recomputeAround(set: SetFn, title: string, fn: () => Promise<void>) {
@@ -388,7 +402,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       try {
         const base = await api.demoRun("baseline");
-        paintBaseline(set, base.records);
+        paintRecords(set, base.records);
         set({ status: { state: "nominal", label: "Baseline · nominal" } });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -453,7 +467,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         await api.run(id, { recompute: "full", congestion_model: "bpr" });
         const rec = await api.scenarioRecords(id);
-        paintBaseline(set, rec.records);
+        paintRecords(set, rec.records);
       } catch {
         /* leave current paint if the run fails */
       }
@@ -593,22 +607,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   copilotConfirm: async (msgIndex) => {
     const msg = get().copilotLog[msgIndex];
     const interventions = msg?.interventions;
-    if (!interventions || !interventions.length) return;
+    if (!interventions || !interventions.length || msg.applied) return;
     set({ status: { state: "recomputing", label: "Applying plan · running sim" } });
     try {
       const res = await api.copilotConfirm(interventions as Intervention[]);
-      // Mark this plan applied + post the grounded result summary.
+      // The backend already created + ran the scenario; repaint the twin from
+      // its records (shared with applyEdits), then post the grounded result.
+      await paintScenario(set, res.scenario_id);
       set((s) => ({
         copilotLog: s.copilotLog
           .map((m, i) => (i === msgIndex ? { ...m, applied: true } : m))
-          .concat({ role: "bot", text: res.explanation }),
+          .concat({
+            role: "bot",
+            text: res.explanation,
+            result: { summaryDelta: res.summary_delta, mostImpacted: res.most_impacted_edges },
+          }),
         scenarioId: res.scenario_id,
-        status: { state: "surge", label: "Plan applied · results updated" },
+        status: { state: "surge", label: "Plan applied · twin updated" },
       }));
+      void get().loadSavedSims(); // make the applied scenario selectable in Sim
     } catch (e) {
       const emsg = e instanceof Error ? e.message : String(e);
       set((s) => ({
         copilotLog: [...s.copilotLog, { role: "bot", text: `Apply failed: ${emsg}` }],
+        status: { state: "nominal", label: "Baseline · nominal" },
+      }));
+    }
+  },
+
+  copilotRevert: async (msgIndex) => {
+    set({ status: { state: "recomputing", label: "Reverting to baseline…" } });
+    try {
+      const base = await api.demoRun("baseline");
+      paintRecords(set, base.records); // repaint the twin back to baseline
+      set((s) => ({
+        copilotLog: s.copilotLog.map((m, i) => (i === msgIndex ? { ...m, reverted: true } : m)),
+        scenarioId: null,
+        status: { state: "nominal", label: "Reverted · baseline" },
+      }));
+    } catch (e) {
+      const emsg = e instanceof Error ? e.message : String(e);
+      set((s) => ({
+        copilotLog: [...s.copilotLog, { role: "bot", text: `Revert failed: ${emsg}` }],
         status: { state: "nominal", label: "Baseline · nominal" },
       }));
     }
@@ -746,13 +786,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           await api.patchScenario(sid, { interventions });
         }
         await api.run(sid, { recompute: "blast", congestion_model: "bpr" });
-        const rec = await api.scenarioRecords(sid);
-        writeRecords(rec.records);
-        set((s) => ({
-          pressureSeq: s.pressureSeq + 1,
-          warnings: buildWarnings(),
-          telemetry: { ...s.telemetry, subEdges: 1284 },
-        }));
+        await paintScenario(set, sid);
+        set((s) => ({ telemetry: { ...s.telemetry, subEdges: 1284 } }));
       } catch {
         /* keep the placement even if the recompute call fails */
       }
@@ -789,7 +824,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     try {
       const base = await api.demoRun("baseline");
-      paintBaseline(set, base.records);
+      paintRecords(set, base.records);
     } catch {
       /* ignore */
     }

@@ -21,12 +21,14 @@ export interface SearchHit {
   label: string;
   /** "street" (local graph) or a Mapbox place kind ("place", "poi", "address", …). */
   kind: string;
-  /** [lng, lat] for the camera (point fly-to / fallback). */
+  /** [lng, lat] for the camera (point fly-to / fallback). [0,0] for place hits until retrieved. */
   coord: [number, number];
   /** Streets: the whole road's extent, so the camera frames the entire street. */
   bbox?: BBox;
   /** Present for local streets so the result can highlight the road. */
   edgeId?: string;
+  /** Place hits: the Search Box id; coords are fetched via retrievePlace() on selection. */
+  mapboxId?: string;
   /** Closer ≈ better when ranking; lower is better. */
   score: number;
 }
@@ -113,43 +115,102 @@ export function searchRoads(index: RoadIndexEntry[], query: string, limit = 6): 
   return hits.slice(0, limit);
 }
 
-interface SearchBoxFeature {
+interface Suggestion {
+  name?: string;
+  mapbox_id?: string;
+  feature_type?: string;
+}
+interface RetrieveFeature {
   geometry?: { coordinates?: [number, number] }; // [lng, lat]
-  properties?: { name?: string; feature_type?: string; mapbox_id?: string };
+  properties?: { name?: string };
+}
+
+// One Search Box session groups a /suggest + /retrieve pair for billing. Stable per page load.
+const SESSION_TOKEN =
+  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `s-${Date.now()}`;
+
+/** Feature-type preference — landmarks/areas beat addresses/categories. Lower = better. */
+const TYPE_BIAS: Record<string, number> = {
+  poi: 0,
+  neighborhood: 1,
+  place: 2,
+  locality: 2,
+  district: 2,
+  postcode: 5,
+  street: 6,
+  address: 8,
+  category: 12,
+};
+
+/**
+ * Relevance score for a place result (lower = better). Favors a hit whose name
+ * actually matches the query — so "CN Tower" beats "360 The Restaurant at the CN
+ * Tower" — then biases by feature type, original API order, and shorter names.
+ * Pure + deterministic (unit-tested).
+ */
+export function placeScore(name: string, kind: string, query: string, apiOrder: number): number {
+  const n = name.toLowerCase();
+  const q = query.trim().toLowerCase();
+  let s: number;
+  if (n === q) s = 0; // exact name match — the thing you searched for
+  else if (n.startsWith(q)) s = 10;
+  else if (n.includes(q)) s = 26; // query buried inside a longer name (a business "at the X")
+  else s = 60; // query not in the name at all — tangential
+  s += TYPE_BIAS[kind] ?? 5;
+  s += apiOrder * 0.5; // keep some of Mapbox's own ranking as a tiebreak
+  s += name.length / 200; // nudge toward shorter, cleaner names
+  return s;
 }
 
 /**
- * Mapbox Search Box (forward) for landmarks / POIs / neighborhoods / addresses,
- * biased to Toronto. Unlike the legacy geocoder, this resolves named places like
- * "CN Tower" or "BMO Field" — and returns coordinates in one call (no retrieve).
+ * Mapbox Search Box (suggest) for landmarks / POIs / neighborhoods / addresses,
+ * biased to Toronto. /suggest ranks named places correctly (e.g. "CN Tower" leads,
+ * not "360 The Restaurant at the CN Tower" — which /forward gets wrong). Suggestions
+ * carry no coordinates; retrievePlace() fetches them on selection. Re-ranked by
+ * placeScore for an extra nudge toward the searched-for name.
  */
 export async function geocodePlaces(query: string, signal: AbortSignal, limit = 5): Promise<SearchHit[]> {
   const q = query.trim();
   if (!q || !MAPBOX_TOKEN) return [];
   const [minLng, minLat, maxLng, maxLat] = TORONTO_BBOX;
   const url =
-    `https://api.mapbox.com/search/searchbox/v1/forward?q=${encodeURIComponent(q)}` +
-    `&access_token=${MAPBOX_TOKEN}&country=ca&limit=${limit}` +
+    `https://api.mapbox.com/search/searchbox/v1/suggest?q=${encodeURIComponent(q)}` +
+    `&access_token=${MAPBOX_TOKEN}&session_token=${SESSION_TOKEN}&country=ca&limit=${limit}` +
     `&bbox=${minLng},${minLat},${maxLng},${maxLat}` +
     `&proximity=${(minLng + maxLng) / 2},${(minLat + maxLat) / 2}`;
   const r = await fetch(url, { signal });
   if (!r.ok) throw new Error(`searchbox → ${r.status}`);
-  const data = (await r.json()) as { features?: SearchBoxFeature[] };
+  const data = (await r.json()) as { suggestions?: Suggestion[] };
   const hits: SearchHit[] = [];
-  for (let i = 0; i < (data.features ?? []).length; i++) {
-    const f = data.features![i];
-    const coord = f.geometry?.coordinates;
-    const name = f.properties?.name;
-    if (!coord || !name) continue;
+  const list = data.suggestions ?? [];
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i];
+    if (!s.name || !s.mapbox_id) continue;
+    const kind = s.feature_type ?? "place";
     hits.push({
-      id: `place:${f.properties?.mapbox_id ?? i}`,
-      label: name,
-      kind: f.properties?.feature_type ?? "place",
-      coord: [coord[0], coord[1]],
-      score: i, // Search Box already ranks by relevance
+      id: `place:${s.mapbox_id}`,
+      label: s.name,
+      kind,
+      coord: [0, 0], // resolved on selection
+      mapboxId: s.mapbox_id,
+      score: placeScore(s.name, kind, q, i),
     });
   }
+  hits.sort((a, b) => a.score - b.score);
   return hits;
+}
+
+/** Resolve a suggestion's coordinates ([lng, lat]) for the camera, on selection. */
+export async function retrievePlace(mapboxId: string, signal: AbortSignal): Promise<[number, number] | null> {
+  if (!MAPBOX_TOKEN) return null;
+  const url =
+    `https://api.mapbox.com/search/searchbox/v1/retrieve/${encodeURIComponent(mapboxId)}` +
+    `?access_token=${MAPBOX_TOKEN}&session_token=${SESSION_TOKEN}`;
+  const r = await fetch(url, { signal });
+  if (!r.ok) return null;
+  const data = (await r.json()) as { features?: RetrieveFeature[] };
+  const c = data.features?.[0]?.geometry?.coordinates;
+  return c ? [c[0], c[1]] : null;
 }
 
 /** Merge local + place hits, dropping case-insensitive label duplicates (keeps the first). */

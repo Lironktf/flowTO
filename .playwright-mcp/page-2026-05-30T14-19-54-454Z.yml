@@ -1,0 +1,191 @@
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]: FlowTO
+      - generic [ref=e6]: Digital Twin · Toronto
+    - tablist [ref=e8]:
+      - tab "Simulate" [ref=e9] [cursor=pointer]:
+        - img [ref=e10]
+        - text: Simulate
+      - tab "Edit" [active] [ref=e12] [cursor=pointer]:
+        - img [ref=e13]
+        - text: Edit
+    - generic [ref=e16]:
+      - generic [ref=e17]: Scenario
+      - generic [ref=e18]: FIFA WC26 — Post-match egress
+    - generic [ref=e19]:
+      - generic [ref=e20]: Baseline · nominal
+      - generic [ref=e22]:
+        - button "▘" [ref=e23] [cursor=pointer]
+        - button "▂" [ref=e24] [cursor=pointer]
+        - button "▝" [ref=e25] [cursor=pointer]
+      - button "Theme" [ref=e26] [cursor=pointer]:
+        - img [ref=e27]
+      - button "Reset" [ref=e29] [cursor=pointer]
+  - generic [ref=e226]:
+    - button "Select · Esc" [ref=e227] [cursor=pointer]:
+      - img [ref=e228]
+      - generic: Select · Esc
+    - button "Full closure · 1" [ref=e231] [cursor=pointer]:
+      - img [ref=e232]
+      - generic: Full closure · 1
+    - button "Lane reduction · 2" [ref=e235] [cursor=pointer]:
+      - img [ref=e236]
+      - generic: Lane reduction · 2
+    - button "Temporary one-way · 3" [ref=e238] [cursor=pointer]:
+      - img [ref=e239]
+      - generic: Temporary one-way · 3
+    - button "Signal retiming · 4" [ref=e241] [cursor=pointer]:
+      - img [ref=e242]
+      - generic: Signal retiming · 4
+    - button "Demand surge · 5" [ref=e247] [cursor=pointer]:
+      - img [ref=e248]
+      - generic: Demand surge · 5
+  - generic [ref=e30]:
+    - generic [ref=e250]:
+      - generic [ref=e252]: Interventions
+      - generic [ref=e254]:
+        - button "Full closure Close a segment to all traffic 1" [ref=e255] [cursor=pointer]:
+          - img [ref=e257]
+          - generic [ref=e260]:
+            - generic [ref=e261]: Full closure
+            - generic [ref=e262]: Close a segment to all traffic
+          - generic [ref=e263]: "1"
+        - button "Lane reduction Reduce corridor capacity 2" [ref=e264] [cursor=pointer]:
+          - img [ref=e266]
+          - generic [ref=e268]:
+            - generic [ref=e269]: Lane reduction
+            - generic [ref=e270]: Reduce corridor capacity
+          - generic [ref=e271]: "2"
+        - button "Temporary one-way Set contraflow / directional egress 3" [ref=e272] [cursor=pointer]:
+          - img [ref=e274]
+          - generic [ref=e276]:
+            - generic [ref=e277]: Temporary one-way
+            - generic [ref=e278]: Set contraflow / directional egress
+          - generic [ref=e279]: "3"
+        - button "Signal retiming Adjust cycle splits & offsets 4" [ref=e280] [cursor=pointer]:
+          - img [ref=e282]
+          - generic [ref=e287]:
+            - generic [ref=e288]: Signal retiming
+            - generic [ref=e289]: Adjust cycle splits & offsets
+          - generic [ref=e290]: "4"
+        - button "Demand surge Inject an event trip spike 5" [ref=e291] [cursor=pointer]:
+          - img [ref=e293]
+          - generic [ref=e295]:
+            - generic [ref=e296]: Demand surge
+            - generic [ref=e297]: Inject an event trip spike
+          - generic [ref=e298]: "5"
+    - generic [ref=e299]:
+      - generic [ref=e300]:
+        - generic [ref=e301]: Scene
+        - generic [ref=e302]: 0 obj
+      - generic [ref=e304]: No interventions placed. Pick a tool and click the map to drop one.
+  - generic [ref=e56]:
+    - region "Map" [ref=e59]
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: Editor
+          - generic: Top-down
+    - button "Recenter" [ref=e62] [cursor=pointer]:
+      - img [ref=e63]
+    - generic:
+      - generic:
+        - generic: EDGE PRESSURE
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - button:
+            - img
+          - button:
+            - img
+          - button:
+            - img
+          - button:
+            - img
+          - button:
+            - img
+        - generic:
+          - generic: 14:00
+          - generic: f 0
+          - generic: FRI · 12 JUN 2026
+        - generic:
+          - generic: Matchday replay
+          - generic:
+            - button "0.5×"
+            - button "1×"
+            - button "2×"
+            - button "4×"
+      - generic:
+        - generic:
+          - generic:
+            - generic: 14:00
+          - generic:
+            - generic: 15:00
+          - generic:
+            - generic: 16:00
+          - generic:
+            - generic: 17:00
+          - generic:
+            - generic: 18:00
+          - generic:
+            - generic: 19:00
+          - generic:
+            - generic: 20:00
+        - generic:
+          - generic "Kickoff"
+          - generic "Full-time"
+        - generic:
+          - generic:
+            - generic:
+              - generic: Congest
+            - generic:
+              - generic: Demand
+              - generic:
+                - generic:
+                  - generic: MATCH 90'
+                - generic:
+                  - generic: EGRESS 45k
+            - generic:
+              - generic: Plan
+  - generic [ref=e155]:
+    - generic [ref=e305]:
+      - generic [ref=e307]: Inspector
+      - generic [ref=e309]:
+        - generic [ref=e310]: Nothing selected
+        - generic [ref=e311]: Pick a tool from the rail and click the map to place an intervention, or select one from the Scene.
+    - generic [ref=e163]:
+      - generic [ref=e165]: Copilot · Nemotron · on-device
+      - generic [ref=e167]:
+        - generic [ref=e168]: Copilot
+        - generic [ref=e169]: Ask me to ease congestion or test a closure — I preview every action and cite the bylaw constraints first.
+      - generic [ref=e170]:
+        - button "Ease post-match gridlock near BMO Field without breaking bylaws." [ref=e171] [cursor=pointer]
+        - button "Just close Lake Shore both ways." [ref=e172] [cursor=pointer]
+        - button "Protect Parkdale local streets from cut-through." [ref=e173] [cursor=pointer]
+      - generic [ref=e174]:
+        - textbox "Ask in plain English…" [ref=e175]
+        - button "Send" [ref=e176] [cursor=pointer]:
+          - img [ref=e177]
+  - generic [ref=e179]:
+    - generic [ref=e180]:
+      - generic [ref=e181]: Network
+      - generic [ref=e182]: 18,190 edges
+    - generic [ref=e183]:
+      - generic [ref=e184]: Recompute
+      - generic [ref=e185]: 12 ms
+    - generic [ref=e186]:
+      - generic [ref=e187]: Subgraph
+      - generic [ref=e188]: —
+    - generic [ref=e189]:
+      - generic [ref=e190]: LLM
+      - generic [ref=e191]: —
+    - generic [ref=e192]:
+      - generic [ref=e193]: FPS
+      - generic [ref=e194]: "60"
+    - generic [ref=e206]:
+      - generic [ref=e207]: Compute
+      - generic [ref=e208]: DGX Spark · GB10

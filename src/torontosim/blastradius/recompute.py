@@ -8,6 +8,9 @@ within tolerance, with widening to close the gap.
 
 Parameters (spec defaults): start radius 8 min free-flow, max 20 min, boundary
 widening threshold 8% pressure change.
+
+GPU support: pass ``backend="gpu"`` to use cuGraph SSSP for both the cone
+detection and affected-OD rerouting; falls back to CPU if unavailable.
 """
 
 from __future__ import annotations
@@ -49,12 +52,13 @@ def affected_region(
     *,
     radius_min: float,
     include_highway_core: bool = True,
+    backend: str = "cpu",
 ) -> tuple[set, set]:
     """Nodes (and induced links) reachable within ``radius_min`` of the change."""
     tails = {int(net.tail[link]) for link in changed_links}
     heads = {int(net.head[link]) for link in changed_links}
-    down = cones.bounded_cone(net, heads, costs, radius_min, reverse=False)
-    up = cones.bounded_cone(net, tails, costs, radius_min, reverse=True)
+    down = cones.bounded_cone(net, heads, costs, radius_min, reverse=False, backend=backend)
+    up = cones.bounded_cone(net, tails, costs, radius_min, reverse=True, backend=backend)
     nodes = down | up | tails | heads
     if include_highway_core:
         nodes |= cones.highway_core(net, costs)
@@ -66,13 +70,51 @@ def affected_region(
     return nodes, links
 
 
-def _reroute_affected(net, od, cache: PathCache, affected, new_costs):
+def _reroute_affected(
+    net: Network,
+    od,
+    cache: PathCache,
+    affected,
+    new_costs: np.ndarray,
+    backend: str = "cpu",
+) -> dict:
     """Recompute shortest paths for affected ODs under ``new_costs``."""
     by_origin: dict = {}
     for idx in affected:
         o, d, _demand = od[idx]
         by_origin.setdefault(int(o), []).append((idx, int(d)))
+
     new_paths: dict = {}
+
+    if backend == "gpu":
+        try:
+            from ..simulation.backends.gpu import (
+                _edge_lookup,
+                _eff_costs,
+                sssp_all_predecessors,
+            )
+            from .pathcache import _trace_path_from_pred
+
+            lut = _edge_lookup(net)
+            ec = _eff_costs(net, new_costs)
+            pred_trees = sssp_all_predecessors(net, new_costs, sorted(by_origin))
+            for origin in sorted(by_origin):
+                pred = pred_trees.get(int(origin), {})
+                for idx, dest in by_origin[origin]:
+                    new_paths[idx] = _trace_path_from_pred(
+                        pred, lut, ec, net.tail, int(origin), int(dest)
+                    )
+            return new_paths
+        except Exception as exc:  # noqa: BLE001 — RAPIDS unavailable
+            import warnings
+
+            warnings.warn(
+                f"GPU reroute unavailable ({exc!r}); falling back to CPU.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+    # CPU fallback (original logic)
     for origin in sorted(by_origin):
         _dist, pred_link = _dijkstra(net, new_costs, origin)
         for idx, dest in by_origin[origin]:
@@ -88,12 +130,16 @@ def blast_assign(
     new_costs: np.ndarray,
     *,
     params: dict | None = None,
+    backend: str = "cpu",
 ) -> BlastResult:
     """Speed-mode blast: re-route only affected ODs; keep cached paths otherwise.
 
     Exact vs a full AON recompute on the same changed network (local change ->
     only affected ODs' shortest paths can differ). Returns the new link flow and
     region stats.
+
+    ``backend="gpu"`` accelerates both the cone detection and the rerouting SSSP
+    via cuGraph; falls back to CPU if unavailable.
     """
     params = {**DEFAULT_PARAMS, **(params or {})}
     affected = baseline_cache.affected_ods(changed_links)
@@ -104,9 +150,10 @@ def blast_assign(
         new_costs,
         radius_min=params["start_radius_min"],
         include_highway_core=params["include_highway_core"],
+        backend=backend,
     )
 
-    new_paths = _reroute_affected(net, od, baseline_cache, affected, new_costs)
+    new_paths = _reroute_affected(net, od, baseline_cache, affected, new_costs, backend)
 
     # Compose: baseline paths for unaffected ODs, fresh paths for affected ones.
     merged_paths = list(baseline_cache.paths)
@@ -132,13 +179,23 @@ def blast_assign(
     )
 
 
-def full_aon(net: Network, od, costs: np.ndarray) -> np.ndarray:
+def full_aon(
+    net: Network,
+    od,
+    costs: np.ndarray,
+    backend: str = "cpu",
+) -> np.ndarray:
     """Reference: all-or-nothing flow re-routing every OD under ``costs``."""
-    cache = build_full_cache(net, od, costs)
+    cache = build_full_cache(net, od, costs, backend=backend)
     return aon_flow(net, od, cache.paths)
 
 
-def build_full_cache(net: Network, od, costs: np.ndarray) -> PathCache:
+def build_full_cache(
+    net: Network,
+    od,
+    costs: np.ndarray,
+    backend: str = "cpu",
+) -> PathCache:
     from .pathcache import build_path_cache
 
-    return build_path_cache(net, od, costs)
+    return build_path_cache(net, od, costs, backend=backend)

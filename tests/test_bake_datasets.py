@@ -128,6 +128,23 @@ def test_bake_zones_schema(tmp_path):
     assert rows[0]["geometry_wkt"].startswith("POLYGON")
 
 
+def test_bake_detects_csv_content_in_geojson_file(tmp_path):
+    """Live-portal quirk: the CKAN datastore serves CSV from a `.geojson`
+    resource (the /datastore/dump URL is always CSV). bake must sniff content,
+    not trust the extension, and still parse the geometry column.
+    """
+    src = tmp_path / "intersections.geojson"  # .geojson name, CSV body
+    src.write_text(
+        "INTERSECTION_ID,INTERSECTION_DESC,geometry\n"
+        '100,Yonge / King,"{""type"":""Point"",""coordinates"":[-79.38,43.65]}"\n'
+    )
+    out = tmp_path / "intersections.parquet"
+    bake.bake_intersections(src, out)
+    rows = pq.read_table(out).to_pylist()
+    assert rows[0]["INTERSECTION_ID"] == 100
+    assert rows[0]["geometry_wkt"].startswith("POINT")
+
+
 # --------------------------------------------------------------------------- #
 # Full bake_all over a raw dir → catalog + manifest with sha256/license
 # --------------------------------------------------------------------------- #

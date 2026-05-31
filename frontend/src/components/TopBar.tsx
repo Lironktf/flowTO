@@ -5,6 +5,8 @@ export function TopBar() {
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
   const status = useAppStore((s) => s.status);
+  const currentName = useAppStore((s) => s.currentName);
+  const dirty = useAppStore((s) => s.dirty);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const reset = useAppStore((s) => s.reset);
@@ -32,8 +34,11 @@ export function TopBar() {
       </div>
       <div className="tb-div" />
       <div className="scenario-tag">
-        <span className="k">Scenario</span>
-        <span className="v">FIFA WC26 — Post-match egress</span>
+        <span className="k">Simulation</span>
+        <span className="v">
+          {currentName}
+          {dirty ? " •" : ""}
+        </span>
       </div>
 
       <div className="tb-right">

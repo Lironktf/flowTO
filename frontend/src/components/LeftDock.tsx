@@ -134,7 +134,7 @@ function EditPanels() {
         </div>
         <div className="region-body">
           <div className="tool-list">
-            {TOOLS.map((t, i) => {
+            {TOOLS.map((t) => {
               const I = Icon[TOOL_ICON[t.id]];
               return (
                 <button
@@ -149,7 +149,6 @@ function EditPanels() {
                     <span className="nm">{t.name}</span>
                     <span className="ds">{t.desc}</span>
                   </span>
-                  <span className="kbd">{i + 1}</span>
                 </button>
               );
             })}

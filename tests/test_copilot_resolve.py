@@ -140,6 +140,40 @@ def test_answer_congestion_survives_tied_pressure_and_unnamed_edges():
     assert isinstance(out, str) and "Congestion is worst" in out
 
 
+def test_worst_road_view_fits_most_congested_named_road():
+    # A congestion query should fly the camera to the single worst corridor.
+    g = nx.MultiDiGraph()
+    g.add_edge(
+        0,
+        1,
+        key=0,
+        road_name="King Street West",
+        edge_id="k1",
+        status="open",
+        pressure=0.9,
+        load=50,
+    )
+    g.add_edge(
+        1,
+        2,
+        key=0,
+        road_name="Queen Street West",
+        edge_id="q1",
+        status="open",
+        pressure=0.4,
+        load=50,
+    )
+
+    class _S:
+        def baseline(self):
+            return {"graph": g}
+
+    view = planner._worst_road_view(_S())
+    assert view is not None and view.action == "fit"
+    assert view.road_name == "King Street West"
+    assert view.edge_ids == ["k1"]
+
+
 def test_dispatch_unresolvable_road_answers_not_found():
     call = planner._dispatch(
         "close the moon",

@@ -168,6 +168,31 @@ def _answer_congestion(state) -> str:
     return "Congestion is worst on: " + "; ".join(parts) + "."
 
 
+def _worst_road_view(state) -> ViewDirective | None:
+    """A camera fit on the single most-congested named road, so a congestion query
+    flies the map there (read-only). None if there's no readable baseline."""
+    try:
+        graph = state.baseline()["graph"]
+    except Exception:  # noqa: BLE001 — no baseline yet → just skip the camera move
+        return None
+    best_name, best_p = None, -1.0
+    for _u, _v, d in graph.edges(data=True):
+        nm = d.get("road_name")
+        p = d.get("pressure")
+        if not nm or d.get("status") == "closed" or not isinstance(p, (int, float)):
+            continue
+        if (d.get("load") or 0) > 0 and p > best_p:
+            best_name, best_p = nm, p
+    if best_name is None:
+        return None
+    edge_ids = [
+        d.get("edge_id")
+        for _u, _v, d in graph.edges(data=True)
+        if d.get("road_name") == best_name and d.get("status") != "closed" and d.get("edge_id")
+    ]
+    return ViewDirective(action="fit", road_name=best_name, edge_ids=edge_ids)
+
+
 def _resolve_command(state, cls) -> ToolCall:
     """A close/reopen intent → a preview ToolCall via deterministic resolution.
 
@@ -257,7 +282,10 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
     intent = cls.intent if cls is not None else "chat"
     if intent == "query_congestion":
         return ToolCall(
-            tool="answer", rationale=_answer_congestion(state), requires_user_confirmation=False
+            tool="answer",
+            rationale=_answer_congestion(state),
+            view=_worst_road_view(state),
+            requires_user_confirmation=False,
         )
     if intent == "mitigate":
         return _hero_call(state)

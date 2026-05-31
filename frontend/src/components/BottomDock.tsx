@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TIMELINE } from "../config";
+import { describeSegment } from "../api/graph";
 import { congestionSeries } from "../lib/congestion";
+import { describeSegmentAsync } from "../lib/mapboxCrossStreet";
 import { useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
@@ -15,6 +17,39 @@ function dateLabel(doy: number): string {
   return d
     .toLocaleDateString("en-CA", { weekday: "short", day: "2-digit", month: "short", timeZone: "UTC" })
     .toUpperCase();
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function dayOfYearToMD(doy: number) {
+  const d = new Date(Date.UTC(2026, 0, doy));
+  return { month: d.getUTCMonth(), day: d.getUTCDate() };
+}
+function mdToDayOfYear(month: number, day: number) {
+  return Math.round((Date.UTC(2026, month, day) - Date.UTC(2026, 0, 0)) / 86400000);
+}
+function daysInMonth(month: number) {
+  return new Date(Date.UTC(2026, month + 1, 0)).getUTCDate(); // 2026 non-leap
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th"];
+
+// Day-of-month of the `nth` (1-5) occurrence of `weekday` (0=Sun..6=Sat) in `month`.
+// Clamps to the last valid occurrence when the nth overflows the month.
+function nthWeekdayOfMonth(month: number, nth: number, weekday: number): number {
+  const first = new Date(Date.UTC(2026, month, 1)).getUTCDay();
+  let dom = 1 + ((weekday - first + 7) % 7) + (nth - 1) * 7;
+  const max = daysInMonth(month);
+  while (dom > max) dom -= 7;
+  return dom;
+}
+
+// Inverse: which month / nth-occurrence / weekday a dayOfYear lands on.
+function dayOfYearToParts(doy: number): { month: number; nth: number; weekday: number } {
+  const { month, day } = dayOfYearToMD(doy);
+  const weekday = new Date(Date.UTC(2026, month, day)).getUTCDay();
+  const nth = Math.floor((day - 1) / 7) + 1;
+  return { month, nth, weekday };
 }
 
 export function BottomDock() {
@@ -62,6 +97,27 @@ export function BottomDock() {
 
   // Congestion-over-time: selected road's pressure, else the network average.
   const selSeg = selectedRoadId && graph ? graph.byId.get(selectedRoadId) : null;
+
+  // Descriptive readout for the selected segment (instant label, upgraded async).
+  const [segLabel, setSegLabel] = useState<string>("");
+  useEffect(() => {
+    if (!selSeg || !graph || !selectedRoadId) {
+      setSegLabel("");
+      return;
+    }
+    let alive = true;
+    setSegLabel(describeSegment(graph, selectedRoadId).label);
+    describeSegmentAsync(graph, selectedRoadId)
+      .then((d) => {
+        if (alive) setSegLabel(d.label);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRoadId, graph, pressureSeq]);
+
   const series = useMemo(() => {
     const arr = getArrays().pressure;
     let amplitude: number;
@@ -120,22 +176,58 @@ export function BottomDock() {
 
         <div className="day-control">
           <Icon.calendar />
-          <input
-            type="range"
-            className="range-mini"
-            min={1}
-            max={365}
-            value={dayOfYear}
-            onChange={(e) => setDayOfYear(Number(e.target.value))}
-            title="Day of year"
-          />
+          {(() => {
+            const { month, nth, weekday } = dayOfYearToParts(dayOfYear);
+            const apply = (m: number, n: number, w: number) =>
+              setDayOfYear(mdToDayOfYear(m, nthWeekdayOfMonth(m, n, w)));
+            return (
+              <>
+                <select
+                  className="date-select"
+                  value={month}
+                  title="Month"
+                  onChange={(e) => apply(Number(e.target.value), nth, weekday)}
+                >
+                  {MONTHS.map((label, i) => (
+                    <option key={i} value={i}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="date-select"
+                  value={nth}
+                  title="Week of month"
+                  onChange={(e) => apply(month, Number(e.target.value), weekday)}
+                >
+                  {ORDINALS.map((label, i) => (
+                    <option key={i} value={i + 1}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="date-select"
+                  value={weekday}
+                  title="Day of week"
+                  onChange={(e) => apply(month, nth, Number(e.target.value))}
+                >
+                  {WEEKDAYS.map((label, i) => (
+                    <option key={i} value={i}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </>
+            );
+          })()}
         </div>
 
         <div className="tl-right">
           <span className="cong-readout">
             <Icon.chart />
             <span className="cr-tx">
-              {selSeg ? selSeg.road_name ?? "Selected road" : "Network"} · {(nowV * 100).toFixed(0)}%
+              {selSeg ? segLabel || selSeg.road_name || "Selected road" : "Network"} · {(nowV * 100).toFixed(0)}%
             </span>
             {selSeg && (
               <button className="cr-clear" onClick={() => selectRoad(null)} title="Clear selection">
@@ -173,7 +265,16 @@ export function BottomDock() {
           </svg>
 
           <div className="tl-playhead" style={{ left: `${pct(minute)}%` }}>
-            <div className="ph-grip" />
+            <div
+              className="ph-grip"
+              onPointerDown={(e) => {
+                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                seekFromClient(e.clientX);
+              }}
+              onPointerMove={(e) => {
+                if (e.buttons === 1) seekFromClient(e.clientX);
+              }}
+            />
             <div className="ph-line" />
           </div>
           <div

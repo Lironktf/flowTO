@@ -31,7 +31,7 @@ export const DEFAULT_DAY_OF_YEAR = 163;
 //   surge:   pick ONE intersection → inject event trips
 export const TOOLS = [
   { id: "closure", name: "Full closure", desc: "Seal the corridor between two intersections", vertices: 2 },
-  { id: "surge", name: "Demand surge", desc: "Inject an event trip spike at one intersection", vertices: 1 },
+  { id: "surge", name: "Demand change", desc: "Add or remove trips along a chosen street and direction", vertices: 1 },
 ] as const;
 
 // Copilot input suggestions (the *prompts*; answers come from /copilot/plan).

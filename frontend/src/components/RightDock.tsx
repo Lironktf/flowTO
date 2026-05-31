@@ -2,8 +2,8 @@ import { useAppStore } from "../state/appStore";
 import { Icon, type IconKey } from "./Icons";
 
 const TYPE_COLOR: Record<string, string> = {
-  closure: "var(--c-heavy)",
-  surge: "var(--c-sev)",
+  closure: "var(--c-sev)",
+  surge: "var(--c-heavy)",
 };
 const TOOL_ICON: Record<string, IconKey> = {
   closure: "closure",
@@ -112,9 +112,46 @@ function Inspector() {
 
             {sel.type === "surge" && sel.surge && (
               <>
-                <div className="section-label mt">Surge</div>
+                <div className="section-label mt">Demand change</div>
                 <div className="prop">
-                  <span className="pk">Vehicles</span>
+                  <span className="pk">Kind</span>
+                  <span className="pv">
+                    <span className="seg-mini">
+                      <button
+                        className={sel.surge.kind === "surge" ? "on" : ""}
+                        onClick={() => setSurgeParams(sel.id, { kind: "surge" })}
+                      >
+                        Surge
+                      </button>
+                      <button
+                        className={sel.surge.kind === "relief" ? "on" : ""}
+                        onClick={() => setSurgeParams(sel.id, { kind: "relief" })}
+                      >
+                        Relief
+                      </button>
+                    </span>
+                  </span>
+                </div>
+                <div className="prop">
+                  <span className="pk">Directions</span>
+                  <span className="pv">
+                    <span className="seg-mini">
+                      {(["n", "e", "s", "w"] as const).map((d) => (
+                        <button
+                          key={d}
+                          className={sel.surge!.dirs[d] ? "on" : ""}
+                          onClick={() =>
+                            setSurgeParams(sel.id, { dirs: { ...sel.surge!.dirs, [d]: !sel.surge!.dirs[d] } })
+                          }
+                        >
+                          {d.toUpperCase()}
+                        </button>
+                      ))}
+                    </span>
+                  </span>
+                </div>
+                <div className="prop">
+                  <span className="pk">{sel.surge.mode === "relative" ? "Percent" : "Vehicles"}</span>
                   <span className="pv">
                     <span className="field">
                       <input
@@ -147,9 +184,15 @@ function Inspector() {
                   </span>
                 </div>
                 <div className="hint">
-                  {sel.surge.mode === "absolute"
-                    ? `Add ${sel.surge.amount} vehicles/hour originating here.`
-                    : `Increase demand here by ${sel.surge.amount}%.`}
+                  {(() => {
+                    const verb = sel.surge.kind === "relief" ? "Remove" : "Add";
+                    const along = sel.roadName ? ` along ${sel.roadName}` : "";
+                    const dirs =
+                      (["n", "e", "s", "w"] as const).filter((d) => sel.surge!.dirs[d]).map((d) => d.toUpperCase()).join("/") || "—";
+                    return sel.surge.mode === "absolute"
+                      ? `${verb} ${sel.surge.amount} vehicles/hour${along} toward ${dirs}.`
+                      : `${sel.surge.kind === "relief" ? "Reduce" : "Increase"} demand${along} by ${sel.surge.amount}% toward ${dirs}.`;
+                  })()}
                 </div>
               </>
             )}

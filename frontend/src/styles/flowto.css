@@ -554,6 +554,7 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .tl-playhead .ph-line { position: absolute; top: 0; bottom: 0; left: 0; width: 1.5px; background: var(--cobalt); transform: translateX(-50%); }
 .tl-playhead .ph-grip { position: absolute; top: -7px; left: 0; transform: translateX(-50%); width: 12px; height: 12px; background: var(--cobalt); border-radius: 3px; cursor: grab; pointer-events: auto; box-shadow: 0 1px 4px rgba(36,85,214,.5); }
 .tl-playhead .ph-grip::after { content:""; position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid var(--cobalt); }
+.tl-playhead .ph-grip:active { cursor: grabbing; }
 .tl-scrub { position: absolute; inset: 0; cursor: text; z-index: 3; }
 
 /* ============================================================ STATUS BAR */
@@ -634,6 +635,8 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 /* bottom bar: day-of-year control + congestion readout + chart */
 .day-control { display: inline-flex; align-items: center; gap: 8px; min-width: 150px; }
 .day-control svg { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
+.date-select { appearance: none; border: 1px solid var(--hair); background: var(--chrome-2); color: var(--ink); border-radius: var(--r-sm); padding: 4px 7px; font-family: inherit; font-size: 11px; outline: none; cursor: pointer; }
+.date-select:focus { border-color: var(--cobalt-line); }
 .cong-readout { display: inline-flex; align-items: center; gap: 6px; font-family:'IBM Plex Mono',monospace; font-size: 10px; color: var(--ink-2); padding: 4px 8px; border: 1px solid var(--hair); border-radius: 999px; background: var(--chrome-2); }
 .cong-readout svg { width: 13px; height: 13px; color: var(--cobalt-ink); }
 .cong-readout .cr-clear { appearance: none; cursor: pointer; border: 0; background: transparent; color: var(--ink-3); font-size: 13px; line-height: 1; padding: 0 0 0 2px; }
@@ -645,3 +648,17 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .mapboxgl-ctrl-attrib, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-logo { display: none !important; }
 
 .hide { display: none !important; }
+
+/* map layers popover (viewport top-right) */
+.layers-wrap { position: relative; }
+.layers-menu {
+  position: absolute; top: 36px; right: 0; min-width: 168px;
+  background: color-mix(in oklab, var(--chrome-hi) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid var(--hair); border-radius: 8px; padding: 8px;
+  box-shadow: 0 8px 24px rgba(27,26,22,.18); z-index: 6;
+}
+.layers-menu .lm-title { font-family:'IBM Plex Mono',monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding: 2px 4px 6px; }
+.layers-menu .lm-row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 12px; color: var(--ink); cursor: pointer; border-radius: 5px; }
+.layers-menu .lm-row:hover { background: var(--chrome-2); }
+.layers-menu .lm-row input { accent-color: var(--cobalt); cursor: pointer; }

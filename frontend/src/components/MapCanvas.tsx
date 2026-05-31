@@ -16,12 +16,15 @@ import { api } from "../api/client";
 import { MAP_CENTER, MAP_ZOOM, RECOMPUTE_STEPS_LABEL, STADIUM } from "../config";
 import { buildTransitLayers, type RouteGeom } from "../layers/transit";
 import {
+  addEarlyBuildings,
   applyLightPreset,
   CONGESTION_SLOT,
   HAS_MAPBOX_TOKEN,
   lightPresetForMinute,
   MAPBOX_TOKEN,
+  setEarlyBuildingsColor,
   setShow3dObjects,
+  setStandardConfig,
   STANDARD_STYLE,
 } from "../lib/mapbox";
 import { pressureRamp } from "../lib/pressureRamp";
@@ -37,10 +40,10 @@ function DeckOverlay(props: { layers: unknown[] }) {
 }
 
 const WIDTH_BY_CLASS: Record<string, number> = {
-  motorway: 6, trunk: 5, primary: 4.5, secondary: 3.5, tertiary: 3, residential: 2, service: 1.5,
+  motorway: 16, trunk: 13, primary: 11, secondary: 8, tertiary: 6, residential: 4, service: 3,
 };
 const PIN_COLOR: Record<string, [number, number, number]> = {
-  closure: [224, 112, 27], surge: [210, 58, 50],
+  closure: [210, 58, 50], surge: [224, 112, 27],
 };
 
 interface EdgePath { edge_id: string; idx: number; road_class: string; path: [number, number][]; }
@@ -66,12 +69,15 @@ export function MapCanvas() {
   const recenterNonce = useAppStore((s) => s.recenterNonce);
   const tiltOn = useAppStore((s) => s.tiltOn);
   const scrubMin = useAppStore((s) => s.scrubberMinute);
+  const dayOfYear = useAppStore((s) => s.dayOfYear);
   const placeAt = useAppStore((s) => s.placeAt);
   const selectObject = useAppStore((s) => s.selectObject);
   const applyPlan = useAppStore((s) => s.applyPlan);
   const discardPlan = useAppStore((s) => s.discardPlan);
   const dark = theme === "dark";
   const placing = view === "edit" && activeTool !== "select";
+  const [overlays, setOverlays] = useState({ poi: true, transit: true, roadLabels: true, placeLabels: true, buildings3d: true });
+  const [layersOpen, setLayersOpen] = useState(false);
 
   const edgePaths: EdgePath[] = useMemo(() => {
     const out: EdgePath[] = [];
@@ -102,9 +108,13 @@ export function MapCanvas() {
   useEffect(() => {
     const m = mapRef.current?.getMap();
     if (!m) return;
-    const pitch = view === "edit" ? 0 : tiltOn ? 52 : 0;
-    const bearing = view === "edit" ? 0 : tiltOn ? -18 : 0;
+    const pitch = tiltOn ? 52 : 0;
+    const bearing = tiltOn ? -18 : 0;
     m.easeTo({ pitch, bearing, duration: 700 });
+    // The viewport box can change size when switching views (sidebars/panels);
+    // resize once the layout has settled so the canvas isn't clipped/stretched.
+    const t = setTimeout(() => mapRef.current?.getMap()?.resize(), 320);
+    return () => clearTimeout(t);
   }, [view, tiltOn]);
   useEffect(() => {
     const m = mapRef.current?.getMap();
@@ -112,10 +122,25 @@ export function MapCanvas() {
     m.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
   }, [recenterNonce]);
 
-  // Time of day → Mapbox Standard light preset (dawn/day/dusk/night).
+  // Time of day → Mapbox Standard light preset (dawn/day/dusk/night), shifted by season.
   useEffect(() => {
-    applyLightPreset(mapRef.current?.getMap() as never, lightPresetForMinute(scrubMin));
-  }, [scrubMin]);
+    applyLightPreset(mapRef.current?.getMap() as never, lightPresetForMinute(scrubMin, dayOfYear));
+  }, [scrubMin, dayOfYear]);
+
+  // Keep early-building extrusion tint in sync with the active theme.
+  useEffect(() => {
+    setEarlyBuildingsColor(mapRef.current?.getMap() as never, dark);
+  }, [dark]);
+
+  // Mapbox Standard label/object overlay toggles.
+  useEffect(() => {
+    const m = mapRef.current?.getMap() as never;
+    setStandardConfig(m, "showPointOfInterestLabels", overlays.poi);
+    setStandardConfig(m, "showTransitLabels", overlays.transit);
+    setStandardConfig(m, "showRoadLabels", overlays.roadLabels);
+    setStandardConfig(m, "showPlaceLabels", overlays.placeLabels);
+    setStandardConfig(m, "show3dObjects", overlays.buildings3d);
+  }, [overlays]);
 
   const layers = useMemo(() => {
     const out: unknown[] = [];
@@ -123,14 +148,18 @@ export function MapCanvas() {
     out.push(
       new PathLayer({
         id: "roads",
+        parameters: { depthCompare: "always" },
+        slot: CONGESTION_SLOT,
         data: edgePaths,
         pickable: true,
+        autoHighlight: true,
+        highlightColor: [36, 85, 214, 160],
         getPath: (e: EdgePath) => e.path,
         getColor: (e: EdgePath) => pressureRamp(pressure[e.idx] ?? 0, { intensity, dark }),
         getWidth: (e: EdgePath) => WIDTH_BY_CLASS[e.road_class] ?? 2,
-        widthUnits: "pixels",
-        widthMinPixels: 1,
-        slot: CONGESTION_SLOT,
+        widthUnits: "meters",
+        widthMinPixels: 2,
+        widthMaxPixels: 18,
         capRounded: true,
         jointRounded: true,
         updateTriggers: { getColor: [pressureSeq, intensity, dark] },
@@ -146,12 +175,15 @@ export function MapCanvas() {
       out.push(
         new PathLayer({
           id: "road-selected",
+          parameters: { depthCompare: "always" },
+          slot: CONGESTION_SLOT,
           data: [{ path: selSeg.geometry.map(([la, ln]) => [ln, la] as [number, number]) }],
           getPath: (d: { path: [number, number][] }) => d.path,
           getColor: [36, 85, 214],
-          getWidth: 6,
-          widthUnits: "pixels",
-          slot: CONGESTION_SLOT,
+          getWidth: 14,
+          widthUnits: "meters",
+          widthMinPixels: 4,
+          widthMaxPixels: 22,
           capRounded: true,
           jointRounded: true,
         }),
@@ -172,12 +204,15 @@ export function MapCanvas() {
         out.push(
           new PathLayer({
             id: "closure-edges",
+            parameters: { depthCompare: "always" },
+            slot: CONGESTION_SLOT,
             data: closurePaths,
             getPath: (d: { path: [number, number][] }) => d.path,
-            getColor: [210, 58, 50],
-            getWidth: 5,
-            widthUnits: "pixels",
-            slot: CONGESTION_SLOT,
+            getColor: dark ? [120, 128, 138] : [140, 140, 140],
+            getWidth: 12,
+            widthUnits: "meters",
+            widthMinPixels: 3,
+            widthMaxPixels: 18,
             capRounded: true,
             jointRounded: true,
           }),
@@ -185,7 +220,7 @@ export function MapCanvas() {
       }
     }
 
-    if (view === "sim" && routes.length) {
+    if (view === "sim" && routes.length && overlays.transit) {
       out.push(...buildTransitLayers(routes));
     }
 
@@ -204,7 +239,8 @@ export function MapCanvas() {
           id: "pending-verts",
           data: pendingVertices,
           getPosition: (v: { lng: number; lat: number }) => [v.lng, v.lat],
-          getRadius: 40, radiusUnits: "meters", getFillColor: [36, 85, 214],
+          getRadius: 12, radiusUnits: "meters", radiusMinPixels: 4, radiusMaxPixels: 12,
+          getFillColor: [36, 85, 214],
           stroked: true, getLineColor: [255, 255, 255], lineWidthMinPixels: 2,
         }),
       );
@@ -216,9 +252,12 @@ export function MapCanvas() {
         new ScatterplotLayer({
           id: "pins", data: visible, pickable: true,
           getPosition: (o: (typeof visible)[number]) => o.coord,
-          getRadius: (o: (typeof visible)[number]) => (o.id === selectedId ? 55 : 42),
-          radiusUnits: "meters",
-          getFillColor: (o: (typeof visible)[number]) => PIN_COLOR[o.type] ?? [36, 85, 214],
+          getRadius: (o: (typeof visible)[number]) => (o.id === selectedId ? 20 : 14),
+          radiusUnits: "meters", radiusMinPixels: 5, radiusMaxPixels: 16,
+          getFillColor: (o: (typeof visible)[number]) =>
+            o.type === "surge" && o.surge?.kind === "relief"
+              ? [245, 184, 122]
+              : PIN_COLOR[o.type] ?? [36, 85, 214],
           stroked: true,
           getLineColor: (o: (typeof visible)[number]) => (o.id === selectedId ? [36, 85, 214] : [255, 255, 255]),
           lineWidthMinPixels: 2,
@@ -231,10 +270,28 @@ export function MapCanvas() {
           getText: (o: (typeof visible)[number]) => String(o.n),
           getSize: 12, getColor: [255, 255, 255], fontFamily: "IBM Plex Mono, monospace",
         }),
+        new TextLayer({
+          id: "demand-arrows",
+          data: visible.flatMap((o) =>
+            o.type === "surge" && o.surge
+              ? (["n", "e", "s", "w"] as const)
+                  .filter((d) => o.surge!.dirs[d])
+                  .map((d) => ({ coord: o.coord, d }))
+              : [],
+          ),
+          getPosition: (a: { coord: [number, number] }) => a.coord,
+          getText: (a: { d: string }) =>
+            (({ n: "▲", e: "▶", s: "▼", w: "◀" }) as Record<string, string>)[a.d] ?? "",
+          getColor: [224, 112, 27],
+          getSize: 13,
+          getPixelOffset: (a: { d: string }) =>
+            (({ n: [0, -20], e: [20, 0], s: [0, 20], w: [-20, 0] }) as Record<string, [number, number]>)[a.d] ?? [0, 0],
+          fontFamily: "IBM Plex Mono, monospace",
+        }),
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (
@@ -261,8 +318,10 @@ export function MapCanvas() {
           cursor={placing ? "crosshair" : "grab"}
           onLoad={(e) => {
             const m = e.target;
-            applyLightPreset(m as never, lightPresetForMinute(useAppStore.getState().scrubberMinute));
+            const st = useAppStore.getState();
+            applyLightPreset(m as never, lightPresetForMinute(st.scrubberMinute, st.dayOfYear));
             setShow3dObjects(m as never, true);
+            addEarlyBuildings(m as never, st.theme === "dark");
           }}
           onClick={(e) => {
             if (placing) void placeAt([e.lngLat.lng, e.lngLat.lat]);
@@ -273,24 +332,63 @@ export function MapCanvas() {
         </Map>
       </div>
 
-      <div className="vp-hud tl">
-        <div className="mode-banner">
-          <span className="ico">{view === "edit" ? <Icon.pencil /> : <Icon.play />}</span>
-          <span className="tx">
-            <span className="a">{view === "edit" ? "Editor" : "Simulation"}</span>
-            <span className="b">{view === "edit" ? "Top-down" : "3-D camera"}</span>
-          </span>
-        </div>
-      </div>
       <div className="vp-hud tr">
         <button className="iconbtn" onClick={() => useAppStore.getState().recenter()} title="Recenter">
           <Icon.recenter />
         </button>
-        {view === "sim" && (
-          <button className="iconbtn" onClick={() => useAppStore.getState().toggleTilt()} title="Tilt">
-            <Icon.tilt />
+        <button
+          className="iconbtn"
+          onClick={() => useAppStore.getState().toggleTilt()}
+          title={tiltOn ? "Top-down view" : "3-D view"}
+        >
+          {tiltOn ? (
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
+              <path d="M2.5 6.5h11M6.5 2.5v11" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M8 2.3l5.7 3.1-5.7 3.1-5.7-3.1z" />
+              <path d="M2.3 8.4v4.3l5.7 3.1 5.7-3.1V8.4" />
+            </svg>
+          )}
+        </button>
+        <div className="layers-wrap">
+          <button
+            className={`iconbtn ${layersOpen ? "on" : ""}`}
+            onClick={() => setLayersOpen((v) => !v)}
+            title="Map layers"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M8 1.8l6.2 3.1L8 8 1.8 4.9z" />
+              <path d="M1.8 8l6.2 3.1L14.2 8" />
+              <path d="M1.8 11.1l6.2 3.1 6.2-3.1" />
+            </svg>
           </button>
-        )}
+          {layersOpen && (
+            <div className="layers-menu">
+              <div className="lm-title">Map layers</div>
+              {(
+                [
+                  ["poi", "POI labels"],
+                  ["transit", "Transit"],
+                  ["roadLabels", "Road labels"],
+                  ["placeLabels", "Place labels"],
+                  ["buildings3d", "3-D buildings"],
+                ] as [keyof typeof overlays, string][]
+              ).map(([key, label]) => (
+                <label key={key} className="lm-row">
+                  <input
+                    type="checkbox"
+                    checked={overlays[key]}
+                    onChange={(e) => setOverlays((o) => ({ ...o, [key]: e.target.checked }))}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <div className="vp-hud bl">
         <div className="vp-chip">

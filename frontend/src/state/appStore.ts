@@ -47,6 +47,8 @@ export const RECOMPUTE_STEPS = [
 export interface SurgeParams {
   amount: number;
   mode: "absolute" | "relative";
+  kind: "surge" | "relief"; // increase vs decrease demand
+  dirs: { n: boolean; e: boolean; s: boolean; w: boolean }; // compass directions of flow
 }
 
 /** A placed Edit-mode intervention (closure or surge). */
@@ -62,7 +64,8 @@ export interface SceneObject {
   // closure
   vertices?: { key: string; lng: number; lat: number }[];
   edgeIds?: string[];
-  // surge
+  // demand change (surge / relief along an edge)
+  edgeId?: string;
   surge?: SurgeParams;
 }
 
@@ -253,14 +256,17 @@ function interventionsFromObjects(objects: SceneObject[]): Intervention[] {
     if (o.type === "closure") {
       for (const edgeId of o.edgeIds ?? []) out.push({ op: "close_edge", edge_id: edgeId });
     } else if (o.type === "surge" && o.surge) {
-      // Best-effort: backend demand-surge-at-vertex support is pending (see client.ts).
+      // Best-effort: backend demand-change support is pending (see client.ts).
+      const signed = o.surge.kind === "relief" ? -Math.abs(o.surge.amount) : Math.abs(o.surge.amount);
       out.push({
-        op: "demand_surge",
-        amount: o.surge.amount,
+        op: "demand_change",
+        edge_id: o.edgeId,
+        directions: (["n", "e", "s", "w"] as const).filter((d) => o.surge!.dirs[d]),
+        amount: signed,
         mode: o.surge.mode,
         lng: o.coord[0],
         lat: o.coord[1],
-      });
+      } as unknown as Intervention);
     }
   }
   return out;
@@ -486,20 +492,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     const [lng, lat] = coord;
 
     if (activeTool === "surge") {
-      const node = nearestNode(graph, lng, lat);
-      if (!node) return;
-      const near = nearestEdge(graph, node.lng, node.lat);
+      // Demand change snaps to the nearest street segment; demand flows ALONG that
+      // edge in a chosen direction (forward = from→to). Kind = surge | relief.
+      const near = nearestEdge(graph, lng, lat);
+      if (!near) return;
+      const mid = near.geometry[Math.floor(near.geometry.length / 2)] ?? near.geometry[0];
       const seq = get().objects.length + 1;
       const obj: SceneObject = {
         id: `obj${Date.now()}`,
         type: "surge",
-        name: `Surge${near?.road_name ? " · " + near.road_name : ""}`,
+        name: `Demand${near.road_name ? " · " + near.road_name : ""} · surge`,
         visible: true,
         n: seq,
-        coord: [node.lng, node.lat],
-        roadName: near?.road_name,
-        baselinePressure: near ? getArrays().pressure[near.idx] : undefined,
-        surge: { amount: 500, mode: "absolute" },
+        coord: [mid[1], mid[0]], // geometry is [lat, lng]
+        roadName: near.road_name,
+        edgeId: near.edge_id,
+        baselinePressure: getArrays().pressure[near.idx],
+        surge: { amount: 500, mode: "absolute", kind: "surge", dirs: { n: false, e: true, s: false, w: false } },
       };
       set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select", dirty: true }));
       await get().applyEdits();
@@ -558,9 +567,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   setSurgeParams: (id, patch) =>
     set((s) => ({
-      objects: s.objects.map((o) =>
-        o.id === id && o.surge ? { ...o, surge: { ...o.surge, ...patch } } : o,
-      ),
+      objects: s.objects.map((o) => {
+        if (o.id !== id || !o.surge) return o;
+        const surge = { ...o.surge, ...patch };
+        const name =
+          patch.kind !== undefined
+            ? `Demand${o.roadName ? " · " + o.roadName : ""} · ${surge.kind}`
+            : o.name;
+        return { ...o, surge, name };
+      }),
       dirty: true,
     })),
   clearPending: () => set({ pendingVertices: [] }),

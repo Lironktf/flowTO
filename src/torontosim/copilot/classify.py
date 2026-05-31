@@ -105,12 +105,23 @@ def _default_model_call(system: str, prompt: str, schema: dict) -> str:
     return ollama_client.generate(system, prompt, schema)
 
 
-def classify(prompt: str, *, model_call: ModelCall | None = None) -> ClassifyResult:
-    """Classify ``prompt`` into one intent + entities. Falls back to ``chat`` on any
-    model/parse failure so routing degrades to a safe conversational reply."""
+def classify(
+    prompt: str, *, history: str = "", model_call: ModelCall | None = None
+) -> ClassifyResult:
+    """Classify ``prompt`` into one intent + entities. ``history`` (recent
+    conversation, oldest→newest) lets the model resolve referential phrases like
+    'the worst road', 'that road', 'it', or 'reopen it' to a concrete road name.
+    Falls back to ``chat`` on any model/parse failure."""
     model_call = model_call or _default_model_call
+    text = prompt or ""
+    if history.strip():
+        text = (
+            "Recent conversation (resolve references like 'the worst road', "
+            "'that road', 'it' from this — put the ACTUAL road name in 'road_name'):\n"
+            f"{history.strip()}\n\nRequest: {prompt}"
+        )
     try:
-        raw = model_call(_SYSTEM, prompt or "", classify_schema())
+        raw = model_call(_SYSTEM, text, classify_schema())
         return ClassifyResult.model_validate(json.loads(raw))
     except (json.JSONDecodeError, ValidationError, OSError, ValueError, KeyError):
         return ClassifyResult(intent="chat")

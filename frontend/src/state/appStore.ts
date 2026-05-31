@@ -859,7 +859,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       let intent = "";
       let routedPlan: CopilotResponse | undefined;
       if (!get().deepMode) {
-        const routed = await api.copilotRoute(text, signal);
+        // Recent turns (excluding the just-pushed current message) so referential
+        // asks ('the worst road', 'that road', 'it') resolve against context.
+        const recent = get()
+          .copilotLog.slice(-7, -1)
+          .filter((m) => m.text)
+          .map((m) => `${m.role === "user" ? "You" : "Copilot"}: ${m.text.slice(0, 200)}`)
+          .join("\n");
+        const routed = await api.copilotRoute(text, recent, signal);
         mode = routed.mode;
         intent = routed.intent ?? "";
         routedPlan = routed.result;

@@ -193,8 +193,8 @@ export const api = {
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
-  copilotRoute: (prompt: string, signal?: AbortSignal) =>
-    jpost<CopilotRouteResult>("/copilot/route", { prompt }, signal),
+  copilotRoute: (prompt: string, history = "", signal?: AbortSignal) =>
+    jpost<CopilotRouteResult>("/copilot/route", { prompt, history }, signal),
   copilotSuggestions: () => jget<{ prompts: string[] }>("/copilot/suggestions"),
   // Dynamic follow-up chips reflecting the last exchange (prompt + bot reply + intent).
   copilotFollowups: (prompt: string, reply: string, intent: string, signal?: AbortSignal) =>

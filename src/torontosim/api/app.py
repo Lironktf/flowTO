@@ -280,7 +280,9 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         except ImportError:
             raise HTTPException(501, "copilot not available (P09 not installed)") from None
         prompt = payload.get("prompt", "")
-        cls = classify(prompt)
+        # Optional recent-conversation context so referential asks ("the worst
+        # road", "that road", "it") resolve to a concrete road in classification.
+        cls = classify(prompt, history=payload.get("history", ""))
         out: dict = {"mode": cls.mode, "intent": cls.intent}
         if cls.mode == "plan":
             out["result"] = plan_intervention(prompt, state, classification=cls)

@@ -17,6 +17,20 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the heavy map/render libs into their own cacheable vendor chunks
+        // so the app shell + first paint aren't blocked by 2.7 MB of mapbox/deck.
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("mapbox-gl")) return "mapbox";
+          if (id.includes("@deck.gl") || id.includes("@luma.gl") || id.includes("@math.gl")) return "deck";
+          if (id.includes("/react/") || id.includes("/react-dom/") || id.includes("/scheduler/")) return "react";
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     globals: true,

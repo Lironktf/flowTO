@@ -1,15 +1,18 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BottomDock } from "./components/BottomDock";
 import { CopilotRegion } from "./components/CopilotPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FirstRun } from "./components/FirstRun";
 import { LeftDock } from "./components/LeftDock";
-import { MapCanvas } from "./components/MapCanvas";
 import { RightDock } from "./components/RightDock";
 import { StatusBar } from "./components/StatusBar";
 import { ToolRail } from "./components/ToolRail";
 import { TopBar } from "./components/TopBar";
 import { useAppStore } from "./state/appStore";
+
+// The map pulls in mapbox-gl + deck.gl (~2.7 MB). Load it as its own chunk so the
+// app shell paints first (the FirstRun intro covers the brief async load).
+const MapCanvas = lazy(() => import("./components/MapCanvas").then((m) => ({ default: m.MapCanvas })));
 
 export default function App() {
   const view = useAppStore((s) => s.view);
@@ -38,7 +41,9 @@ export default function App() {
           <LeftDock />
         </div>
         <div id="viewport">
-          <MapCanvas />
+          <Suspense fallback={null}>
+            <MapCanvas />
+          </Suspense>
         </div>
         <div id="dock-bottom" className="dock">
           <BottomDock />

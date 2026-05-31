@@ -362,8 +362,10 @@ def _count_stranded_trips(graph, od_matrix) -> float:
     """
     try:
         import numpy as np
+        from scipy.sparse import csr_matrix
+        from scipy.sparse.csgraph import dijkstra
 
-        from ..blastradius.pathcache import build_path_cache
+        from .backends.scipy_backend import _eff_costs, _structure
         from .equilibrium import network_from_graph
 
         net, node_index, _edge_keys = network_from_graph(graph)
@@ -377,8 +379,26 @@ def _count_stranded_trips(graph, od_matrix) -> float:
         ]
         if not od:
             return 0.0
-        cache = build_path_cache(net, od, costs, backend="scipy")
-        return float(sum(d for (_o, _d, d), path in zip(od, cache.paths) if not path))
+
+        # Stranded counting needs only *reachability*, not traced paths, so one
+        # vectorized scipy dijkstra over the unique origins answers it directly:
+        # a trip is stranded iff its destination sits at infinite cost from its
+        # origin under free-flow costs. We reuse the exact CSR the scipy AON
+        # backend builds (parallel edges collapsed to min cost per (tail, head))
+        # so reachability matches how flow is actually routed. The old path lay
+        # through build_path_cache(backend="scipy"), which has no scipy branch
+        # and silently fell back to a per-origin heap Dijkstra (~25s vs <1s).
+        eff = _eff_costs(net, costs)
+        pair_rows, pair_cols, pair_index, fin_idx, _lut = _structure(net, eff)
+        pair_min = np.full(pair_rows.shape[0], np.inf, dtype=np.float64)
+        np.minimum.at(pair_min, pair_index, eff[fin_idx])
+        csr = csr_matrix((pair_min, (pair_rows, pair_cols)), shape=(net.n_nodes, net.n_nodes))
+
+        origins = sorted({o for o, _d, _t in od})
+        row_of = {o: i for i, o in enumerate(origins)}
+        dist = dijkstra(csr, directed=True, indices=origins, return_predecessors=False)
+
+        return float(sum(t for o, d, t in od if not np.isfinite(dist[row_of[o], d])))
     except Exception:  # noqa: BLE001
         return 0.0
 

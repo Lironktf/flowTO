@@ -1,8 +1,12 @@
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  // Two independent HTML entries: the marketing landing (/) and the app (/app.html).
+  // Separate module graphs keep the heavy mapbox/deck.gl app out of the landing bundle.
+  appType: "mpa",
   plugins: [react()],
   server: {
     port: 5173,

@@ -171,10 +171,12 @@ def run_scenario(
     iterations: int = 4,
     engine: str = "kpath",
     congestion_model: str = "bpr",
+    backend: str = "cpu",
 ) -> dict:
     """Run one of ``baseline`` | ``wc_surge`` | ``wc_fix`` and return metrics.
 
     Pass a shared ``graph`` + ``baseline_od`` to avoid reloading for each.
+    ``backend`` selects the assignment backend (``cpu`` or ``gpu``/cuGraph).
     """
     if graph is None:
         graph = load_graph()
@@ -200,6 +202,7 @@ def run_scenario(
         auto_calibrate=False,
         engine=engine,
         congestion_model=congestion_model,
+        backend=backend,
     )
     rg = result["graph"]
     exhib = round(exhibition_pressure(rg), 4)

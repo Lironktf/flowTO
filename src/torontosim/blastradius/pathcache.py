@@ -96,6 +96,54 @@ def _build_path_cache_cpu(net: Network, od, costs: np.ndarray, by_origin: dict):
     return paths, edge_to_ods
 
 
+def _build_path_cache_scipy(net: Network, od, costs: np.ndarray, by_origin: dict):
+    """Vectorized scipy variant: one ``csgraph.dijkstra`` over all origins.
+
+    Uses the same collapsed CSR and ``link_index * 1e-9`` tie-break as the scipy
+    all-or-nothing backend, so cached paths match how the simulator actually
+    routes (and parallel edges resolve to the same link). Paths are traced from
+    the predecessor matrix on the CPU side.
+    """
+    from scipy.sparse import csr_matrix
+    from scipy.sparse.csgraph import dijkstra
+
+    from ..simulation.backends.scipy_backend import _eff_costs, _structure
+
+    eff = _eff_costs(net, costs)
+    pair_rows, pair_cols, pair_index, fin_idx, lut = _structure(net, eff)
+    pair_min = np.full(pair_rows.shape[0], np.inf, dtype=np.float64)
+    np.minimum.at(pair_min, pair_index, eff[fin_idx])
+    csr = csr_matrix((pair_min, (pair_rows, pair_cols)), shape=(net.n_nodes, net.n_nodes))
+
+    origins = sorted(by_origin)
+    _dist, pred = dijkstra(csr, directed=True, indices=origins, return_predecessors=True)
+    row_of = {o: i for i, o in enumerate(origins)}
+
+    paths: list = [[] for _ in od]
+    edge_to_ods: dict = {}
+    for origin in origins:
+        pr = pred[row_of[origin]]
+        for idx, dest, _demand in by_origin[origin]:
+            links: list = []
+            v = int(dest)
+            while v != origin:
+                p = int(pr[v])
+                if p < 0:
+                    links = []
+                    break  # unreachable (scipy uses -9999)
+                candidates = lut.get((p, v))
+                if not candidates:
+                    links = []
+                    break
+                links.append(min(candidates, key=lambda li: eff[li]))
+                v = p
+            links.reverse()
+            paths[idx] = links
+            for link in links:
+                edge_to_ods.setdefault(link, set()).add(idx)
+    return paths, edge_to_ods
+
+
 def _build_path_cache_gpu(net: Network, od, costs: np.ndarray, by_origin: dict):
     """GPU variant: single cuGraph G built once; SSSP per origin reuses it."""
     from ..simulation.backends.gpu import _edge_lookup, _eff_costs, sssp_all_predecessors
@@ -130,8 +178,11 @@ def build_path_cache(
 ) -> PathCache:
     """Build a cache of shortest paths per OD under ``costs``.
 
-    ``backend="gpu"`` uses cuGraph SSSP (requires cudf + cugraph, Spark only);
-    falls back to CPU heap Dijkstra if unavailable.
+    ``backend="scipy"`` runs one vectorized ``csgraph.dijkstra`` over all origins
+    (the fast default for many origins). ``backend="gpu"`` uses cuGraph SSSP
+    (requires cudf + cugraph, Spark only). Both fall back to the CPU heap
+    Dijkstra if their dependency is unavailable; ``backend="cpu"`` uses it
+    directly.
     """
     by_origin: dict = {}
     for idx, (o, d, demand) in enumerate(od):
@@ -145,6 +196,18 @@ def build_path_cache(
 
             warnings.warn(
                 f"GPU pathcache unavailable ({exc!r}); falling back to CPU.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            paths, edge_to_ods = _build_path_cache_cpu(net, od, costs, by_origin)
+    elif backend == "scipy":
+        try:
+            paths, edge_to_ods = _build_path_cache_scipy(net, od, costs, by_origin)
+        except Exception as exc:  # noqa: BLE001 — scipy unavailable
+            import warnings
+
+            warnings.warn(
+                f"scipy pathcache unavailable ({exc!r}); falling back to CPU.",
                 RuntimeWarning,
                 stacklevel=2,
             )

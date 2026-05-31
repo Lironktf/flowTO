@@ -32,29 +32,40 @@ def _load_dataset(path: Path, graph_path: Path, rebuild: bool, max_label_rows: i
 
 
 def _slice_batch(dataset: dict, mask: torch.Tensor, batch_size: int, device: torch.device):
+    # ``sample_edge_idx``/``context_attr``/``y`` are moved to ``device`` once by
+    # the caller (train); here only the small per-batch index is transferred,
+    # instead of re-uploading each slice every batch. The CPU randperm is kept so
+    # the shuffle (and thus the training trajectory) is identical to before.
     idx = torch.nonzero(mask, as_tuple=False).flatten()
     order = idx[torch.randperm(len(idx))]
+    sei = dataset["sample_edge_idx"]
+    ctx = dataset["context_attr"]
+    y = dataset["y"]
     for start in range(0, len(order), batch_size):
-        sample_ids = order[start : start + batch_size]
-        edge_sample_idx = dataset["sample_edge_idx"][sample_ids].to(device)
-        context = dataset["context_attr"][sample_ids].to(device)
-        target = dataset["y"][sample_ids].to(device)
-        yield edge_sample_idx, context, target
+        sample_ids = order[start : start + batch_size].to(sei.device)
+        yield sei[sample_ids], ctx[sample_ids], y[sample_ids]
 
 
 @torch.no_grad()
-def _evaluate(model, dataset: dict, mask: torch.Tensor, device: torch.device, batch_size: int) -> dict:
+def _evaluate(
+    model,
+    dataset: dict,
+    mask: torch.Tensor,
+    device: torch.device,
+    batch_size: int,
+    x: torch.Tensor,
+    edge_index: torch.Tensor,
+    edge_attr: torch.Tensor,
+) -> dict:
     model.eval()
+    # Encode the graph once (independent of the edge batch) and reuse the
+    # already-on-device graph tensors, instead of re-uploading x/edge_index/
+    # edge_attr and re-running message passing on every batch.
+    h = model.encode_nodes(x, edge_index)
     preds = []
     targets = []
     for edge_sample_idx, context, target in _slice_batch(dataset, mask, batch_size, device):
-        pred = model(
-            dataset["x"].to(device),
-            dataset["edge_index"].to(device),
-            dataset["edge_attr"].to(device),
-            context,
-            edge_sample_idx,
-        )
+        pred = model.score_edges(h, edge_index, edge_attr, context, edge_sample_idx)
         preds.append(pred.detach().cpu())
         targets.append(target.detach().cpu())
     pred_t = torch.cat(preds) if preds else torch.empty(0)
@@ -112,6 +123,11 @@ def train(
     x = dataset["x"].to(device)
     edge_index = dataset["edge_index"].to(device)
     edge_attr = dataset["edge_attr"].to(device)
+    # Move the per-sample tensors to the device once; batches then index them
+    # in place rather than re-uploading each slice (see ``_slice_batch``).
+    dataset["sample_edge_idx"] = dataset["sample_edge_idx"].to(device)
+    dataset["context_attr"] = dataset["context_attr"].to(device)
+    dataset["y"] = dataset["y"].to(device)
     train_mask = dataset["train_mask"]
     val_mask = dataset["val_mask"]
 
@@ -133,8 +149,8 @@ def train(
             optimizer.step()
             losses.append(float(loss.detach().cpu()))
 
-        train_metrics = _evaluate(model, dataset, train_mask, device, batch_size)
-        val_metrics = _evaluate(model, dataset, val_mask, device, batch_size)
+        train_metrics = _evaluate(model, dataset, train_mask, device, batch_size, x, edge_index, edge_attr)
+        val_metrics = _evaluate(model, dataset, val_mask, device, batch_size, x, edge_index, edge_attr)
         row = {
             "epoch": epoch,
             "loss": sum(losses) / max(len(losses), 1),
@@ -180,8 +196,8 @@ def train(
     }
     torch.save(checkpoint, model_path)
 
-    final_train = _evaluate(model, dataset, train_mask, device, batch_size)
-    final_val = _evaluate(model, dataset, val_mask, device, batch_size)
+    final_train = _evaluate(model, dataset, train_mask, device, batch_size, x, edge_index, edge_attr)
+    final_val = _evaluate(model, dataset, val_mask, device, batch_size, x, edge_index, edge_attr)
     metrics = {
         **report,
         "backend": backend,

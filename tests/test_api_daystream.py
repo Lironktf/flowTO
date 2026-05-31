@@ -21,11 +21,20 @@ def _small_state():
         g.add_node(n, x=x, y=y)
     for i, (u, v) in enumerate([(0, 1), (0, 2), (1, 3), (2, 3)]):
         g.add_edge(
-            u, v, key=0,
+            u,
+            v,
+            key=0,
             **schema.make_edge(
-                edge_id=f"e{i}", from_node=u, to_node=v, road_class="primary",
-                length_m=1000.0, speed_kmh=50.0, lanes=2.0, capacity=1200.0,
-                base_time_min=1.2, one_way=True,
+                edge_id=f"e{i}",
+                from_node=u,
+                to_node=v,
+                road_class="primary",
+                length_m=1000.0,
+                speed_kmh=50.0,
+                lanes=2.0,
+                capacity=1200.0,
+                base_time_min=1.2,
+                one_way=True,
                 geometry=[[coords[u][1], coords[u][0]], [coords[v][1], coords[v][0]]],
             ),
         )

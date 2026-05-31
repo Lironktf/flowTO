@@ -158,7 +158,9 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             raise HTTPException(400, "month must be 1..12")
         from . import gnn_baseline as gb
 
-        return Response(content=gb.day_blob(state, dow, month), media_type="application/octet-stream")
+        return Response(
+            content=gb.day_blob(state, dow, month), media_type="application/octet-stream"
+        )
 
     # ---- scenario CRUD -------------------------------------------------- #
     @app.post("/scenarios", response_model=Scenario)
@@ -319,7 +321,9 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             interventions = [
                 iv
                 for iv in raw_iv
-                if not (iv.get("op") in _GRAPH_EDGE_OPS and iv.get("edge_id") not in state.edge_index)
+                if not (
+                    iv.get("op") in _GRAPH_EDGE_OPS and iv.get("edge_id") not in state.edge_index
+                )
             ]
             tc_hour = (spec.get("time_context") or {}).get("hour", 8)
             current_hour = int(spec.get("current_hour", tc_hour) or 0)
@@ -352,7 +356,12 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                     continue
                 if not sent_meta:
                     await ws.send_json(
-                        {"type": "meta", "total": 24, "epoch": epoch, "model_actual": res.get("model_actual", "")}
+                        {
+                            "type": "meta",
+                            "total": 24,
+                            "epoch": epoch,
+                            "model_actual": res.get("model_actual", ""),
+                        }
                     )
                     sent_meta = True
                 await ws.send_bytes(pack_day_frame(hour, epoch, res["records"]))
@@ -514,7 +523,12 @@ def serve(host: str = "0.0.0.0", port: int = 8000):  # pragma: no cover - runtim
     # Belt-and-suspenders for scripts/run_api.sh's BLAS pinning: only takes
     # effect if serve() is the first thing to import numpy in this process
     # (env must be set before the numpy import). setdefault → the shell wins.
-    for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    for _var in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
         os.environ.setdefault(_var, "1")
 
     import uvicorn

@@ -80,7 +80,9 @@ class DayCompute:
         )
         return int(hour), res
 
-    def warm_day(self, *, model_kind, base_tc, interventions=None, current_hour: int = 8, iterations: int = 4) -> int:
+    def warm_day(
+        self, *, model_kind, base_tc, interventions=None, current_hour: int = 8, iterations: int = 4
+    ) -> int:
         """Fire-and-forget: submit all 24 hours of a view to the pool (current hour
         first). Used for the startup default-view warm. Non-blocking; returns the
         number of hours submitted (skips already-cached ones)."""
@@ -89,6 +91,8 @@ class DayCompute:
         for hour in hour_order(current_hour):
             if self.is_hour_cached(model_kind, base_tc, interventions, hour):
                 continue
-            self.pool.submit(self.compute_hour, model_kind, base_tc, interventions, hour, iterations)
+            self.pool.submit(
+                self.compute_hour, model_kind, base_tc, interventions, hour, iterations
+            )
             submitted += 1
         return submitted

@@ -34,7 +34,29 @@ import {
   type RoadGraph,
   type Segment,
 } from "../api/graph";
+import {
+  buildRoadIndex,
+  resolveQuery,
+  retrievePlace,
+  searchRoads,
+  type RoadIndexEntry,
+  type SearchHit,
+} from "../lib/search";
 import { COPILOT_CHIPS, DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
+
+// Cache the omnibox road index so the copilot can reuse the SAME resolver as the
+// search bar without rescanning every edge per call. Rebuilt only when the graph
+// instance changes (graph is effectively load-once).
+let _idxGraph: RoadGraph | null = null;
+let _idxCache: RoadIndexEntry[] = [];
+function roadIndexFor(g: RoadGraph | null): RoadIndexEntry[] {
+  if (!g) return [];
+  if (g !== _idxGraph) {
+    _idxCache = buildRoadIndex(g);
+    _idxGraph = g;
+  }
+  return _idxCache;
+}
 import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
 
 export type View = "sim" | "edit";
@@ -285,6 +307,11 @@ interface AppState {
   recenter: () => void;
   flyToLocation: (lng: number, lat: number, zoom?: number) => void;
   fitToBounds: (bounds: [[number, number], [number, number]]) => void;
+  /** Move the camera to a resolved search hit — the shared omnibox/copilot path. */
+  flyToHit: (hit: SearchHit) => Promise<void>;
+  /** Resolve free text (road, else place) via the omnibox resolver and fly to it.
+   *  Returns true if something was found. Used by the copilot's focus fallback. */
+  focusQuery: (query: string) => Promise<boolean>;
   toggleTilt: () => void;
   reset: () => Promise<void>;
 }
@@ -403,13 +430,16 @@ function bboxForView(
   view: ViewDirective,
 ): [[number, number], [number, number]] | null {
   if (!graph) return null;
-  let ids = view.edge_ids ?? [];
-  if (!ids.length && view.road_name) {
-    const want = view.road_name.toLowerCase();
-    ids = [];
-    for (const [id, seg] of graph.byId) {
-      if ((seg.road_name ?? "").toLowerCase().includes(want)) ids.push(id);
-    }
+  const ids = view.edge_ids ?? [];
+  // No backend edge_ids → resolve the road name through the SAME index the search
+  // bar uses (one source of truth), and take that road's full extent directly.
+  // A non-road name (a place) yields no road hit → null, and applyView falls
+  // through to the place geocoder. (Replaces a blind substring scan that could
+  // frame the wrong street.)
+  if (!ids.length) {
+    if (!view.road_name) return null;
+    const hit = searchRoads(roadIndexFor(graph), view.road_name, 1)[0];
+    return hit?.bbox ?? null;
   }
   let minLng = Infinity,
     minLat = Infinity,
@@ -813,7 +843,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (view.action === "fly" && view.lng != null && view.lat != null)
         return get().flyToLocation(view.lng, view.lat, view.zoom ?? undefined);
       const bbox = bboxForView(get().graph, view);
-      if (bbox) get().fitToBounds(bbox);
+      if (bbox) return get().fitToBounds(bbox);
+      // No edge_ids and no matching road → fall through to the SAME resolver the
+      // omnibox uses (local roads, then Mapbox places), so the copilot can fly to
+      // anything the search bar can ("show me High Park", "fly to the CN Tower").
+      if (view.road_name) void get().focusQuery(view.road_name);
     };
     const renderPlan = (resp: CopilotResponse) => {
       const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
@@ -1233,6 +1267,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({ flyTarget: { lng, lat, zoom }, flyNonce: s.flyNonce + 1, flyPin: [lng, lat] })),
   fitToBounds: (bounds) => set((s) => ({ fitTarget: bounds, fitNonce: s.fitNonce + 1, flyPin: null })),
   toggleTilt: () => set((s) => ({ tiltOn: !s.tiltOn })),
+
+  // Shared camera move for a resolved search hit — the SAME logic the omnibox
+  // pick uses (street → frame + highlight; place → retrieve coords + fly + pin).
+  flyToHit: async (hit) => {
+    if (hit.bbox) {
+      get().fitToBounds(hit.bbox);
+      if (hit.edgeId) get().selectRoad(hit.edgeId);
+    } else if (hit.mapboxId) {
+      const coord = await retrievePlace(hit.mapboxId, new AbortController().signal);
+      if (coord) get().flyToLocation(coord[0], coord[1], 14.5);
+    } else {
+      get().flyToLocation(hit.coord[0], hit.coord[1], 14.5);
+    }
+  },
+  focusQuery: async (query) => {
+    const hit = await resolveQuery(
+      roadIndexFor(get().graph),
+      query,
+      new AbortController().signal,
+    ).catch(() => null);
+    if (!hit) return false;
+    await get().flyToHit(hit);
+    return true;
+  },
 
   reset: async () => {
     set({

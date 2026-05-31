@@ -509,6 +509,8 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             raise HTTPException(422, f"unknown demo scenario: {scenario!r}")
         return _get_demo(scenario)
 
+    retime_lock = threading.Lock()
+
     @app.post("/baseline/retime")
     def baseline_retime(req: RetimeRequest):
         """Rebuild the baseline demand at a new time-of-day / date.
@@ -517,27 +519,34 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         so changing the hour/day re-derives demand from the model and re-runs the
         baseline — not a cheap per-run param. Returns the repaint records for the
         new baseline. Heavy (model predict + gravity + sim); the UI gates it behind
-        an explicit 'apply' with a loading state, not per-scrub.
+        an explicit 'apply' with a loading state, not per-scrub. A non-blocking lock
+        rejects a second retime while one is running (the CPU sim would otherwise
+        stack and freeze the server for minutes).
         """
-        tc = {
-            k: v
-            for k, v in {
-                "minute": req.minute,
-                "day_of_year": req.day_of_year,
-                "weather": req.weather,
-            }.items()
-            if v is not None
-        }
-        # Carry forward the current values for whatever wasn't supplied.
-        merged = {**state.time_context, **tc}
-        state.retime(merged)
-        app.state.demo_cache = {}  # demo records were computed from the old OD
-        res = _get_demo("baseline")
-        return {
-            "time_context": state.time_context,
-            "summary": res["summary"],
-            "records": res["records"],
-        }
+        if not retime_lock.acquire(blocking=False):
+            raise HTTPException(409, "a baseline retime is already in progress")
+        try:
+            tc = {
+                k: v
+                for k, v in {
+                    "minute": req.minute,
+                    "day_of_year": req.day_of_year,
+                    "weather": req.weather,
+                }.items()
+                if v is not None
+            }
+            # Carry forward the current values for whatever wasn't supplied.
+            merged = {**state.time_context, **tc}
+            state.retime(merged)
+            app.state.demo_cache = {}  # demo records were computed from the old OD
+            res = _get_demo("baseline")
+            return {
+                "time_context": state.time_context,
+                "summary": res["summary"],
+                "records": res["records"],
+            }
+        finally:
+            retime_lock.release()
 
     # ---- jobs ----------------------------------------------------------- #
     @app.get("/jobs/{job_id}")

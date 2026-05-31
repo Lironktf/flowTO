@@ -276,3 +276,79 @@ export function addNewStreet(opts: {
 export function demandSurge(nodeId: number, amount: number, mode: "absolute" | "relative"): Intervention {
   return { op: "demand_surge", node_id: nodeId, amount, mode };
 }
+
+// ── Segment description (human-readable "Road — A → B" labels) ────────────────
+
+/** A human-readable description of a selected segment. */
+export interface SegmentDescription {
+  road: string;
+  fromCross: string | null;
+  toCross: string | null;
+  label: string;
+}
+
+/** Word-boundary suffix/direction abbreviations for compact street labels. */
+const SHORT_NAME_RULES: [RegExp, string][] = [
+  [/\bBoulevard\b/gi, "Blvd"],
+  [/\bCrescent\b/gi, "Cres"],
+  [/\bAvenue\b/gi, "Ave"],
+  [/\bStreet\b/gi, "St"],
+  [/\bRoad\b/gi, "Rd"],
+  [/\bDrive\b/gi, "Dr"],
+  [/\bCourt\b/gi, "Crt"],
+  [/\bWest\b/gi, "W"],
+  [/\bEast\b/gi, "E"],
+  [/\bNorth\b/gi, "N"],
+  [/\bSouth\b/gi, "S"],
+];
+
+/** Abbreviate common street suffixes/directions for compact labels. Pure & local. */
+export function shortName(name: string): string {
+  let out = name;
+  for (const [re, rep] of SHORT_NAME_RULES) out = out.replace(re, rep);
+  return out;
+}
+
+/** Shared label builder so describeSegment & describeSegmentAsync never drift. */
+export function buildSegmentLabel(
+  road: string,
+  fromCross: string | null,
+  toCross: string | null,
+): string {
+  if (fromCross && toCross) return `${road} — ${shortName(fromCross)} → ${shortName(toCross)}`;
+  const one = fromCross ?? toCross;
+  if (one) return `${road} — at ${shortName(one)}`;
+  return road;
+}
+
+/** Describe a segment from local graph adjacency (no network). */
+export function describeSegment(graph: RoadGraph, edgeId: string): SegmentDescription {
+  const seg = graph.byId.get(edgeId);
+  if (!seg) {
+    return { road: "Selected road", fromCross: null, toCross: null, label: "Selected road" };
+  }
+  const road = seg.road_name ?? "Selected road";
+
+  /** Most common incident road name at a vertex, excluding `road` (case-insensitive). */
+  const crossAt = (key: NodeKey): string | null => {
+    const counts = new Map<string, number>();
+    let best: string | null = null;
+    let bestCount = 0;
+    for (const nb of edgesAtNode(graph, key)) {
+      const name = nb.road_name;
+      if (!name || !name.trim()) continue;
+      if (name.toLowerCase() === road.toLowerCase()) continue;
+      const next = (counts.get(name) ?? 0) + 1;
+      counts.set(name, next);
+      if (next > bestCount) {
+        bestCount = next;
+        best = name;
+      }
+    }
+    return best;
+  };
+
+  const fromCross = crossAt(seg.fromKey);
+  const toCross = crossAt(seg.toKey);
+  return { road, fromCross, toCross, label: buildSegmentLabel(road, fromCross, toCross) };
+}

@@ -3,8 +3,8 @@ import { useAppStore } from "../state/appStore";
 import { Icon, type IconKey } from "./Icons";
 
 const TYPE_COLOR: Record<string, string> = {
-  closure: "var(--c-heavy)",
-  surge: "var(--c-sev)",
+  closure: "var(--c-sev)",
+  surge: "var(--c-heavy)",
 };
 const TOOL_ICON: Record<string, IconKey> = {
   closure: "closure",

@@ -41,6 +41,7 @@ export function buildTransitLayers(routes: RouteGeom[]): unknown[] {
   return [
     new PathLayer({
       id: "transit-routes",
+      parameters: { depthCompare: "always" },
       data: routes,
       getPath: (r: RouteGeom) => r.path,
       getColor: (r: RouteGeom) => modeColor(r.mode),

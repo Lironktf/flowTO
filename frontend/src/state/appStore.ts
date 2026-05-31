@@ -31,6 +31,7 @@ import {
   streetsByDirection,
   withReverseTwins,
   type RoadGraph,
+  type Segment,
 } from "../api/graph";
 import { DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
 import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
@@ -265,6 +266,33 @@ function paintRecords(set: SetFn, records: [number, number, number, number, numb
 async function paintScenario(set: SetFn, sid: string) {
   const rec = await api.scenarioRecords(sid);
   paintRecords(set, rec.records);
+}
+
+/** Build an Edit-mode closure scene object from copilot-proposed edge_ids, so a
+ *  copilot closure shows identically to a manual one (marker, inspector, sealed
+ *  edges) and applies through the same applyEdits → /scenarios + /run path. */
+function closureObjectFromEdges(graph: RoadGraph | null, edgeIds: string[], n: number): SceneObject {
+  const segs = edgeIds.map((id) => graph?.byId.get(id)).filter((s): s is Segment => !!s);
+  const roadName = segs[0]?.road_name;
+  let sLat = 0;
+  let sLng = 0;
+  let npts = 0;
+  for (const sg of segs) for (const [la, ln] of sg.geometry) {
+    sLat += la;
+    sLng += ln;
+    npts += 1;
+  }
+  const coord: [number, number] = npts ? [sLng / npts, sLat / npts] : [-79.4, 43.65];
+  return {
+    id: `obj-copilot-${n}`,
+    type: "closure",
+    name: `Closure${roadName ? " · " + roadName : ""}`,
+    visible: true,
+    n,
+    coord,
+    roadName,
+    edgeIds,
+  };
 }
 
 async function recomputeAround(set: SetFn, title: string, fn: () => Promise<void>) {
@@ -608,23 +636,51 @@ export const useAppStore = create<AppState>((set, get) => ({
     const msg = get().copilotLog[msgIndex];
     const interventions = msg?.interventions;
     if (!interventions || !interventions.length || msg.applied) return;
-    set({ status: { state: "recomputing", label: "Applying plan · running sim" } });
-    try {
-      const res = await api.copilotConfirm(interventions as Intervention[]);
-      // The backend already created + ran the scenario; repaint the twin from
-      // its records (shared with applyEdits), then post the grounded result.
-      await paintScenario(set, res.scenario_id);
+
+    const markApplied = (text: string, result?: CopilotMessage["result"]) =>
       set((s) => ({
         copilotLog: s.copilotLog
           .map((m, i) => (i === msgIndex ? { ...m, applied: true } : m))
-          .concat({
-            role: "bot",
-            text: res.explanation,
-            result: { summaryDelta: res.summary_delta, mostImpacted: res.most_impacted_edges },
-          }),
-        scenarioId: res.scenario_id,
+          .concat({ role: "bot", text, result }),
         status: { state: "surge", label: "Plan applied · twin updated" },
       }));
+
+    set({ status: { state: "recomputing", label: "Applying plan · running sim" } });
+    try {
+      // All-closure plans → materialize as an Edit scene object and apply through
+      // the shared applyEdits path (managed marker + sealed edges + repaint).
+      const closeIds = interventions
+        .filter((iv) => iv.op === "close_edge" && iv.edge_id)
+        .map((iv) => iv.edge_id as string);
+      if (closeIds.length === interventions.length) {
+        const obj = closureObjectFromEdges(get().graph, closeIds, get().objects.length + 1);
+        set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select", dirty: true }));
+        await get().applyEdits(); // creates scenario → run(blast) → paints map + marker
+        const sid = get().scenarioId;
+        let result: CopilotMessage["result"];
+        if (sid) {
+          try {
+            const cmp = await api.compareScenario(sid);
+            result = {
+              summaryDelta: cmp.summary_delta ?? {},
+              mostImpacted: (cmp.most_impacted_edges ?? []).map((e) => ({ edge_id: e.edge_id })),
+            };
+          } catch {
+            /* card is best-effort */
+          }
+        }
+        markApplied(`${obj.name} applied — twin recomputed.`, result);
+        return;
+      }
+
+      // Mixed / capacity changes → server-side confirm (create → run → compare → explain).
+      const res = await api.copilotConfirm(interventions as Intervention[]);
+      await paintScenario(set, res.scenario_id);
+      set({ scenarioId: res.scenario_id });
+      markApplied(res.explanation, {
+        summaryDelta: res.summary_delta,
+        mostImpacted: res.most_impacted_edges,
+      });
       void get().loadSavedSims(); // make the applied scenario selectable in Sim
     } catch (e) {
       const emsg = e instanceof Error ? e.message : String(e);

@@ -112,7 +112,20 @@ def load_demand_model(model_path: str = MODEL_PATH, kind: str = "auto"):
         import joblib
 
         try:
-            return joblib.load(model_path)
+            payload = joblib.load(model_path)
+            from .contract import check_compatible
+
+            problems = check_compatible(payload, expected_feature_order=FEATURE_ORDER)
+            if problems:
+                import warnings
+
+                warnings.warn(
+                    "loaded demand model has compatibility issues:\n  - "
+                    + "\n  - ".join(problems),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            return payload
         except Exception as exc:
             # The committed model may use an optional backend such as XGBoost.
             # Keep the CPU demo runnable when that backend or its native runtime

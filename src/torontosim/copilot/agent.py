@@ -22,9 +22,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..api.schemas import Intervention
 from . import ollama_client, rag
-from .constraints import advisories, check_request
 from .plan import candidate_edges, sanitize_interventions
-from .tools import Citation
+from .tools import Citation, Warning
 
 ModelCall = Callable[[str, str, dict], str]
 
@@ -63,6 +62,7 @@ class AgentResult(BaseModel):
     answer: str
     interventions: list[Intervention] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
+    warnings: list[Warning] = Field(default_factory=list)
     steps: list[dict] = Field(default_factory=list)
     requires_user_confirmation: bool = False
     blocked: bool = False
@@ -136,21 +136,15 @@ def _candidate_block(state, goal: str) -> str:
 
 def _finalize_propose(goal: str, step: AgentStep, state, steps: list[dict]) -> AgentResult:
     ivs = sanitize_interventions(step.interventions, _valid_edges(state))
-    ops = [iv.to_op() for iv in ivs]
-    violations = check_request(goal, ops, state)
-    if violations:
-        return AgentResult(
-            answer="That plan breaches a hard constraint, so I won't apply it.",
-            citations=[Citation(ref=v.ref, note=v.note) for v in violations],
-            steps=steps,
-            blocked=True,
-            requires_user_confirmation=False,
-        )
-    cites = [Citation(ref=w.ref, note=w.note) for w in advisories(goal, ops, state)]
+    # Warn-don't-block: the SSOT assess pass returns severity-coded warnings the
+    # user can override — the agent never silently refuses a plan.
+    from .assess import assess
+
+    warnings = assess(ivs, state, prompt=goal) if ivs else []
     return AgentResult(
         answer=step.rationale or step.answer or "Proposed a plan — confirm to apply.",
         interventions=ivs,
-        citations=cites,
+        warnings=warnings,
         steps=steps,
         requires_user_confirmation=bool(ivs),
     )

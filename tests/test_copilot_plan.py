@@ -52,12 +52,16 @@ def test_plan_rejects_persistent_malformed_json():
         plan("x", _FakeState(), model_call=_model(["not json", "{still bad", "{}x"]))
 
 
-def test_plan_refuses_hard_constraint_breach():
-    # Even if the model proposes it, the constraint check refuses.
-    call = ToolCall(tool="preview_intervention").model_dump_json()
-    out = plan("Just close Lake Shore both ways.", _FakeState(), model_call=_model([call]))
-    assert out.blocked is True
-    assert any("880" in c.ref for c in out.citations)
+def test_plan_does_not_self_refuse_warn_dont_block():
+    # Warn-don't-block: plan() no longer refuses on constraints (assess attaches
+    # warnings downstream). A valid proposal comes back as a confirmable preview.
+    good = ToolCall(
+        tool="preview_intervention", interventions=[{"op": "close_edge", "edge_id": "e0"}]
+    ).model_dump_json()
+    out = plan("Just close Lake Shore both ways.", _FakeState(), model_call=_model([good]))
+    assert out.blocked is False
+    assert out.tool == "preview_intervention"
+    assert out.requires_user_confirmation is True
 
 
 def test_router_mitigate_invokes_optimizer():
@@ -77,12 +81,57 @@ def test_router_mitigate_invokes_optimizer():
         assert out["requires_user_confirmation"] is True
 
 
-def test_router_blocked_request_refuses_unchanged():
-    out = plan_intervention("Just close Lake Shore both ways.", _FakeState())
-    assert out["blocked"] is True
-    assert out["requires_user_confirmation"] is False
-    refs = [c["ref"] for c in out["citations"]]
-    assert any("880" in r for r in refs)
+def _lakeshore_state():
+    """A 2-segment Lake Shore (fire-route protected corridor) graph state."""
+    import networkx as nx
+
+    from torontosim.api.store import AppState
+    from torontosim.graph import schema
+
+    g = nx.MultiDiGraph()
+    g.add_node(0, x=-79.41, y=43.63)
+    g.add_node(1, x=-79.40, y=43.63)
+    for eid, u, v in (("ls1", 0, 1), ("ls2", 1, 0)):
+        g.add_edge(
+            u,
+            v,
+            key=0,
+            **schema.make_edge(
+                edge_id=eid,
+                from_node=u,
+                to_node=v,
+                road_name="Lake Shore Boulevard West",
+                road_class="primary",
+                length_m=500.0,
+                speed_kmh=50.0,
+                lanes=2.0,
+                capacity=1500.0,
+                base_time_min=0.6,
+                one_way=False,
+                geometry=[[0, 0], [0, 0]],
+            ),
+        )
+    return AppState.from_graph(
+        g,
+        [{"origin": 0, "destination": 1, "trips": 100.0}],
+        weather="clear",
+        time_context={"hour": 17},
+    )
+
+
+def test_router_protected_closure_warns_not_blocks():
+    # Warn-don't-block: a full closure of a fire-route corridor attaches a DANGER
+    # warning but is NOT refused — the plan is still proposed and confirmable.
+    out = plan_intervention(
+        "close lake shore",
+        _lakeshore_state(),
+        classification={"intent": "close_road", "road_name": "Lake Shore"},
+    )
+    assert out["blocked"] is False
+    assert out["tool"] == "preview_intervention"
+    assert out["requires_user_confirmation"] is True
+    assert any(w["severity"] == "danger" for w in out["warnings"])
+    assert any("880" in (w["ref"] or "") for w in out["warnings"])
 
 
 def _graph_state():
@@ -149,17 +198,17 @@ def test_candidate_edges_resolved_by_name():
     assert "dufferin" not in ids  # not named in the prompt
 
 
-def test_plan_attaches_advisory_for_major_arterial(monkeypatch):
+def test_assess_attaches_advisory_for_major_arterial():
+    # The major-arterial advisory now flows through the SSOT assess pass as a
+    # warn-severity warning (was a plan() citation before warn-don't-block).
+    from torontosim.copilot.assess import assess
+
     state = _graph_state()
-    # Promote Strachan to a major arterial so the advisory fires.
     for _u, _v, d in state.graph.edges(data=True):
         if d.get("edge_id") == "strachan":
             d["road_class"] = "primary"
-    good = ToolCall(
-        tool="preview_intervention", interventions=[{"op": "close_edge", "edge_id": "strachan"}]
-    ).model_dump_json()
-    call = plan("close Strachan", state, model_call=_model([good]))
-    assert any("arterial" in c.note for c in call.citations)
+    warnings = assess([{"op": "close_edge", "edge_id": "strachan"}], state, with_rag=False)
+    assert any("arterial" in (w.detail or "") for w in warnings)
 
 
 @pytest.mark.spark

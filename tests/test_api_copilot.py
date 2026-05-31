@@ -30,12 +30,24 @@ def test_copilot_plan_mitigate_invokes_optimizer():
         assert body["requires_user_confirmation"] is True
 
 
-def test_copilot_plan_blocked_refuses():
+def test_copilot_plan_warns_not_blocks():
+    # Warn-don't-block: /copilot/plan never refuses (no block flag).
     r = _client().post("/copilot/plan", json={"prompt": "Just close Lake Shore both ways."})
     assert r.status_code == 200
-    body = r.json()
-    assert body["blocked"] is True
-    assert any("880" in c["ref"] for c in body["citations"])
+    assert r.json()["blocked"] is False
+
+
+def test_assess_endpoint_returns_severity_coded_warnings():
+    # The SSOT assess endpoint returns warnings (never a refusal) for a closure
+    # that matches a protected corridor by text.
+    r = _client().post(
+        "/assess",
+        json={"interventions": [{"op": "close_edge", "edge_id": "e0"}],
+              "prompt": "close lake shore both ways"},
+    )
+    assert r.status_code == 200
+    ws = r.json()["warnings"]
+    assert any(w["severity"] == "danger" for w in ws)
 
 
 def test_copilot_route_classifies_and_dispatches_inline():

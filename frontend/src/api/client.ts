@@ -115,10 +115,18 @@ export interface AgentStepLog {
   observation: unknown;
 }
 
+export interface CopilotWarning {
+  severity?: "info" | "warn" | "danger";
+  title?: string;
+  detail?: string;
+  ref?: string | null;
+}
+
 export interface CopilotAgentResult {
   answer: string;
   interventions: Intervention[];
   citations: { ref: string; note: string }[];
+  warnings?: CopilotWarning[];
   steps: AgentStepLog[];
   requires_user_confirmation: boolean;
   blocked: boolean;
@@ -187,6 +195,8 @@ export const api = {
   copilotRoute: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotRouteResult>("/copilot/route", { prompt }, signal),
   copilotSuggestions: () => jget<{ prompts: string[] }>("/copilot/suggestions"),
+  assess: (interventions: Intervention[], prompt = "", signal?: AbortSignal) =>
+    jpost<{ warnings: CopilotWarning[] }>("/assess", { interventions, prompt }, signal),
   copilotAgent: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotAgentResult>("/copilot/agent", { prompt }, signal),
   copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>

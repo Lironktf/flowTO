@@ -151,10 +151,25 @@ export function CopilotRegion() {
                   ))}
                 </div>
               )}
+              {m.warnings && m.warnings.length > 0 && (
+                <div className="copilot-warnings">
+                  {m.warnings.map((w, j) => (
+                    <div key={j} className={`warn-row ${w.severity ?? "warn"}`}>
+                      <span className="warn-title">{w.title}</span>
+                      {w.detail ? <span className="warn-detail"> — {w.detail}</span> : null}
+                      {w.ref ? <span className="ref"> · {w.ref}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
               {m.interventions && m.interventions.length > 0 && (
                 <div className="copilot-confirm">
                   <button className="btn primary" disabled={m.applied} onClick={() => void confirm(i)}>
-                    {m.applied ? "✓ Applied" : confirmLabel(m.interventions, graph)}
+                    {m.applied
+                      ? "✓ Applied"
+                      : (m.warnings ?? []).some((w) => w.severity === "danger")
+                        ? `Confirm anyway · ${confirmLabel(m.interventions, graph).replace("Confirm & run · ", "")}`
+                        : confirmLabel(m.interventions, graph)}
                   </button>
                 </div>
               )}

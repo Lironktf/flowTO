@@ -19,6 +19,7 @@ from .schemas import (
     CompareResult,
     CopilotConfirm,
     CopilotConfirmResult,
+    Intervention,
     RunRequest,
     RunResult,
     Scenario,
@@ -266,6 +267,18 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
         if cls.mode == "plan":
             out["result"] = plan_intervention(prompt, state, classification=cls)
         return out
+
+    @app.post("/assess")
+    def assess_closure(payload: dict):
+        """SSOT warn-don't-block assessment — shared by clickops + copilot. Returns
+        severity-coded warnings for the proposed interventions; never refuses."""
+        try:
+            from ..copilot.assess import assess
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        ivs = [Intervention.model_validate(iv) for iv in payload.get("interventions", [])]
+        warnings = assess(ivs, state, prompt=payload.get("prompt", ""))
+        return {"warnings": [w.model_dump() for w in warnings]}
 
     @app.post("/copilot/explain")
     def copilot_explain(payload: dict):

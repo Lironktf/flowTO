@@ -43,7 +43,9 @@ def test_agent_investigates_then_proposes():
     assert [s["tool"] for s in res.steps] == ["retrieve_policy", "simulate", "propose"]
 
 
-def test_agent_refuses_blocked_proposal():
+def test_agent_protected_closure_warns_not_blocks():
+    # Warn-don't-block: a protected-corridor proposal attaches a danger warning
+    # the user can override — the agent never silently refuses.
     state = _small_state()
     model = _script(
         {
@@ -53,8 +55,10 @@ def test_agent_refuses_blocked_proposal():
         },
     )
     res = run_agent("Just close Lake Shore both ways.", state, model_call=model)
-    assert res.blocked is True
-    assert res.requires_user_confirmation is False
+    assert res.blocked is False
+    assert res.requires_user_confirmation is True
+    assert any(w.severity == "danger" for w in res.warnings)
+    assert any("880" in (w.ref or "") for w in res.warnings)
 
 
 def test_agent_answer_terminates_without_plan():

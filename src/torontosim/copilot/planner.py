@@ -14,27 +14,7 @@ import os
 from ..api.schemas import Intervention
 from . import rag
 from .classify import ClassifyResult
-from .constraints import check_request
 from .tools import Citation, ToolCall, ViewDirective
-
-
-def _blocked_call(prompt: str, state=None) -> ToolCall:
-    """A hard-constraint refusal whose rationale is built from the REAL violations
-    (no invented stats / rehearsed alternative). The citations carry the bylaws."""
-    violations = check_request(prompt, state=state)
-    notes = "; ".join(v.note for v in violations[:2])
-    rationale = (
-        f"I can't apply that — it breaches a hard constraint: {notes}."
-        if notes
-        else "I can't apply that — it breaches a hard bylaw constraint."
-    )
-    return ToolCall(
-        tool="refuse",
-        blocked=True,
-        requires_user_confirmation=False,
-        rationale=rationale,
-        citations=[Citation(ref=v.ref, note=v.note) for v in violations],
-    )
 
 
 def _live_enabled() -> bool:
@@ -352,13 +332,8 @@ def _focus_call(state, cls) -> ToolCall:
 
 
 def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
-    """Map a classified intent to a ToolCall. Hard-constraint refusal is checked
-    first (deterministic, model-independent) so it holds even offline."""
-    # Hard-constraint refusal (the "blocked" path) — owned by the deterministic
-    # checker, never the model. (De-hardcode / warn-don't-block is a later step.)
-    if check_request(prompt, state=state):
-        return _blocked_call(prompt, state)
-
+    """Map a classified intent to a ToolCall. Warn-don't-block: constraint conflicts
+    are attached as severity-coded warnings (in plan_intervention), never refused."""
     intent = cls.intent if cls is not None else "chat"
     if intent == "query_congestion":
         return ToolCall(
@@ -418,6 +393,13 @@ def plan_intervention(
         cls = classify(prompt)
 
     call = _dispatch(prompt, state, cls, live)
+
+    # Warn-don't-block: attach severity-coded warnings to any actionable plan
+    # (the SSOT assess pass). The plan stays confirmable even with danger warnings.
+    if call.interventions:
+        from .assess import assess
+
+        call.warnings = assess(call.interventions, state, prompt=prompt)
 
     retrieved = rag.retrieve(prompt, k=3)
     out = call.model_dump()

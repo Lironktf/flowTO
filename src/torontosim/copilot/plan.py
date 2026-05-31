@@ -19,16 +19,15 @@ from collections.abc import Callable
 from pydantic import ValidationError
 
 from . import ollama_client, rag
-from .constraints import advisories, check_request
-from .tools import Citation, ToolCall, tool_call_json_schema
+from .tools import ToolCall, tool_call_json_schema
 
 # A model call takes (system, prompt, json_schema) and returns the raw JSON text.
 ModelCall = Callable[[str, str, dict], str]
 
-# The model PROPOSES; a deterministic checker (check_request) OWNS refusal. We do
-# not let the model self-refuse — left to its own devices it invents bylaws to
-# justify refusing. So: always emit a concrete tool call from the real candidate
-# edges, cite only from the provided bylaw context, never fabricate a citation.
+# The model PROPOSES; it never self-refuses (left alone it invents bylaws to
+# justify refusing). Warn-don't-block: constraint conflicts are surfaced as
+# warnings downstream by the SSOT assess pass, not refused here. So: always emit
+# a concrete tool call from the real candidate edges; cite only real context.
 SYSTEM = (
     "You are a Toronto city-planning copilot. Convert the planner's request into ONE concrete "
     "JSON ToolCall (preview_intervention or create_scenario) against the scenario API, using "
@@ -162,18 +161,9 @@ def plan(
         # Drop malformed ops (edge op with no edge_id, etc.) before anything runs.
         call.interventions = sanitize_interventions(call.interventions, valid_edges)
 
-        # Hard-constraint check is the SOLE authority on refusal.
-        violations = check_request(prompt, [iv.to_op() for iv in call.interventions], state)
-        if violations:
-            return ToolCall(
-                tool="refuse",
-                blocked=True,
-                requires_user_confirmation=False,
-                rationale="Request breaches a hard constraint and was refused.",
-                citations=[Citation(ref=v.ref, note=v.note) for v in violations],
-            )
-        # The model is not allowed to self-refuse on invented grounds: if it
-        # refused but nothing real is breached, force a concrete proposal.
+        # Warn-don't-block: the model never self-refuses on invented grounds —
+        # constraint conflicts are attached as warnings downstream (assess), not
+        # here. Force a concrete proposal if it refused or returned nothing.
         if call.tool == "refuse" or (
             call.tool in ("preview_intervention", "create_scenario") and not call.interventions
         ):
@@ -185,11 +175,8 @@ def plan(
             continue
 
         # State-changing calls must require confirmation (preview-before-apply).
-        if call.interventions and not call.blocked:
+        if call.interventions:
             call.requires_user_confirmation = True
-            # Surface soft, data-derived warnings as extra citations.
-            for w in advisories(prompt, [iv.to_op() for iv in call.interventions], state):
-                call.citations.append(Citation(ref=w.ref, note=w.note))
         return call
 
     raise PlanError(f"could not produce a valid tool call: {last_exc}")

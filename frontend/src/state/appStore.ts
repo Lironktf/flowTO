@@ -94,6 +94,8 @@ interface CopilotMessage {
   blocked?: boolean;
   // A previewed, confirmable plan (preview-before-apply): the ops to apply.
   interventions?: Intervention[];
+  // Severity-coded warnings from the SSOT assess pass (warn-don't-block).
+  warnings?: { severity?: string; title?: string; detail?: string; ref?: string | null }[];
   applied?: boolean;
   reverted?: boolean;
   // Post-confirm result for the metric card (Δ vs baseline).
@@ -147,7 +149,6 @@ interface AppState {
   showLeft: boolean;
   showRight: boolean;
   showBottom: boolean;
-  showRail: boolean;
   // machine
   loaded: boolean;
   loading: boolean;
@@ -199,7 +200,7 @@ interface AppState {
 
   setTheme: (t: "light" | "dark") => void;
   setDensity: (d: "comfortable" | "compact") => void;
-  toggleDock: (which: "left" | "right" | "bottom" | "rail") => void;
+  toggleDock: (which: "left" | "right" | "bottom") => void;
   setView: (v: View) => void;
   loadTwin: () => Promise<void>;
   // saved sims
@@ -471,7 +472,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   showLeft: true,
   showRight: true,
   showBottom: true,
-  showRail: false,
   loaded: false,
   loading: false,
   error: null,
@@ -527,7 +527,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       showLeft: which === "left" ? !s.showLeft : s.showLeft,
       showRight: which === "right" ? !s.showRight : s.showRight,
       showBottom: which === "bottom" ? !s.showBottom : s.showBottom,
-      showRail: which === "rail" ? !s.showRail : s.showRail,
     })),
 
   setView: (v) => {
@@ -535,7 +534,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       view: v,
       showBottom: v === "sim",
-      showRail: v === "edit",
       activeTool: v === "sim" ? "select" : get().activeTool,
       pendingVertices: [],
     });
@@ -694,6 +692,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Stage the plan as the single source of truth: capture the bot message it
     // rode on (just pushed → last index), its interventions, and the close_edge
     // targets for the map preview. Both confirm surfaces act on this.
+    // Push copilot warnings into the shared RightDock warnings panel (replacing
+    // any from a prior copilot turn), so they sit alongside clickops/risk flags.
+    type W = { severity?: string; title?: string; detail?: string; ref?: string | null };
+    const pushWarnings = (ws?: W[]) => {
+      if (!ws?.length) return;
+      set((s) => ({
+        warnings: [
+          ...ws.map((w, k) => ({
+            id: `copilot-${k}`,
+            severity: (w.severity as "info" | "warn" | "danger") ?? "warn",
+            title: w.title ?? "Advisory",
+            detail: w.detail ?? "",
+            ref: w.ref ?? undefined,
+          })),
+          ...s.warnings.filter((x) => !x.id.startsWith("copilot-")),
+        ],
+      }));
+    };
     const afterPlan = (interventions: Intervention[] | undefined, blocked: boolean, detail = "", ref?: string) => {
       if (blocked) return flashBlocked(detail, ref);
       if (!interventions || interventions.length === 0) return;
@@ -723,12 +739,14 @@ export const useAppStore = create<AppState>((set, get) => ({
             citations: resp.citations,
             blocked: resp.blocked,
             interventions: confirmable ? resp.interventions : undefined,
+            warnings: resp.warnings,
             mode: "plan",
           },
         ],
         copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
       }));
       applyView(resp.view);
+      pushWarnings(resp.warnings);
       afterPlan(
         confirmable ? resp.interventions : undefined,
         resp.blocked,
@@ -762,11 +780,13 @@ export const useAppStore = create<AppState>((set, get) => ({
               blocked: res.blocked,
               agentSteps: res.steps,
               interventions: hasPlan ? res.interventions : undefined,
+              warnings: res.warnings,
               mode: "agent",
             },
           ],
           copilotLatency: { ms: Math.round(performance.now() - t0), mode: "agent" },
         }));
+        pushWarnings(res.warnings);
         afterPlan(
           hasPlan ? res.interventions : undefined,
           res.blocked,

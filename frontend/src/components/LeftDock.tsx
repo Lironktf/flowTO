@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { TOOLS } from "../config";
 import { useAppStore } from "../state/appStore";
 import { Icon, type IconKey } from "./Icons";
@@ -118,6 +119,7 @@ function SavedSims() {
 
 /** Edit → edit-type picker + scene outliner. */
 function EditPanels() {
+  const view = useAppStore((s) => s.view);
   const activeTool = useAppStore((s) => s.activeTool);
   const selectTool = useAppStore((s) => s.selectTool);
   const pending = useAppStore((s) => s.pendingVertices);
@@ -125,6 +127,18 @@ function EditPanels() {
   const selectedId = useAppStore((s) => s.selectedId);
   const selectObject = useAppStore((s) => s.selectObject);
   const toggleObjectVis = useAppStore((s) => s.toggleObjectVis);
+
+  // Keyboard: 1–2 select edit types; Esc → Select (Edit only).
+  useEffect(() => {
+    if (view !== "edit") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") selectTool("select");
+      const n = Number(e.key);
+      if (n >= 1 && n <= TOOLS.length) selectTool(TOOLS[n - 1].id);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, selectTool]);
 
   return (
     <>

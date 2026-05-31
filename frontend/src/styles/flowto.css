@@ -207,6 +207,13 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .sb-row-label { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sb-row-kind { flex: none; font-family:'IBM Plex Mono',monospace; font-size: 8.5px; letter-spacing: .06em;
   text-transform: uppercase; color: var(--ink-4); }
+/* Edit-mode street actions (Close / Span) */
+.sb-row-actions { flex: none; display: inline-flex; gap: 5px; }
+.sb-act { appearance: none; cursor: pointer; border: 1px solid var(--hair); background: var(--chrome-2);
+  color: var(--ink-2); font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 999px;
+  transition: border-color .12s, color .12s, background .12s; }
+.sb-act:hover { border-color: var(--cobalt-line); color: var(--cobalt-ink); }
+.sb-act.danger:hover { border-color: color-mix(in oklab, var(--c-sev) 55%, var(--hair)); color: var(--c-sev); }
 
 /* dock-toggle cluster */
 .dock-toggles { display: inline-flex; gap: 2px; padding: 2px; background: var(--chrome-2); border: 1px solid var(--hair); border-radius: var(--r-sm); }
@@ -429,9 +436,15 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .outliner-empty .ee-ico svg { width: 18px; height: 18px; }
 
 /* inspector */
-.insp-empty { padding: 20px 10px; text-align: center; color: var(--ink-3); }
+.insp-empty { padding: 36px 16px; text-align: center; color: var(--ink-3); }
 .insp-empty .big { font-family:'Fraunces',serif; font-size: 14px; color: var(--ink-2); margin-bottom: 4px; }
 .insp-empty .sm { font-size: 11px; line-height: 1.5; }
+.insp-empty .ee-ico { display: inline-grid; place-items: center; width: 40px; height: 40px; margin: 0 auto 12px;
+  border-radius: 11px; background: var(--chrome-2); border: 1px solid var(--hair); color: var(--ink-4); }
+.insp-empty .ee-ico svg { width: 19px; height: 19px; }
+.insp-empty .ee-ico.ok { color: var(--c-free);
+  background: color-mix(in oklab, var(--c-free) 12%, var(--chrome-2));
+  border-color: color-mix(in oklab, var(--c-free) 35%, var(--hair)); }
 .insp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .insp-head .ih-ico { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; color: #fff; flex: none; }
 .insp-head .ih-ico svg { width: 17px; height: 17px; }

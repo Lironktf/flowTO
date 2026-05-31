@@ -1,12 +1,11 @@
 import { Icon } from "./Icons";
+import { SearchBar } from "./SearchBar";
 import { useAppStore } from "../state/appStore";
 
 export function TopBar() {
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
   const status = useAppStore((s) => s.status);
-  const currentName = useAppStore((s) => s.currentName);
-  const dirty = useAppStore((s) => s.dirty);
   const theme = useAppStore((s) => s.theme);
   const setTheme = useAppStore((s) => s.setTheme);
   const reset = useAppStore((s) => s.reset);
@@ -17,32 +16,32 @@ export function TopBar() {
 
   return (
     <div id="topbar">
-      <div className="brand">
-        <span className="mark">
-          Flow<b>TO</b>
-        </span>
-        <span className="sub">Digital Twin · Toronto</span>
-      </div>
-      <div className="tb-div" />
-      <div className="viewseg" role="tablist">
-        <button className={view === "sim" ? "on" : ""} onClick={() => setView("sim")} role="tab">
-          <Icon.play /> Simulate
-        </button>
-        <button className={view === "edit" ? "on" : ""} onClick={() => setView("edit")} role="tab">
-          <Icon.pencil /> Edit
-        </button>
-      </div>
-      <div className="tb-div" />
-      <div className="scenario-tag">
-        <span className="k">Simulation</span>
-        <span className="v">
-          {currentName}
-          {dirty ? " •" : ""}
-        </span>
+      {/* Left zone — caps the rail + left dock */}
+      <div className="tb-zone tb-left">
+        <div className="brand">
+          <span className="mark">
+            Flow<b>TO</b>
+          </span>
+          <span className="sub">Digital Twin · Toronto</span>
+        </div>
+        <div className="viewseg" role="tablist">
+          <button className={view === "sim" ? "on" : ""} onClick={() => setView("sim")} role="tab">
+            <Icon.play /> Simulate
+          </button>
+          <button className={view === "edit" ? "on" : ""} onClick={() => setView("edit")} role="tab">
+            <Icon.pencil /> Edit
+          </button>
+        </div>
       </div>
 
-      <div className="tb-right">
-        <div className={`statuschip`} data-state={status.state}>
+      {/* Center zone — over the map */}
+      <div className="tb-zone tb-center">
+        <SearchBar />
+      </div>
+
+      {/* Right zone — caps the right dock */}
+      <div className="tb-zone tb-right">
+        <div className="statuschip" data-state={status.state}>
           <span className="dot" />
           {status.label}
         </div>

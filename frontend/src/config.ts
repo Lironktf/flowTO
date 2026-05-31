@@ -7,6 +7,9 @@
 export const MAP_CENTER: [number, number] = [-79.4163, 43.6362];
 export const MAP_ZOOM = 13.2;
 
+// Toronto bounding box [minLng, minLat, maxLng, maxLat] — biases map search/geocoding.
+export const TORONTO_BBOX: [number, number, number, number] = [-79.64, 43.58, -79.12, 43.86];
+
 // BMO Field / Exhibition Place — an event marker (geography, not sim data).
 export const STADIUM = {
   name: "Toronto Stadium",

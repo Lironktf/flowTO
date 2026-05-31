@@ -178,6 +178,8 @@ interface AppState {
   // camera nonces (watched by MapCanvas)
   recenterNonce: number;
   tiltOn: boolean;
+  flyTarget: { lng: number; lat: number; zoom?: number } | null;
+  flyNonce: number;
 
   setTheme: (t: "light" | "dark") => void;
   setDensity: (d: "comfortable" | "compact") => void;
@@ -215,6 +217,7 @@ interface AppState {
   setPlaying: (p: boolean) => void;
   setSpeed: (s: number) => void;
   recenter: () => void;
+  flyToLocation: (lng: number, lat: number, zoom?: number) => void;
   toggleTilt: () => void;
   reset: () => Promise<void>;
 }
@@ -385,6 +388,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   speed: 1,
   telemetry: { ...IDLE },
   recenterNonce: 0,
+  flyTarget: null,
+  flyNonce: 0,
   tiltOn: true,
 
   setTheme: (t) => {
@@ -869,6 +874,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSpeed: (sp) => set({ speed: sp }),
 
   recenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1 })),
+  flyToLocation: (lng, lat, zoom) =>
+    set((s) => ({ flyTarget: { lng, lat, zoom }, flyNonce: s.flyNonce + 1 })),
   toggleTilt: () => set((s) => ({ tiltOn: !s.tiltOn })),
 
   reset: async () => {

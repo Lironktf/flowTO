@@ -88,6 +88,7 @@ export function MapCanvas() {
   const recomputeStep = useAppStore((s) => s.recomputeStep);
   const recomputeTitle = useAppStore((s) => s.recomputeTitle);
   const recenterNonce = useAppStore((s) => s.recenterNonce);
+  const flyNonce = useAppStore((s) => s.flyNonce);
   const tiltOn = useAppStore((s) => s.tiltOn);
   const scrubMin = useAppStore((s) => s.scrubberMinute);
   const dayOfYear = useAppStore((s) => s.dayOfYear);
@@ -149,6 +150,13 @@ export function MapCanvas() {
     if (!m || recenterNonce === 0) return;
     m.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
   }, [recenterNonce]);
+  // Search → fly the camera to a hit (street / place); zoom defaults to a street-level view.
+  useEffect(() => {
+    const m = mapRef.current?.getMap();
+    const t = useAppStore.getState().flyTarget;
+    if (!m || flyNonce === 0 || !t) return;
+    m.flyTo({ center: [t.lng, t.lat], zoom: t.zoom ?? 15.5, duration: 1100, essential: true });
+  }, [flyNonce]);
 
   // Time of day → Mapbox Standard light preset (dawn/day/dusk/night), shifted by season.
   useEffect(() => {

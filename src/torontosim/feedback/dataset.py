@@ -111,8 +111,8 @@ def build_stage1_tensors(graph, pairs: pd.DataFrame) -> dict:  # pragma: no cove
     return {
         "x": x,
         "edge_index": static["edge_index"],
-        "scenario_attr": scenario_attr,           # [S, E, lean_edge + 4]
-        "targets": torch.stack(targets),          # [S, E]
+        "scenario_attr": scenario_attr,  # [S, E, lean_edge + 4]
+        "targets": torch.stack(targets),  # [S, E]
         "context": torch.zeros(static_ea.shape[0], 2),  # no time context for sim pairs
         "node_in_dim": int(x.shape[1]),
         "edge_in_dim": int(scenario_attr.shape[2]),
@@ -123,7 +123,9 @@ def build_stage1_tensors(graph, pairs: pd.DataFrame) -> dict:  # pragma: no cove
     }
 
 
-def build_stage2_tensors(graph, residuals, sim_open_full, *, standardizers=None):  # pragma: no cover - torch on GB10
+def build_stage2_tensors(
+    graph, residuals, sim_open_full, *, standardizers=None
+):  # pragma: no cover - torch on GB10
     """Stage-2 tensors from **real-closure** residual rows (one scenario per closure).
 
     Channels mirror Stage-1 exactly so a Stage-1 warm-start applies cleanly: lean
@@ -188,9 +190,9 @@ def build_stage2_tensors(graph, residuals, sim_open_full, *, standardizers=None)
     return {
         "x": x,
         "edge_index": static["edge_index"],
-        "scenario_attr": scenario_attr,           # [S, E, lean_edge + 4]
-        "targets": torch.stack(targets),          # [S, E] (Δpressure; valid where obs_mask)
-        "obs_mask": torch.stack(masks),           # [S, E] 1 at observed sites
+        "scenario_attr": scenario_attr,  # [S, E, lean_edge + 4]
+        "targets": torch.stack(targets),  # [S, E] (Δpressure; valid where obs_mask)
+        "obs_mask": torch.stack(masks),  # [S, E] 1 at observed sites
         "context": torch.zeros(static_ea.shape[0], 2),
         "capacity": torch.tensor(cap_vec, dtype=torch.float32),  # [E] flow⇄pressure
         "node_in_dim": int(x.shape[1]),

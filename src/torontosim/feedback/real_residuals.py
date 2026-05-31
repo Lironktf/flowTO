@@ -57,10 +57,28 @@ REQUIRED_COLS = [
 ]
 
 
+def _temporal_split(rows: pd.DataFrame, test_frac: float) -> pd.DataFrame:
+    """Hold out the **latest** ``test_frac`` of restrictions (by ``StartTime``).
+
+    Splits whole closures (every row of a restriction shares one fold) so a Stage-2
+    *scenario* never straddles the gate, and mimics deployment — train on earlier
+    closures, test on later ones. Deterministic; no RNG.
+    """
+    start = pd.to_datetime(rows["StartTime"], errors="coerce", utc=True)
+    first_seen = rows.assign(_start=start).groupby("ID")["_start"].min().sort_values()
+    ids = list(first_seen.index)
+    n_test = max(1, int(round(test_frac * len(ids))))
+    test_ids = set(ids[-n_test:])  # latest-starting restrictions
+    out = rows.copy()
+    out["split"] = out["ID"].isin(test_ids).map({True: "test", False: "train"})
+    return out
+
+
 def assemble_factory_rows(
     closures: pd.DataFrame,
     pairs: pd.DataFrame,
     *,
+    split: str = "temporal",
     group_col: str = "centreline_id",
     test_frac: float = 0.2,
     seed: int = 42,
@@ -71,12 +89,12 @@ def assemble_factory_rows(
     ``centreline_id``, ``during_vol_mean``, ``has_baseline``); ``pairs`` =
     ``groundtruth.spatial.spatial_join`` output (carries the restriction location as
     ``closure_lat/closure_lon``, the site as ``site_lat/site_lon``, and ``StartTime``).
-    Merges on ``(ID, centreline_id)`` and adds a grouped train/test ``split`` (by
-    ``centreline_id``, so no site leaks across the gate). Returns a frame with
-    ``REQUIRED_COLS`` + ``StartTime`` + ``split`` (+ ``has_baseline`` when present).
+    Merges on ``(ID, centreline_id)`` and adds a held-out ``split``:
+    ``"temporal"`` (default) holds out the latest closures — the deployment-mimicking
+    test, and the only split that partitions whole closures cleanly; ``"centreline"``
+    falls back to the per-site grouped split. Returns ``REQUIRED_COLS`` + ``StartTime``
+    + ``split`` (+ ``has_baseline`` when present).
     """
-    from .groundtruth.package import grouped_split
-
     coord_cols = [
         "ID",
         "centreline_id",
@@ -96,6 +114,10 @@ def assemble_factory_rows(
     if rows.empty:
         rows["split"] = pd.Series(dtype="object")
         return rows
+    if split == "temporal":
+        return _temporal_split(rows, test_frac)
+    from .groundtruth.package import grouped_split
+
     return grouped_split(rows, group_col=group_col, test_frac=test_frac, seed=seed)
 
 
@@ -268,27 +290,30 @@ def build_real_residuals(
     *,
     simulate_open: Optional[Callable[[], Mapping[str, float]]] = None,
     simulate_intervened: Optional[Callable[[list], Mapping[str, float]]] = None,
+    solver: str = "full",
     backend: str = "scipy",
     max_iter: int = 100,
     rgap: float = 1e-4,
 ):
     """Real-closure residual rows + a coverage report.
 
-    Reuses ``counterfactual.compute_residuals`` for the residual math and
-    ``counterfactual.simulate_open_intervened`` for the sim adapter (open solve
-    cached). Pass ``simulate_open``/``simulate_intervened`` to inject the sim in
-    tests. Returns ``(residuals_df, coverage, sim_open_full)`` where ``residuals_df``
+    Reuses ``counterfactual.compute_residuals`` for the residual math. The sim
+    adapter is chosen by ``solver``: ``"full"`` re-solves the whole equilibrium
+    open/closed (``counterfactual.simulate_open_intervened`` — verified, slow);
+    ``"blast"`` re-routes only the affected bundles over a shared path cache
+    (``blast_sim.simulate_open_intervened_blast`` — ~5–10× faster, AON fidelity,
+    see ``docs/specs/15-feedback-loop-perf.md``). Pass ``simulate_open``/
+    ``simulate_intervened`` to inject the sim in tests. Returns
+    ``(residuals_df, coverage, sim_open_full)`` where ``residuals_df``
     carries ``[ID, centreline_id, edge_id, closed_edge, sim_open, sim_int, r_sim,
     r_obs, observed, StartTime, split, has_baseline]`` and ``sim_open_full`` is the
     single global open-road solve ``{edge_id: load}`` (shared by every closure — OD
     and open topology are fixed) used to fill the Stage-2 ``sim_open`` channels.
     """
-    from .groundtruth.counterfactual import (
-        compute_residuals,
-        simulate_open_intervened,
-    )
+    from .groundtruth.counterfactual import compute_residuals
 
     interventions, observed, meta, coverage = build_interventions_and_observed(graph, factory_rows)
+    coverage["solver"] = solver
 
     if not interventions:
         cols = [
@@ -308,9 +333,18 @@ def build_real_residuals(
         return pd.DataFrame(columns=cols), coverage, {}
 
     if simulate_open is None or simulate_intervened is None:
-        simulate_open, simulate_intervened = simulate_open_intervened(
-            graph, od_matrix, backend=backend, max_iter=max_iter, rgap=rgap
-        )
+        if solver == "blast":
+            from .blast_sim import simulate_open_intervened_blast
+
+            simulate_open, simulate_intervened = simulate_open_intervened_blast(
+                graph, od_matrix, backend=backend
+            )
+        else:
+            from .groundtruth.counterfactual import simulate_open_intervened
+
+            simulate_open, simulate_intervened = simulate_open_intervened(
+                graph, od_matrix, backend=backend, max_iter=max_iter, rgap=rgap
+            )
 
     sim_open_full = dict(simulate_open())  # the one global open solve
     res = compute_residuals(interventions, observed, simulate_open, simulate_intervened)

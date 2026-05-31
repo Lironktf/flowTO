@@ -265,18 +265,22 @@ def test_assemble_factory_rows_join_and_split():
             ),
         ]
     )
-    rows = assemble_factory_rows(closures, pairs, test_frac=0.34, seed=1)
+    rows = assemble_factory_rows(closures, pairs, test_frac=0.34)
     # one row per (ID, centreline_id), coords + window joined, has_baseline carried
     assert len(rows) == 3
     assert set(rows["ID"]) == {"R1", "R2", "R3"}
     assert set(["closure_lat", "site_lat", "StartTime", "split", "has_baseline"]) <= set(
         rows.columns
     )
-    # grouped split is whole-centreline (no site in both folds)
-    train_cl = set(rows[rows.split == "train"]["centreline_id"])
-    test_cl = set(rows[rows.split == "test"]["centreline_id"])
+    # temporal split (default): the LATEST-starting restriction (R3) is held out
+    assert set(rows[rows.split == "test"]["ID"]) == {"R3"}
+    assert set(rows[rows.split == "train"]["ID"]) == {"R1", "R2"}
+
+    # the per-site centreline split is still available as a fallback
+    grouped = assemble_factory_rows(closures, pairs, split="centreline", test_frac=0.34, seed=1)
+    train_cl = set(grouped[grouped.split == "train"]["centreline_id"])
+    test_cl = set(grouped[grouped.split == "test"]["centreline_id"])
     assert train_cl.isdisjoint(test_cl)
-    assert "test" in set(rows["split"])
 
 
 def test_missing_columns_raise():

@@ -94,7 +94,9 @@ def _edge_pressures(time_context: dict, batch_size: int = 20000):
         for start in range(0, n, batch_size):
             end = min(start + batch_size, n)
             idx = torch.arange(start, end, dtype=torch.long, device=device)
-            pred = b["model"](b["x"], b["edge_index"], b["edge_attr"], ctx.expand(end - start, -1), idx)
+            pred = b["model"](
+                b["x"], b["edge_index"], b["edge_attr"], ctx.expand(end - start, -1), idx
+            )
             out.append(pred.detach().cpu())
     return torch.cat(out).numpy()
 
@@ -141,7 +143,9 @@ def hour_records(state, time_context: dict) -> list:
 def day_records(state, dow: int, month: int) -> list:
     """24 Record5 lists (one per hour) — the GNN baseline day, full coverage, clear weather."""
     return [
-        hour_records(state, {"hour": h, "day_of_week": int(dow), "month": int(month), "weather": "clear"})
+        hour_records(
+            state, {"hour": h, "day_of_week": int(dow), "month": int(month), "weather": "clear"}
+        )
         for h in range(24)
     ]
 

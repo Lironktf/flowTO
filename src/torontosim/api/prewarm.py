@@ -76,7 +76,9 @@ class PrewarmManager:
                 queued += 1
             return queued
 
-    def warm_now(self, *, model_kind, time_context, interventions=None, iterations: int = 4) -> None:
+    def warm_now(
+        self, *, model_kind, time_context, interventions=None, iterations: int = 4
+    ) -> None:
         """Synchronously warm a single combo (used for the startup default)."""
         self._warm(model_kind, time_context, interventions or [], iterations)
 

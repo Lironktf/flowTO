@@ -68,10 +68,19 @@ def test_bridge_vert_clear_attaches_to_centreline_edge(tmp_path):
     assert matched
 
 
-def test_graph_source_resolver_defaults_to_osmnx(tmp_path):
-    """The api graph-source switch defaults to OSMnx (baseline-safe)."""
+def test_graph_source_resolver(tmp_path):
+    """The api graph-source switch: explicit overrides win; auto prefers the real
+    Centreline graph when its parquet store is present, else baseline-safe OSMnx."""
     from torontosim.api._bootstrap import resolve_graph_source
 
-    assert resolve_graph_source(None, env={}) == "osmnx"
+    # Explicit choices (arg or env) always win.
     assert resolve_graph_source(None, env={"TS_GRAPH_SOURCE": "centreline"}) == "centreline"
     assert resolve_graph_source("centreline", env={}) == "centreline"
+    assert resolve_graph_source("osmnx", env={}, parquet_dir=str(tmp_path)) == "osmnx"
+
+    # Auto (no explicit choice): no parquet store -> baseline-safe OSMnx.
+    assert resolve_graph_source(None, env={}, parquet_dir=str(tmp_path)) == "osmnx"
+
+    # Auto: a baked Centreline parquet store present -> Centreline (the fidelity default).
+    (tmp_path / "centreline.parquet").write_bytes(b"")
+    assert resolve_graph_source(None, env={}, parquet_dir=str(tmp_path)) == "centreline"

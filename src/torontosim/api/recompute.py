@@ -153,7 +153,9 @@ def _cache_key(model_kind: str, tc: dict, interventions: List[dict]) -> tuple:
     )
 
 
-def cache_key(model_kind: str, time_context: Optional[dict], interventions: Optional[List[dict]]) -> tuple:
+def cache_key(
+    model_kind: str, time_context: Optional[dict], interventions: Optional[List[dict]]
+) -> tuple:
     """Public: the cache key for a raw (un-normalized) request — used by the
     prewarm manager to track/cancel in-flight warms and skip cached combos."""
     tc = normalize_time_context({**(time_context or {}), "weather": "clear"})

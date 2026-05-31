@@ -173,7 +173,6 @@ def apply_od_changes(graph, od: List[dict], surge_ops: List[dict]) -> List[dict]
     if not surge_ops:
         return od
     out = [dict(p) for p in od]
-    dest_nodes = list({p["destination"] for p in out})
 
     for op in surge_ops:
         try:
@@ -198,9 +197,7 @@ def apply_od_changes(graph, od: List[dict], surge_ops: List[dict]) -> List[dict]
             # Resolve how many trips to inject (relative → fraction of trips
             # currently touching the anchor; absolute → the amount itself).
             if mode == "relative":
-                touching = sum(
-                    p["trips"] for p in out if anchor in (p["origin"], p["destination"])
-                )
+                touching = sum(p["trips"] for p in out if anchor in (p["origin"], p["destination"]))
                 inject = touching * amount  # signed
             else:
                 inject = amount

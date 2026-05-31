@@ -53,6 +53,14 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 _get_demo("baseline")
             except Exception:  # noqa: BLE001 — warmup is best-effort
                 pass
+            # Pre-warm the copilot's compare baselines so congestion queries,
+            # /confirm comparisons and the agent's scratch sims don't cold-compute
+            # a full ~80k-edge baseline on first use (paid once here, in the bg).
+            for warmer in (state.baseline, state.blast_baseline):
+                try:
+                    warmer()
+                except Exception:  # noqa: BLE001 — warmup is best-effort
+                    pass
             # Pre-load the copilot model so the first ask dodges the cold load.
             try:
                 from ..copilot import ollama_client, planner

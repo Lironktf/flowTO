@@ -75,6 +75,11 @@ spec follows the same template: Goal → Current state → Target → Design →
 | S6 | VSS traffic-camera validation layer | optional camera markers |
 | S7 | Feature-engineering audit for the GNN | Drop spatial proxies a GNN learns for free (`distance_to_downtown`, `road_degree`, `near_highway`) + add richer **edge** features (capacity, lanes, speed limit, one-way, current load) and cheap node signals (transit-stop adjacency, venue/POI flag, continuous temp/precip, holiday flag). Touches `model/features.py` (shared train+predict contract; retrain required). Do alongside S3. See `docs/gnn-explainer.md` §8b. |
 
+> **Feedback-loop track (S3 + S4 realization):** the closure/opening GNN that learns from real
+> closures and ships only if it beats the sim — sequenced with go/no-go checkpoints in
+> **`ROADMAP-feedback-loop.md`** (phases P13 training + P14 dataset; specs `13`/`14`, research
+> `07`/`08`).
+
 ---
 
 ## 3. Dependency graph

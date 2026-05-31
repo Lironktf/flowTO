@@ -16,9 +16,11 @@
 import { create } from "zustand";
 import {
   api,
+  connectDayStream,
   copilotStream,
   type AgentStepLog,
   type CopilotResponse,
+  type DayStreamSpec,
   type EdgeMeta,
   type Intervention,
   type ScenarioSummary,
@@ -56,7 +58,19 @@ function roadIndexFor(g: RoadGraph | null): RoadIndexEntry[] {
   }
   return _idxCache;
 }
-import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
+import {
+  getArrays,
+  ingestBaselineDay,
+  readyCount,
+  resizeTickStore,
+  setEpoch,
+  setSelectedHour,
+  writeRecords,
+} from "./tickStore";
+import { buildTimeContext } from "../lib/timeContext";
+
+/** Demand model the day-stream / simulate path runs with (the Edit-mode toggle). */
+export type DemandModel = "xgboost" | "gnn";
 
 export type View = "sim" | "edit";
 export type EditTool = "select" | "closure" | "surge";
@@ -253,6 +267,11 @@ interface AppState {
   dayOfYear: number;
   playing: boolean;
   speed: number;
+  // day-stream playback (24-hour precomputed series)
+  demandModel: DemandModel; // which model the Run/day-stream uses (Edit toggle)
+  modelActual: string; // model that actually ran (exposes the heuristic fallback)
+  simStale: boolean; // params/edits changed since the last Run
+  dayFill: { ready: number; total: number }; // how many of the 24 hourly frames have landed
   telemetry: Telemetry;
   // camera nonces (watched by MapCanvas)
   recenterNonce: number;
@@ -303,6 +322,14 @@ interface AppState {
   setDayOfYear: (d: number) => void;
   setPlaying: (p: boolean) => void;
   setSpeed: (s: number) => void;
+  // day-stream playback controls
+  setDemandModel: (m: DemandModel) => void;
+  /** Run the current view: ML day-stream if there are edits, else the predicted baseline day. */
+  runSimulate: () => Promise<void>;
+  /** Speculatively warm the day-stream for the current edits (non-blocking). */
+  prewarm: () => void;
+  /** Load the full-coverage GNN-predicted baseline day (no edits) into the day store. */
+  loadBaselineDay: () => Promise<void>;
   recenter: () => void;
   flyToLocation: (lng: number, lat: number, zoom?: number) => void;
   fitToBounds: (bounds: [[number, number], [number, number]]) => void;
@@ -535,6 +562,139 @@ function interventionsFromObjects(objects: SceneObject[]): Intervention[] {
   return out;
 }
 
+type GetFn = () => AppState;
+
+/** The view to stream as a 24-hour series: model + day/month + all edits. The
+ * hour is the playback axis, not an input — `current_hour` only sets fill order. */
+function dayStreamSpec(s: AppState, epoch: number): DayStreamSpec {
+  const tc = buildTimeContext(s.dayOfYear, s.scrubberMinute);
+  return {
+    demand_model: s.demandModel,
+    time_context: { day_of_week: tc.day_of_week, month: tc.month, weather: "clear" },
+    interventions: interventionsFromObjects(s.objects),
+    current_hour: tc.hour,
+    epoch,
+  };
+}
+
+// One day-stream WS per view. Defining a new view (model / day / edits change)
+// supersedes the old one: bump the epoch, reset readiness, close the old socket,
+// open a new one. The backend fills the day (current hour first) and each hour's
+// frame repaints the map only when it's the visible hour. Frames from a stale
+// epoch are dropped in the tick store and ignored here.
+let _dayWs: WebSocket | null = null;
+let _dayEpoch = 0;
+let _dayTimer: ReturnType<typeof setTimeout> | null = null;
+
+function startDayCompute(set: SetFn, get: GetFn, opts: { immediate?: boolean } = {}): void {
+  const kick = () => {
+    _dayTimer = null;
+    const epoch = ++_dayEpoch;
+    setEpoch(epoch); // new view: forget readiness (old frames keep painting until replaced)
+    if (_dayWs) {
+      try {
+        _dayWs.close();
+      } catch {
+        /* already closing */
+      }
+    }
+    set({ dayFill: { ready: 0, total: 24 }, simStale: false });
+
+    // Surface a stuck/failed compute instead of hanging at "Computing X/24".
+    let failed = false;
+    const fail = (label: string) => {
+      if (epoch !== _dayEpoch || failed) return; // ignore superseded views / double-fire
+      failed = true;
+      clearTimeout(watchdog);
+      set({ status: { state: "blocked", label }, simStale: true });
+    };
+    // Backstop for a silent stall: if NO hour has landed in this window the stream
+    // is wedged. Generous margin — a cold first request pays a one-time model load
+    // before the first hour; once any hour lands this is moot (progressive).
+    const watchdog = setTimeout(() => {
+      if (epoch === _dayEpoch && readyCount() === 0) fail("Compute stalled — click Run to retry");
+    }, 45000);
+
+    _dayWs = connectDayStream(dayStreamSpec(get(), epoch), {
+      onMeta: (meta) => {
+        if (epoch !== _dayEpoch) return; // a newer view already superseded this one
+        set({ modelActual: meta.model_actual });
+      },
+      onFrame: (info) => {
+        if (epoch !== _dayEpoch) return;
+        set((st) => ({
+          dayFill: { ready: readyCount(), total: 24 },
+          // Repaint only when the frame that landed is the hour on screen.
+          ...(info.affectsView
+            ? { pressureSeq: st.pressureSeq + 1, warnings: buildWarnings() }
+            : {}),
+        }));
+      },
+      onDone: () => {
+        if (epoch !== _dayEpoch) return;
+        clearTimeout(watchdog);
+        set({ dayFill: { ready: readyCount(), total: 24 } });
+      },
+      onError: () => fail("Compute failed — click Run to retry"),
+      onPrematureClose: () => fail("Compute interrupted — click Run to retry"),
+    });
+  };
+
+  if (_dayTimer) clearTimeout(_dayTimer);
+  if (opts.immediate) kick();
+  else _dayTimer = setTimeout(kick, 350); // coalesce a flurry of tweaks into one view
+}
+
+/** True when the scene has any active (visible) intervention. */
+function hasEdits(s: AppState): boolean {
+  return interventionsFromObjects(s.objects).length > 0;
+}
+
+/** Tear down any live/pending ML day-stream and invalidate its callbacks. */
+function closeDayStream(): void {
+  _dayEpoch++; // in-flight onFrame/onMeta/onDone guards (epoch !== _dayEpoch) now fail
+  if (_dayTimer) {
+    clearTimeout(_dayTimer);
+    _dayTimer = null;
+  }
+  if (_dayWs) {
+    try {
+      _dayWs.close();
+    } catch {
+      /* already closing */
+    }
+    _dayWs = null;
+  }
+}
+
+/** The no-edit view: the full-coverage GNN-predicted day (one REST blob, ingested
+ * in a single pass). Always the GNN regardless of the model toggle (the toggle is
+ * the EDIT demand model). Placing an edit switches to the equilibrium day-stream. */
+async function loadBaselineDayInternal(set: SetFn, get: GetFn): Promise<void> {
+  closeDayStream(); // baseline is the epoch-0 view; drop any live edit stream
+  const tc = buildTimeContext(get().dayOfYear, get().scrubberMinute);
+  set({ status: { state: "recomputing", label: "Predicting baseline…" } });
+  try {
+    const buf = await api.baselinePredicted(tc.day_of_week, tc.month);
+    ingestBaselineDay(buf);
+    setSelectedHour(Math.min(23, Math.floor(get().scrubberMinute / 60)));
+    set((s) => ({
+      pressureSeq: s.pressureSeq + 1,
+      warnings: buildWarnings(),
+      dayFill: { ready: readyCount(), total: 24 },
+      modelActual: "gnn",
+      simStale: false,
+      status: { state: "nominal", label: "Baseline · predicted (GNN)" },
+    }));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    set({
+      error: `Baseline unavailable (${msg}).`,
+      status: { state: "blocked", label: "Baseline unavailable — click Run to retry" },
+    });
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   theme: "light",
   density: "comfortable",
@@ -578,6 +738,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   dayOfYear: DEFAULT_DAY_OF_YEAR,
   playing: false,
   speed: 1,
+  demandModel: "xgboost",
+  modelActual: "",
+  simStale: false,
+  dayFill: { ready: 0, total: 24 },
   telemetry: { ...IDLE },
   recenterNonce: 0,
   flyTarget: null,
@@ -637,6 +801,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           status: { state: "blocked", label: "Graph loaded · baseline unavailable" },
         });
       }
+      // Populate the 24-hour predicted day so the timeline becomes a true playback
+      // axis (scrub/▶play select precomputed hours — no recompute). Best-effort: the
+      // single-frame demo baseline above already painted, so a failure here is benign.
+      void get().loadBaselineDay();
       void get().loadSavedSims();
       // Graph-grounded suggestion chips (real road names); static fallback on failure.
       void api
@@ -1256,13 +1424,53 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     });
     set({ status: { state: "nominal", label: "Edited · recomputed" } });
+    // Also (re)fill the 24-hour day-stream for the new edits so the timeline plays
+    // back the edited day; falls back to the predicted baseline when no edits remain.
+    if (hasEdits(get())) get().prewarm();
+    else void get().loadBaselineDay();
   },
 
   selectRoad: (edgeId) => set({ selectedRoadId: edgeId }),
-  setScrubber: (m) => set({ scrubberMinute: Math.max(TIMELINE.startMin, Math.min(TIMELINE.endMin, m)) }),
-  setDayOfYear: (d) => set({ dayOfYear: Math.max(1, Math.min(366, Math.round(d))) }),
+  setScrubber: (m) => {
+    const next = Math.max(TIMELINE.startMin, Math.min(TIMELINE.endMin, m));
+    set({ scrubberMinute: next });
+    // Day-stream playback: time is a selection axis — pick the precomputed hour's
+    // frame and repaint from the buffer (no network / recompute). When the day
+    // store is empty (no day loaded) this is a no-op and the legacy single-frame
+    // baseline / retime path stays in control.
+    const hour = Math.min(23, Math.floor(next / 60));
+    if (setSelectedHour(hour)) set((s) => ({ pressureSeq: s.pressureSeq + 1, warnings: buildWarnings() }));
+  },
+  setDayOfYear: (d) => {
+    set({ dayOfYear: Math.max(1, Math.min(366, Math.round(d))) });
+    // Day/month picks a different measured/predicted day → refill the day-stream
+    // (re-run the ML day if editing, else reload the predicted baseline day).
+    if (hasEdits(get())) startDayCompute(set, get);
+    else void get().loadBaselineDay();
+  },
   setPlaying: (p) => set({ playing: p }),
   setSpeed: (sp) => set({ speed: sp }),
+
+  setDemandModel: (m) => {
+    if (m === get().demandModel) return;
+    set({ demandModel: m });
+    // The toggle is the EDIT demand model only — the baseline is always the GNN
+    // prediction — so re-run the equilibrium day-stream only when there are edits.
+    if (hasEdits(get())) startDayCompute(set, get);
+  },
+  runSimulate: async () => {
+    if (hasEdits(get())) {
+      if (!_dayWs || _dayWs.readyState !== WebSocket.OPEN) startDayCompute(set, get, { immediate: true });
+    } else {
+      await loadBaselineDayInternal(set, get);
+    }
+  },
+  prewarm: () => {
+    if (hasEdits(get())) startDayCompute(set, get); // nothing to prewarm for the baseline
+  },
+  loadBaselineDay: async () => {
+    await loadBaselineDayInternal(set, get);
+  },
 
   recenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1, flyPin: null })),
   flyToLocation: (lng, lat, zoom) =>
@@ -1325,12 +1533,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       telemetry: { ...IDLE },
       recenterNonce: get().recenterNonce + 1,
       flyPin: null,
+      simStale: false,
     });
+    closeDayStream(); // drop any in-flight edit day-stream before reverting to baseline
     try {
       const base = await api.demoRun("baseline");
       paintRecords(set, base.records);
     } catch {
       /* ignore */
     }
+    // Repopulate the predicted day so playback works after a reset.
+    void get().loadBaselineDay();
   },
 }));

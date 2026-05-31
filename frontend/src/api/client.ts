@@ -5,7 +5,7 @@
  * summaries and copilot answers from `/copilot/plan`. The binary WS tick stream
  * (`connectStream`) feeds the tick store for live-tick scenarios.
  */
-import { ingestFrame } from "../state/tickStore";
+import { ingestDayFrame, ingestFrame } from "../state/tickStore";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -38,9 +38,10 @@ export interface DemoRun {
 
 /**
  * Graph-mutation ops. The first six mirror the backend
- * (`src/torontosim/graph/mutations.py`). `demand_surge` is defined here for the
- * Edit view's surge tool; backend support is still pending (see HANDOFF), so
- * runs may currently ignore it.
+ * (`src/torontosim/graph/mutations.py`). The demand-side op for the Edit view's
+ * surge/relief tool is `demand_surge` (backend: `model/demand_surge.py`,
+ * applied to per-node demand before OD generation). `demand_change` is kept as
+ * an accepted alias from the day-stream frontend.
  */
 export type InterventionOp =
   | "close_edge"
@@ -49,7 +50,8 @@ export type InterventionOp =
   | "change_capacity"
   | "close_node"
   | "add_edge"
-  | "demand_surge";
+  | "demand_surge"
+  | "demand_change";
 
 export interface Intervention {
   op: InterventionOp;
@@ -63,12 +65,13 @@ export interface Intervention {
   speed_kmh?: number;
   lanes?: number;
   capacity?: number;
-  // demand_surge — inject/scale OD trips at a node or point (backend: simulation/demand.py)
+  // demand_surge / demand_change: anchor (node_id and/or lng/lat) + signed amount
+  // radiating along the chosen compass directions (negative amount = relief).
+  directions?: ("n" | "e" | "s" | "w")[];
   amount?: number;
   mode?: "absolute" | "relative";
   lat?: number;
   lng?: number;
-  directions?: string[];
 }
 
 export interface ViewDirective {
@@ -140,6 +143,23 @@ export interface StreamDone {
   error?: string;
 }
 
+/** Param-driven simulation request (POST /simulate, /simulate/prewarm). */
+export interface SimulateReq {
+  demand_model: "xgboost" | "gnn";
+  time_context: { hour: number; day_of_week: number; month: number; weather: string };
+  interventions: Intervention[];
+  iterations?: number;
+}
+
+export interface SimulateResult {
+  records: Record5[];
+  summary: Record<string, number>;
+  rgap?: number | null;
+  /** Model that actually ran — surfaces the silent HeuristicDemandModel fallback. */
+  model_actual: string;
+  cached: boolean;
+}
+
 export interface ScenarioSummary {
   id: string;
   name?: string;
@@ -190,7 +210,27 @@ async function jdelete<T>(path: string): Promise<T> {
 export const api = {
   health: () => jget<{ status: string; edges: number; baseline_ready?: boolean }>("/healthz"),
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
+  // Measured 24-hour baseline (raw TMC counts, no ML) as one binary blob of 24
+  // concatenated day-frames; the tick store walks it (see `ingestBaselineDay`).
+  // Keyed on day-of-week + month (months sample different intersections).
+  baselineDay: async (dow: number, month: number): Promise<ArrayBuffer> => {
+    const r = await fetch(`${BASE}/baseline/day?dow=${dow}&month=${month}`);
+    if (!r.ok) throw new Error(`GET /baseline/day → ${r.status}`);
+    return r.arrayBuffer();
+  },
+  // The full-coverage PREDICTED baseline day (GNN, no interventions): 24 frames,
+  // one binary blob the tick store walks via `ingestBaselineDay`. Keyed on
+  // day-of-week + month.
+  baselinePredicted: async (dow: number, month: number): Promise<ArrayBuffer> => {
+    const r = await fetch(`${BASE}/baseline/predicted?dow=${dow}&month=${month}`);
+    if (!r.ok) throw new Error(`GET /baseline/predicted → ${r.status}`);
+    return r.arrayBuffer();
+  },
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
+  // Param-driven run (real model → OD → equilibrium, cached). `prewarm` is the
+  // speculative, non-blocking variant that warms the cache so Run is instant.
+  simulate: (req: SimulateReq) => jpost<SimulateResult>("/simulate", req),
+  simulatePrewarm: (req: SimulateReq) => jpost<{ queued: number }>("/simulate/prewarm", req),
   copilotPlan: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
   copilotRoute: (prompt: string, history = "", signal?: AbortSignal) =>
@@ -281,6 +321,66 @@ export function connectStream(scenarioId: string): WebSocket {
   ws.binaryType = "arraybuffer";
   ws.onmessage = (ev) => {
     if (ev.data instanceof ArrayBuffer) ingestFrame(ev.data);
+  };
+  return ws;
+}
+
+/** A view to stream as a 24-hour time series (everything except the hour). */
+export interface DayStreamSpec {
+  demand_model: "xgboost" | "gnn";
+  time_context: { day_of_week: number; month: number; weather?: string };
+  interventions: Intervention[];
+  current_hour: number; // prioritised so the visible map paints first
+  epoch: number; // view generation; tags every frame so stale ones are dropped
+  iterations?: number;
+}
+
+export interface DayStreamHandlers {
+  onFrame?: (info: { hour: number; affectsView: boolean }) => void;
+  onMeta?: (meta: { total: number; epoch: number; model_actual: string }) => void;
+  onDone?: () => void;
+  /** Socket error (network/handshake). */
+  onError?: () => void;
+  /** Socket closed BEFORE the server's "done" — a drop/crash mid-stream, distinct
+   * from the normal post-"done" close. Lets the caller surface a stuck compute. */
+  onPrematureClose?: () => void;
+}
+
+/**
+ * Open the day-stream WS for a view: sends the spec, then routes each hour's
+ * binary frame into the tick store as it completes (current hour first) and
+ * surfaces meta/done to the caller. Superseding a view = close this socket and
+ * open a new one (the backend cancels the old view's not-yet-started hours).
+ */
+export function connectDayStream(spec: DayStreamSpec, handlers: DayStreamHandlers = {}): WebSocket {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const url = `${proto}://${location.host}${BASE}/day/stream`;
+  const ws = new WebSocket(url);
+  ws.binaryType = "arraybuffer";
+  let done = false;
+  ws.onopen = () => ws.send(JSON.stringify(spec));
+  ws.onmessage = (ev) => {
+    if (ev.data instanceof ArrayBuffer) {
+      const info = ingestDayFrame(ev.data);
+      if (info.epoch === spec.epoch) handlers.onFrame?.({ hour: info.hour, affectsView: info.affectsView });
+    } else if (typeof ev.data === "string") {
+      try {
+        const msg = JSON.parse(ev.data) as { type?: string; total?: number; epoch?: number; model_actual?: string };
+        if (msg.type === "meta") handlers.onMeta?.(msg as { total: number; epoch: number; model_actual: string });
+        else if (msg.type === "done") {
+          done = true;
+          handlers.onDone?.();
+        }
+      } catch {
+        /* ignore malformed control frame */
+      }
+    }
+  };
+  ws.onerror = () => handlers.onError?.();
+  ws.onclose = () => {
+    // A close after "done" is the normal end of a stream; a close before it means
+    // the stream dropped/crashed mid-compute — surface that so the UI can recover.
+    if (!done) handlers.onPrematureClose?.();
   };
   return ws;
 }

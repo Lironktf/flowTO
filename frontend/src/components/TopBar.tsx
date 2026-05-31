@@ -13,6 +13,24 @@ export function TopBar() {
   const showBottom = useAppStore((s) => s.showBottom);
   const showRight = useAppStore((s) => s.showRight);
   const toggleDock = useAppStore((s) => s.toggleDock);
+  const demandModel = useAppStore((s) => s.demandModel);
+  const setDemandModel = useAppStore((s) => s.setDemandModel);
+  const runSimulate = useAppStore((s) => s.runSimulate);
+  const dayFill = useAppStore((s) => s.dayFill);
+  const modelActual = useAppStore((s) => s.modelActual);
+  const objects = useAppStore((s) => s.objects);
+
+  // Surface the silent fallback: a real model was requested but the backend
+  // served the hand-coded heuristic (xgboost/torch not installed).
+  const usingHeuristic = modelActual.toLowerCase().includes("heuristic");
+
+  // No edits → the predicted baseline day (ML, no interventions). Edits → the ML
+  // day-stream is filling; the button reflects how much of the day is ready and
+  // doubles as a retry.
+  const editing = objects.some((o) => o.visible);
+  const dayLive = dayFill.ready >= dayFill.total;
+  const runLabel = !editing ? "Baseline" : dayLive ? "Run ▸" : `Computing ${dayFill.ready}/${dayFill.total}`;
+  const runIdle = !editing || dayLive;
 
   return (
     <div id="topbar">
@@ -41,6 +59,36 @@ export function TopBar() {
 
       {/* Right zone — caps the right dock */}
       <div className="tb-zone tb-right">
+        <div className="viewseg modelseg" role="group" title="Demand model used for the day-stream simulation">
+          <button className={demandModel === "xgboost" ? "on" : ""} onClick={() => setDemandModel("xgboost")}>
+            XGBoost
+          </button>
+          <button className={demandModel === "gnn" ? "on" : ""} onClick={() => setDemandModel("gnn")}>
+            GNN
+          </button>
+        </div>
+        {usingHeuristic && (
+          <span
+            className="statuschip"
+            data-state="blocked"
+            title="Requested model not installed; served the fallback heuristic"
+          >
+            <span className="dot" />⚠ heuristic
+          </span>
+        )}
+        <button
+          className={`btn ${runIdle ? "ghost" : "primary"} btn-sm`}
+          onClick={() => void runSimulate()}
+          title={
+            !editing
+              ? "Predicted baseline day — scrub and play freely"
+              : dayLive
+                ? "Predicted day computed — scrub and play freely"
+                : `Predicting the day… ${dayFill.ready}/${dayFill.total} hours ready`
+          }
+        >
+          {runLabel}
+        </button>
         <div className="statuschip" data-state={status.state}>
           <span className="dot" />
           {status.label}

@@ -56,10 +56,32 @@ def test_road_edges_by_name_fuzzy_matches_whole_road():
     assert set(res["edge_ids"]) == {"ls1", "ls2"}
 
 
+def test_road_edges_by_name_prefers_prominent_road_on_ambiguous_match():
+    # "Gardiner" matches both the motorway Expressway and a residential Road →
+    # the prominence tiebreak must pick the Expressway (the bug from live testing).
+    g = nx.MultiDiGraph()
+    g.add_edge(0, 1, key=0, road_name="Gardiner Expressway", road_class="motorway", edge_id="gx1")
+    g.add_edge(1, 0, key=0, road_name="Gardiner Expressway", road_class="motorway", edge_id="gx2")
+    g.add_edge(2, 3, key=0, road_name="Gardiner Road", road_class="residential", edge_id="gr1")
+    res = resolve.road_edges_by_name(g, "Gardiner")
+    assert res["found"] is True
+    assert res["road_name"] == "Gardiner Expressway"
+
+
 def test_road_edges_by_name_unknown_returns_not_found():
     res = resolve.road_edges_by_name(_state().graph, "nonexistent parkway")
     assert res["found"] is False
     assert "reason" in res
+
+
+def test_road_edges_by_name_rejects_generic_word_false_positive():
+    # 'Narnia Expressway' must NOT resolve to 'Gardiner Expressway' just because they
+    # share the generic word 'expressway' — the distinctive token ('narnia') never
+    # matched, so the copilot must not confidently close the wrong real road.
+    g = nx.MultiDiGraph()
+    g.add_edge(0, 1, key=0, road_name="Gardiner Expressway", road_class="motorway", edge_id="gx1")
+    res = resolve.road_edges_by_name(g, "Narnia Expressway")
+    assert res["found"] is False
 
 
 def test_resolve_node_by_name_handles_ampersand_variants():
@@ -109,6 +131,48 @@ def test_dispatch_focus_returns_view_no_plan():
     assert not call.interventions
     assert call.view is not None and call.view.action == "fit"
     assert call.view.road_name == "King Street West"
+
+
+def test_dispatch_focus_passes_place_through_for_geocoding():
+    # 'King Village' weakly matches the road 'King Street West' (shares only 'king',
+    # coverage 0.5) — that's a place, not that road. Focus must NOT frame the road;
+    # it passes the raw name through (no edge_ids) so the frontend omnibox geocodes it.
+    call = planner._dispatch(
+        "show me King Village",
+        _state(),
+        _cls(intent="focus", road_name="King Village"),
+        live=False,
+    )
+    assert call.tool == "answer"
+    assert call.view is not None and call.view.action == "fit"
+    assert call.view.road_name == "King Village"
+    assert not call.view.edge_ids  # no road framed → frontend resolves the place
+
+
+def test_parse_minute_deterministic_clock_and_named():
+    # Time parsing must be deterministic in code, not reliant on the model's flaky
+    # clock arithmetic (the '6am -> defaults to 17:00' bug).
+    pm = planner._parse_minute
+    assert pm("show me 6 am") == 360
+    assert pm("show me 6am") == 360
+    assert pm("jump to 8am") == 480
+    assert pm("show me midnight") == 0
+    assert pm("show me noon") == 720
+    assert pm("show me 14:30") == 870
+    assert pm("show me 12pm") == 720
+    assert pm("show me 12am") == 0
+    assert pm("show rush hour") == 1020
+    assert pm("show the morning") == 480
+    assert pm("close King Street") is None  # no time mentioned
+
+
+def test_dispatch_set_time_uses_deterministic_parse_over_model():
+    # Even if the model returned a wrong/None minute, the deterministic parse wins.
+    call = planner._dispatch(
+        "show me 6 am", _state(), _cls(intent="set_time", minute=None), live=False
+    )
+    assert call.view is not None and call.view.action == "time"
+    assert call.view.minute == 360
 
 
 def test_dispatch_set_time_returns_time_view():

@@ -34,7 +34,28 @@ import {
   type RoadGraph,
   type Segment,
 } from "../api/graph";
+import {
+  buildRoadIndex,
+  resolveQuery,
+  retrievePlace,
+  type RoadIndexEntry,
+  type SearchHit,
+} from "../lib/search";
 import { COPILOT_CHIPS, DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
+
+// Cache the omnibox road index so the copilot can reuse the SAME resolver as the
+// search bar without rescanning every edge per call. Rebuilt only when the graph
+// instance changes (graph is effectively load-once).
+let _idxGraph: RoadGraph | null = null;
+let _idxCache: RoadIndexEntry[] = [];
+function roadIndexFor(g: RoadGraph | null): RoadIndexEntry[] {
+  if (!g) return [];
+  if (g !== _idxGraph) {
+    _idxCache = buildRoadIndex(g);
+    _idxGraph = g;
+  }
+  return _idxCache;
+}
 import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
 
 export type View = "sim" | "edit";
@@ -86,7 +107,7 @@ export interface Warning {
 
 export type CopilotMode = "plan" | "chat" | "agent";
 
-interface CopilotMessage {
+export interface CopilotMessage {
   role: "user" | "bot";
   text: string;
   steps?: string[];
@@ -117,6 +138,45 @@ interface CopilotLatency {
   mode: CopilotMode;
 }
 
+/** An archived chat — its full message log, with a title for the history list. */
+export interface CopilotSession {
+  id: string;
+  title: string;
+  log: CopilotMessage[];
+}
+
+const COPILOT_SESSIONS_KEY = "flowto.copilot.sessions";
+const COPILOT_SESSION_SEQ_KEY = "flowto.copilot.sessionSeq";
+
+/** Persist sessions + the id counter to localStorage (best-effort). */
+function persistSessions(sessions: CopilotSession[], seq: number) {
+  try {
+    localStorage.setItem(COPILOT_SESSIONS_KEY, JSON.stringify(sessions));
+    localStorage.setItem(COPILOT_SESSION_SEQ_KEY, String(seq));
+  } catch {
+    /* storage unavailable (private mode / SSR) — keep going in-memory */
+  }
+}
+
+/** Rehydrate sessions + the id counter from localStorage on load. */
+function loadSessions(): { sessions: CopilotSession[]; seq: number } {
+  try {
+    const raw = localStorage.getItem(COPILOT_SESSIONS_KEY);
+    const sessions = raw ? (JSON.parse(raw) as CopilotSession[]) : [];
+    const seq = Number(localStorage.getItem(COPILOT_SESSION_SEQ_KEY) ?? "0") || 0;
+    return { sessions: Array.isArray(sessions) ? sessions : [], seq };
+  } catch {
+    return { sessions: [], seq: 0 };
+  }
+}
+
+/** First user message, truncated — used as a session title. */
+function sessionTitle(log: CopilotMessage[]): string {
+  const firstUser = log.find((m) => m.role === "user")?.text?.trim();
+  const base = firstUser || "Untitled chat";
+  return base.length > 40 ? base.slice(0, 40) + "…" : base;
+}
+
 // A staged (previewed, not-yet-applied) copilot plan. Single source of truth so
 // the chat confirm and the map preview act on the same plan + edges — one apply.
 interface StagedPlan {
@@ -127,6 +187,9 @@ interface StagedPlan {
 
 // Non-reactive holder for the in-flight request's abort controller.
 let copilotAbort: AbortController | null = null;
+
+// Rehydrated once at module load (localStorage), seeds the store's initial state.
+const INITIAL_SESSIONS = loadSessions();
 
 interface Telemetry {
   recompute: number;
@@ -178,6 +241,8 @@ interface AppState {
   pendingVertices: PendingVertex[];
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
+  copilotSessions: CopilotSession[]; // archived chats (history menu)
+  copilotSessionSeq: number; // incrementing counter for session ids (no Date.now/Math.random)
   deepMode: boolean; // 🧠 Deep → force the Agent investigate-loop; else auto-route
   copilotReady: boolean; // false until the backend's compare baseline is warm
   copilotThinking: boolean;
@@ -218,6 +283,8 @@ interface AppState {
   copilotRevert: (msgIndex: number) => Promise<void>;
   toggleDeep: () => void;
   copilotStop: () => void;
+  copilotNewChat: () => void;
+  copilotLoadSession: (id: string) => void;
   // editor
   selectTool: (id: EditTool) => void;
   placeAt: (coord: [number, number]) => Promise<void>;
@@ -239,6 +306,14 @@ interface AppState {
   recenter: () => void;
   flyToLocation: (lng: number, lat: number, zoom?: number) => void;
   fitToBounds: (bounds: [[number, number], [number, number]]) => void;
+  /** Move the camera to a resolved search hit — the shared omnibox/copilot path. */
+  flyToHit: (hit: SearchHit) => Promise<void>;
+  /** Resolve free text (road, else place) via the omnibox resolver and fly to it.
+   *  Returns true if something was found. Used by the copilot's focus fallback. */
+  focusQuery: (query: string) => Promise<boolean>;
+  /** Rebuild the baseline demand at the current scrubber time + selected date so the
+   *  simulation reflects that time-of-day (commute direction + rush factor). Heavy. */
+  retimeBaseline: () => Promise<void>;
   toggleTilt: () => void;
   reset: () => Promise<void>;
 }
@@ -357,14 +432,10 @@ function bboxForView(
   view: ViewDirective,
 ): [[number, number], [number, number]] | null {
   if (!graph) return null;
-  let ids = view.edge_ids ?? [];
-  if (!ids.length && view.road_name) {
-    const want = view.road_name.toLowerCase();
-    ids = [];
-    for (const [id, seg] of graph.byId) {
-      if ((seg.road_name ?? "").toLowerCase().includes(want)) ids.push(id);
-    }
-  }
+  // Frame the exact backend-resolved segments. (Name-only / place views never
+  // reach here — applyView routes those through the shared omnibox resolver.)
+  const ids = view.edge_ids ?? [];
+  if (!ids.length) return null;
   let minLng = Infinity,
     minLat = Infinity,
     maxLng = -Infinity,
@@ -495,6 +566,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedId: null,
   pendingVertices: [],
   copilotLog: [],
+  copilotSessions: INITIAL_SESSIONS.sessions,
+  copilotSessionSeq: INITIAL_SESSIONS.seq,
   deepMode: false,
   copilotReady: false,
   copilotThinking: false,
@@ -665,6 +738,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  // Archive the live chat (if any messages) into sessions, then clear the log.
+  copilotNewChat: () =>
+    set((s) => {
+      if (s.copilotLog.length === 0) return {};
+      const seq = s.copilotSessionSeq + 1;
+      const session: CopilotSession = {
+        id: `chat-${seq}`,
+        title: sessionTitle(s.copilotLog),
+        log: s.copilotLog,
+      };
+      const sessions = [session, ...s.copilotSessions];
+      persistSessions(sessions, seq);
+      return { copilotSessions: sessions, copilotSessionSeq: seq, copilotLog: [] };
+    }),
+
+  // Swap to a past session's log — archiving the live one first (so nothing is lost).
+  copilotLoadSession: (id) =>
+    set((s) => {
+      const target = s.copilotSessions.find((x) => x.id === id);
+      if (!target) return {};
+      let sessions = s.copilotSessions;
+      let seq = s.copilotSessionSeq;
+      if (s.copilotLog.length > 0) {
+        seq = seq + 1;
+        const archived: CopilotSession = {
+          id: `chat-${seq}`,
+          title: sessionTitle(s.copilotLog),
+          log: s.copilotLog,
+        };
+        sessions = [archived, ...sessions];
+      }
+      // Pull the target out of the (possibly newly-extended) list and load it live.
+      sessions = sessions.filter((x) => x.id !== id);
+      persistSessions(sessions, seq);
+      return { copilotSessions: sessions, copilotSessionSeq: seq, copilotLog: target.log };
+    }),
+
   copilotAsk: async (text) => {
     // Single classifier routes (replaces the old isQuestion regex). Deep mode is a
     // manual override that forces the agent loop; otherwise /copilot/route runs one
@@ -720,15 +830,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     // Execute a read-only camera move from the copilot (auto-focus on the road it
     // proposes / the place you asked to see). No confirm — it only moves the view.
-    const applyView = (view?: ViewDirective | null) => {
+    // `highlight` = also blue-select the framed road (like the search bar). Off for
+    // confirmable plans, where the amber staged preview is the highlight instead.
+    const applyView = (view?: ViewDirective | null, highlight = true) => {
       if (!view) return;
       if (view.action === "recenter") return get().recenter();
       if (view.action === "tilt") return get().toggleTilt();
       if (view.action === "time" && view.minute != null) return get().setScrubber(view.minute);
       if (view.action === "fly" && view.lng != null && view.lat != null)
         return get().flyToLocation(view.lng, view.lat, view.zoom ?? undefined);
-      const bbox = bboxForView(get().graph, view);
-      if (bbox) get().fitToBounds(bbox);
+      const ids = view.edge_ids ?? [];
+      if (ids.length) {
+        const bbox = bboxForView(get().graph, view);
+        if (bbox) get().fitToBounds(bbox);
+        if (highlight) get().selectRoad(ids[0]); // highlights the whole road by name
+        return;
+      }
+      // No backend edge_ids → resolve through the SAME omnibox chain (local roads,
+      // then Mapbox places): a street frames + highlights, a place flies + pins. So
+      // the copilot can show anything the search bar can ("High Park", "CN Tower").
+      if (view.road_name) void get().focusQuery(view.road_name);
     };
     const renderPlan = (resp: CopilotResponse) => {
       const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
@@ -747,7 +868,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ],
         copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
       }));
-      applyView(resp.view);
+      applyView(resp.view, !confirmable); // amber staged preview owns the highlight for plans
       pushWarnings(resp.warnings);
       afterPlan(
         confirmable ? resp.interventions : undefined,
@@ -756,15 +877,34 @@ export const useAppStore = create<AppState>((set, get) => ({
         resp.citations?.[0]?.ref,
       );
     };
+    // After each reply lands, refresh the suggestion chips to reflect this
+    // exchange. Degrade gracefully: on error/404, keep the existing chips.
+    const refreshFollowups = async (reply: string, intent: string) => {
+      try {
+        const { prompts } = await api.copilotFollowups(text, reply, intent, signal);
+        if (prompts?.length) set({ copilotChips: prompts });
+      } catch {
+        /* keep the existing graph-grounded copilotChips */
+      }
+    };
     const t0 = performance.now();
 
     try {
       // Deep override → agent; else classify once via /route.
       let mode: CopilotMode = "agent";
+      let intent = "";
       let routedPlan: CopilotResponse | undefined;
       if (!get().deepMode) {
-        const routed = await api.copilotRoute(text, signal);
+        // Recent turns (excluding the just-pushed current message) so referential
+        // asks ('the worst road', 'that road', 'it') resolve against context.
+        const recent = get()
+          .copilotLog.slice(-7, -1)
+          .filter((m) => m.text)
+          .map((m) => `${m.role === "user" ? "You" : "Copilot"}: ${m.text.slice(0, 200)}`)
+          .join("\n");
+        const routed = await api.copilotRoute(text, recent, signal);
         mode = routed.mode;
+        intent = routed.intent ?? "";
         routedPlan = routed.result;
       }
       set({ copilotPendingMode: mode }); // now the single loader can label itself
@@ -795,6 +935,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           res.answer,
           res.citations?.[0]?.ref,
         );
+        await refreshFollowups(res.answer, intent || "agent");
       } else if (mode === "chat") {
         // Don't push the streaming bubble upfront — keep the single "thinking"
         // loader visible until the first token, then start the reply. This way
@@ -837,11 +978,15 @@ export const useAppStore = create<AppState>((set, get) => ({
           },
           signal,
         );
+        // Chips reflect the completed chat reply (its final accumulated text).
+        const last = get().copilotLog[get().copilotLog.length - 1];
+        await refreshFollowups(last?.role === "bot" ? last.text : "", intent || "chat");
       } else {
         // plan mode — /route already dispatched the plan; fall back to /plan only
         // if the inline result is somehow missing (defensive).
         const resp = routedPlan ?? (await api.copilotPlan(text, signal));
         renderPlan(resp);
+        await refreshFollowups(resp.rationale, intent || "plan");
       }
     } catch (e) {
       // User-initiated Stop (AbortError) is handled in copilotStop — stay quiet.
@@ -1124,6 +1269,43 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({ flyTarget: { lng, lat, zoom }, flyNonce: s.flyNonce + 1, flyPin: [lng, lat] })),
   fitToBounds: (bounds) => set((s) => ({ fitTarget: bounds, fitNonce: s.fitNonce + 1, flyPin: null })),
   toggleTilt: () => set((s) => ({ tiltOn: !s.tiltOn })),
+
+  // Shared camera move for a resolved search hit — the SAME logic the omnibox
+  // pick uses (street → frame + highlight; place → retrieve coords + fly + pin).
+  flyToHit: async (hit) => {
+    if (hit.bbox) {
+      get().fitToBounds(hit.bbox);
+      if (hit.edgeId) get().selectRoad(hit.edgeId);
+    } else if (hit.mapboxId) {
+      const coord = await retrievePlace(hit.mapboxId, new AbortController().signal);
+      if (coord) get().flyToLocation(coord[0], coord[1], 14.5);
+    } else {
+      get().flyToLocation(hit.coord[0], hit.coord[1], 14.5);
+    }
+  },
+  focusQuery: async (query) => {
+    const hit = await resolveQuery(
+      roadIndexFor(get().graph),
+      query,
+      new AbortController().signal,
+    ).catch(() => null);
+    if (!hit) return false;
+    await get().flyToHit(hit);
+    return true;
+  },
+
+  retimeBaseline: async () => {
+    const { scrubberMinute, dayOfYear } = get();
+    await recomputeAround(set, "Re-deriving demand for this time…", async () => {
+      try {
+        const res = await api.retimeBaseline(scrubberMinute, dayOfYear);
+        paintRecords(set, res.records); // repaint the map at the new time's baseline
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        set({ error: `Retime failed (${msg}).` });
+      }
+    });
+  },
 
   reset: async () => {
     set({

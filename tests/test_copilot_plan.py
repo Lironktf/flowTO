@@ -211,6 +211,45 @@ def test_assess_attaches_advisory_for_major_arterial():
     assert any("arterial" in (w.detail or "") for w in warnings)
 
 
+def test_superlative_close_resolves_to_worst_road():
+    # "close the worst road" with no history must NOT fail with "no road matching
+    # 'worst'" — it resolves deterministically to the most-congested named road.
+    state = _graph_state()
+    out = plan_intervention(
+        "close the worst road",
+        state,
+        classification={"intent": "close_road", "road_name": "worst"},
+    )
+    assert out["tool"] == "preview_intervention"
+    assert out["interventions"], "expected a concrete closure, not an unresolved error"
+    assert "couldn't resolve" not in out["rationale"].lower()
+
+
+def test_superlative_explain_resolves_to_worst_road():
+    # "why is the worst road congested?" resolves to a real road, never a hallucinated
+    # one. The surface phrase 'the worst road' must trigger deterministic resolution.
+    state = _graph_state()
+    out = plan_intervention(
+        "why is the worst road so congested?",
+        state,
+        classification={"intent": "explain", "road_name": "the worst road"},
+    )
+    assert out["intent"] == "explain"
+    assert out["view"] and out["view"]["road_name"] in {"Dufferin Street", "Strachan Avenue"}
+
+
+def test_focus_resolves_canonical_name_and_edge_ids():
+    # "show me Dufferin" → canonical 'Dufferin Street' + its edge_ids (so the camera
+    # fits precisely and the segments highlight), not a bare echoed token.
+    out = plan_intervention(
+        "show me Dufferin",
+        _graph_state(),
+        classification={"intent": "focus", "road_name": "Dufferin"},
+    )
+    assert out["view"]["road_name"] == "Dufferin Street"
+    assert "dufferin" in out["view"]["edge_ids"]
+
+
 @pytest.mark.spark
 def test_live_nemotron_parses_rehearsed_prompts():
     import urllib.error

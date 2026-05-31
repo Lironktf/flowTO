@@ -18,6 +18,7 @@ const PLAN = {
 vi.mock("../src/api/client", () => ({
   api: {
     copilotRoute: vi.fn(async () => ({ mode: "plan", intent: "close_road", result: PLAN })),
+    copilotFollowups: vi.fn(async () => ({ prompts: [] })),
     copilotAgent: vi.fn(),
   },
   copilotStream: vi.fn(),

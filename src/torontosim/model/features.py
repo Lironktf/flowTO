@@ -112,14 +112,39 @@ def season_from_month(month: int) -> str:
 def normalize_time_context(tc: dict) -> dict:
     """Fill in derivable fields so callers can pass a partial context.
 
-    Required: hour. Everything else gets a sensible default.
-      - day_of_week: 0=Mon .. 6=Sun (default 2 = Wednesday)
-      - month: 1-12 (default 6)
+    Canonical inputs (see ``torontosim.timeofday``): ``minute`` (minute-of-day
+    0–1439) and ``day_of_year`` (1–365 in YEAR). When present they are the source
+    of truth and the rest is derived from them — so the frontend only has to send
+    those two and the simulator gets a consistent context every time.
+
+      - hour: derived from ``minute`` if given, else taken/defaulted (0–23)
+      - day_of_week / month: derived from ``day_of_year`` if given, else
+        taken/defaulted (day_of_week 0=Mon..6=Sun, default 2 = Wednesday)
       - is_weekend: derived from day_of_week if absent
       - season: derived from month if absent
       - weather: default 'clear'
     """
+    from ..timeofday import (
+        clamp_minute_of_day,
+        day_of_year_to_parts,
+        minute_of_day_to_hour,
+    )
+
     out = dict(tc or {})
+
+    # Minute-of-day is the canonical time-of-day → derive the hour from it.
+    if out.get("minute") is not None:
+        out["minute"] = clamp_minute_of_day(out["minute"])
+        out["hour"] = minute_of_day_to_hour(out["minute"])
+    # Day-of-year is the canonical date and WINS over any carried-forward
+    # month/day_of_week (so re-timing to a new date actually updates them).
+    if out.get("day_of_year") is not None:
+        parts = day_of_year_to_parts(out["day_of_year"])
+        out["month"] = parts["month"]
+        out["day_of_week"] = parts["day_of_week"]
+        out["is_weekend"] = parts["is_weekend"]
+        out["season"] = season_from_month(parts["month"])
+
     out["hour"] = int(out.get("hour", 8))
     out["day_of_week"] = int(out.get("day_of_week", 2))
     out["month"] = int(out.get("month", 6))

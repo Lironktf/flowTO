@@ -31,6 +31,9 @@ Requires-Dist: xgboost>=2.0; extra == "model"
 Provides-Extra: gpu
 Requires-Dist: cudf-cu13; extra == "gpu"
 Requires-Dist: cugraph-cu13; extra == "gpu"
+Provides-Extra: gnn
+Requires-Dist: torch>=2.0; extra == "gnn"
+Requires-Dist: torch-geometric>=2.5; extra == "gnn"
 Provides-Extra: ai
 Requires-Dist: ollama>=0.3; extra == "ai"
 Requires-Dist: sentence-transformers>=3.0; extra == "ai"
@@ -71,7 +74,7 @@ graph recolored by the assignment engine, not canned data.
 make install          # Python 3.12 or 3.13 venv + pip install -e ".[dev,api,data]"
 make test             # pytest -q -m "not spark" → 124 passed, 4 skipped, 2 deselected
 
-# 2. Run the API (loads the real graph, warms the demo cache)
+# 2. Run the API (loads the real graph, warms the baseline assignment)
 scripts/run_api.sh                         # http://localhost:8000  (OpenAPI at /docs)
 
 # 3. Run the frontend (proxies /api → :8000)
@@ -92,6 +95,12 @@ Then open **:5173**, click **Load the twin**, and use the **Simulate / Edit**
 switch. The 90-second run-of-show is in [`demo/RUNBOOK.md`](demo/RUNBOOK.md);
 phase-by-phase test commands in [`docs/specs/TESTING.md`](docs/specs/TESTING.md);
 browser QA in [`docs/specs/VISUAL_TESTING.md`](docs/specs/VISUAL_TESTING.md).
+
+On the first click, the browser downloads the 81,669-edge Toronto graph, builds
+its local intersection index, and reveals the map. Baseline pressures are then
+painted as soon as the API's background assignment warm-up finishes. The API
+warms only that initial baseline; surge and fix scenarios are computed on
+demand.
 
 ---
 

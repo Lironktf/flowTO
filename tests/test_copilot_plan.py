@@ -60,20 +60,21 @@ def test_plan_refuses_hard_constraint_breach():
     assert any("880" in c.ref for c in out.citations)
 
 
-def test_router_hero_returns_cited_preview():
-    # The classifier maps "ease gridlock" to the mitigate intent; we pass it
-    # directly so the test is deterministic without a live model.
+def test_router_mitigate_invokes_optimizer():
+    # De-hardcoded: "ease congestion" (mitigate) no longer returns a rehearsed
+    # script — it routes to the sim-verified optimizer for a real, scored plan.
     out = plan_intervention(
-        "Ease post-match gridlock near BMO Field without breaking bylaws.",
-        _FakeState(),
+        "Ease congestion on Strachan near BMO Field.",
+        _graph_state(),
         classification={"intent": "mitigate"},
     )
     assert out["tool"] == "preview_intervention"
-    assert out["requires_user_confirmation"] is True
-    refs = [c["ref"] for c in out["citations"]]
-    assert any("950" in r for r in refs)
-    assert "retrieved_policy" in out
     assert out["intent"] == "mitigate"
+    assert "retrieved_policy" in out
+    # When it proposes actions, they're cited to the optimizer (not invented bylaws).
+    if out["interventions"]:
+        assert any("Optimizer" in c["ref"] for c in out["citations"])
+        assert out["requires_user_confirmation"] is True
 
 
 def test_router_blocked_request_refuses_unchanged():

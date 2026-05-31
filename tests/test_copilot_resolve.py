@@ -149,6 +149,32 @@ def test_dispatch_focus_passes_place_through_for_geocoding():
     assert not call.view.edge_ids  # no road framed → frontend resolves the place
 
 
+def test_parse_minute_deterministic_clock_and_named():
+    # Time parsing must be deterministic in code, not reliant on the model's flaky
+    # clock arithmetic (the '6am -> defaults to 17:00' bug).
+    pm = planner._parse_minute
+    assert pm("show me 6 am") == 360
+    assert pm("show me 6am") == 360
+    assert pm("jump to 8am") == 480
+    assert pm("show me midnight") == 0
+    assert pm("show me noon") == 720
+    assert pm("show me 14:30") == 870
+    assert pm("show me 12pm") == 720
+    assert pm("show me 12am") == 0
+    assert pm("show rush hour") == 1020
+    assert pm("show the morning") == 480
+    assert pm("close King Street") is None  # no time mentioned
+
+
+def test_dispatch_set_time_uses_deterministic_parse_over_model():
+    # Even if the model returned a wrong/None minute, the deterministic parse wins.
+    call = planner._dispatch(
+        "show me 6 am", _state(), _cls(intent="set_time", minute=None), live=False
+    )
+    assert call.view is not None and call.view.action == "time"
+    assert call.view.minute == 360
+
+
 def test_dispatch_set_time_returns_time_view():
     call = planner._dispatch(
         "show rush hour", _state(), _cls(intent="set_time", minute=1020), live=False

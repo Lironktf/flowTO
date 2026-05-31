@@ -37,6 +37,48 @@ def _is_superlative_ref(text: str) -> bool:
     return bool(_SUPERLATIVE_RE.search(t)) or t in _GENERIC_NOUNS
 
 
+# Deterministic minute-of-day parse for set_time, so the time never depends on the
+# model doing clock arithmetic (which it does unreliably — temperature 0 isn't
+# perfectly deterministic on GPU, so 'show me 6am' would sometimes fall back to the
+# 5pm default). Named periods first (specific before generic), then a clock match.
+_NAMED_MINUTES: list[tuple[tuple[str, ...], int]] = [
+    (("midnight",), 0),
+    (("noon", "midday", "mid-day"), 720),
+    (("morning rush", "morning peak", "am peak", "am rush"), 480),
+    (("evening rush", "evening peak", "pm peak", "pm rush", "rush hour", "rush-hour"), 1020),
+    (("overnight", "late night", "late-night"), 180),
+    (("morning",), 480),
+    (("afternoon",), 900),
+    (("evening",), 1020),
+    (("tonight",), 1320),
+]
+_CLOCK_RE = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?", re.I)
+
+
+def _parse_minute(prompt: str) -> int | None:
+    """Minute-of-day (0–1439) from free text, or None if no time is mentioned.
+
+    Handles named periods ('midnight', 'rush hour', 'morning') and clock times
+    ('6 am', '8am', '14:30', '12pm')."""
+    t = (prompt or "").lower()
+    for keys, mins in _NAMED_MINUTES:
+        if any(k in t for k in keys):
+            return mins
+    for m in _CLOCK_RE.finditer(t):
+        hh, mm = int(m.group(1)), int(m.group(2) or 0)
+        if hh > 24 or mm >= 60:
+            continue
+        ap = (m.group(3) or "").replace(".", "")
+        if ap == "am":
+            return ((0 if hh == 12 else hh) % 24) * 60 + mm
+        if ap == "pm":
+            return ((hh if hh == 12 else hh + 12) % 24) * 60 + mm
+        if m.group(2) is not None:  # explicit "HH:MM" with no am/pm → 24-hour clock
+            return (hh % 24) * 60 + mm
+        # a bare number with no colon and no am/pm is too ambiguous — skip it
+    return None
+
+
 def _live_enabled() -> bool:
     """Live Nemotron is on when TS_COPILOT_LIVE is truthy (default: on)."""
     return os.environ.get("TS_COPILOT_LIVE", "1").lower() not in ("0", "false", "no", "")
@@ -424,7 +466,15 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
     if intent == "focus":
         return _focus_call(state, cls)
     if intent == "set_time":
-        minute = int(cls.minute) % 1440 if cls.minute is not None else 1020  # default 5pm peak
+        # Deterministic parse is authoritative (the model's clock math is flaky);
+        # fall back to the model's minute, then to the 5pm peak default.
+        parsed = _parse_minute(prompt)
+        if parsed is not None:
+            minute = parsed % 1440
+        elif cls.minute is not None:
+            minute = int(cls.minute) % 1440
+        else:
+            minute = 1020  # default 5pm peak
         hh, mm = divmod(minute, 60)
         return ToolCall(
             tool="answer",

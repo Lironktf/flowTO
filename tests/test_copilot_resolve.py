@@ -140,6 +140,14 @@ def test_answer_congestion_survives_tied_pressure_and_unnamed_edges():
     assert isinstance(out, str) and "Congestion is worst" in out
 
 
+def test_suggested_prompts_are_grounded_in_real_road_names():
+    chips = planner.suggested_prompts(_state())
+    assert "Where is congestion worst right now?" in chips
+    # Chips reference actual arterials from the graph, not hardcoded road names.
+    assert any("Lake Shore Boulevard West" in c for c in chips)
+    assert all(isinstance(c, str) and c for c in chips)
+
+
 def test_worst_road_view_fits_most_congested_named_road():
     # A congestion query should fly the camera to the single worst corridor.
     g = nx.MultiDiGraph()

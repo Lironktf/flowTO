@@ -239,6 +239,15 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             payload.get("prompt", ""), state, classification=payload.get("classification")
         )
 
+    @app.get("/copilot/suggestions")
+    def copilot_suggestions():
+        """Dynamic suggestion chips grounded in the real graph (no hardcoded prompts)."""
+        try:
+            from ..copilot.planner import suggested_prompts
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        return {"prompts": suggested_prompts(state)}
+
     @app.post("/copilot/route")
     def copilot_route(payload: dict):
         """Single intent classifier → routing decision (replaces the frontend regex

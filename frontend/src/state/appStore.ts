@@ -34,7 +34,7 @@ import {
   type RoadGraph,
   type Segment,
 } from "../api/graph";
-import { DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
+import { COPILOT_CHIPS, DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
 import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
 
 export type View = "sim" | "edit";
@@ -172,6 +172,8 @@ interface AppState {
   deepMode: boolean; // 🧠 Deep → force the Agent investigate-loop; else auto-route
   copilotReady: boolean; // false until the backend's compare baseline is warm
   copilotThinking: boolean;
+  copilotPendingMode: CopilotMode | null; // resolved mode while thinking → labels the one loader
+  copilotChips: string[]; // suggestion prompts (dynamic from /copilot/suggestions; static fallback)
   copilotLatency: CopilotLatency | null;
   scrubberMinute: number;
   dayOfYear: number;
@@ -488,6 +490,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   deepMode: false,
   copilotReady: false,
   copilotThinking: false,
+  copilotPendingMode: null,
+  copilotChips: [...COPILOT_CHIPS], // replaced by graph-grounded chips once loaded
   copilotLatency: null,
   scrubberMinute: TIMELINE.defaultMin,
   dayOfYear: DEFAULT_DAY_OF_YEAR,
@@ -555,6 +559,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
       void get().loadSavedSims();
+      // Graph-grounded suggestion chips (real road names); static fallback on failure.
+      void api
+        .copilotSuggestions()
+        .then((s) => {
+          if (s.prompts?.length) set({ copilotChips: s.prompts });
+        })
+        .catch(() => {});
       pollBaselineReady(set); // ungate the copilot once the compare baseline is warm
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -644,7 +655,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (last && last.role === "bot" && last.streaming) {
         log[log.length - 1] = { ...last, streaming: false, aborted: true };
       }
-      return { copilotLog: log, copilotThinking: false };
+      return { copilotLog: log, copilotThinking: false, copilotPendingMode: null };
     });
   },
 
@@ -653,7 +664,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     // manual override that forces the agent loop; otherwise /copilot/route runs one
     // intent classification and tells us the surface (and, for plan intents, returns
     // the dispatched plan inline so we don't make a second call).
-    set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }], copilotThinking: true }));
+    set((s) => ({
+      copilotLog: [...s.copilotLog, { role: "user", text }],
+      copilotThinking: true,
+      copilotPendingMode: get().deepMode ? "agent" : null, // deep is known upfront
+    }));
     const controller = new AbortController();
     copilotAbort = controller;
     const { signal } = controller;
@@ -711,6 +726,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         mode = routed.mode;
         routedPlan = routed.result;
       }
+      set({ copilotPendingMode: mode }); // now the single loader can label itself
 
       if (mode === "agent") {
         const res = await api.copilotAgent(text, signal);
@@ -732,8 +748,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         }));
         afterPlan(hasPlan, res.blocked, res.answer, res.citations?.[0]?.ref);
       } else if (mode === "chat") {
-        set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: "", streaming: true, mode: "chat" }] }));
+        // Don't push the streaming bubble upfront — keep the single "thinking"
+        // loader visible until the first token, then start the reply. This way
+        // chat uses the same loader as plan/agent (no separate cursor symbol).
         let first: number | undefined;
+        let started = false;
         const patchLast = (fn: (m: CopilotMessage) => CopilotMessage) =>
           set((s) => {
             const log = s.copilotLog.slice();
@@ -745,10 +764,21 @@ export const useAppStore = create<AppState>((set, get) => ({
           text,
           (tok) => {
             if (first === undefined) first = Math.round(performance.now() - t0);
-            patchLast((m) => ({ ...m, text: m.text + tok }));
+            if (!started) {
+              started = true;
+              set((s) => ({
+                copilotLog: [...s.copilotLog, { role: "bot", text: tok, streaming: true, mode: "chat" }],
+              }));
+            } else {
+              patchLast((m) => ({ ...m, text: m.text + tok }));
+            }
           },
           (done) => {
-            patchLast((m) => ({ ...m, streaming: false }));
+            if (started) patchLast((m) => ({ ...m, streaming: false }));
+            else
+              set((s) => ({
+                copilotLog: [...s.copilotLog, { role: "bot", text: "(no response)", mode: "chat" }],
+              }));
             set({
               copilotLatency: {
                 ms: done.total_ms ?? Math.round(performance.now() - t0),
@@ -778,7 +808,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text }] }));
     } finally {
       if (copilotAbort === controller) copilotAbort = null;
-      set({ copilotThinking: false });
+      set({ copilotThinking: false, copilotPendingMode: null });
     }
   },
 

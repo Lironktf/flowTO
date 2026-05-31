@@ -185,6 +185,7 @@ export const api = {
     jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
   copilotRoute: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotRouteResult>("/copilot/route", { prompt }, signal),
+  copilotSuggestions: () => jget<{ prompts: string[] }>("/copilot/suggestions"),
   copilotAgent: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotAgentResult>("/copilot/agent", { prompt }, signal),
   copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>

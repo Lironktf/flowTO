@@ -55,6 +55,29 @@ def _generic_preview() -> ToolCall:
     )
 
 
+def suggested_prompts(state, n: int = 4) -> list[str]:
+    """Example chips grounded in the REAL graph (no hardcoded road names). Picks
+    the most-segmented major arterials (the recognizable long roads) so the chips
+    reflect this city's network, not a rehearsed script."""
+    base = ["Where is congestion worst right now?"]
+    graph = getattr(state, "graph", None)
+    if graph is None:
+        return base
+    from collections import Counter
+
+    counts: Counter = Counter()
+    for _u, _v, d in graph.edges(data=True):
+        nm = d.get("road_name")
+        if nm and d.get("road_class") in {"motorway", "trunk", "primary"}:
+            counts[nm] += 1
+    top = [nm for nm, _c in counts.most_common(6)]
+    out = list(base)
+    templates = ["What happens if I close {}?", "Show me {}", "Halve capacity on {}"]
+    for tmpl, name in zip(templates, top):
+        out.append(tmpl.format(name))
+    return out[:n]
+
+
 def _optimize_call(state, prompt: str) -> ToolCall:
     """Invoke the P10 optimizer and return its sim-verified plan as a preview."""
     from ..optimizer.heuristic import propose

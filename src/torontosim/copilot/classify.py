@@ -35,6 +35,8 @@ Intent = Literal[
     "reopen_segment",
     "change_capacity",
     "query_congestion",
+    "explain",
+    "inspect",
     "optimize",
     "mitigate",
     "focus",
@@ -75,6 +77,8 @@ _SYSTEM = (
     "  change_capacity — scale a road's capacity; set 'road_name' and 'multiplier' "
     "(0.5 = halve, 1.5 = +50%).\n"
     "  query_congestion — asks where traffic is worst / busiest right now.\n"
+    "  explain — asks WHY a specific named road is congested; put it in 'road_name'.\n"
+    "  inspect — asks for stats/details about a named road (capacity, lanes, load); put it in 'road_name'.\n"
     "  optimize — asks for the best / recommended plan (let the optimizer decide).\n"
     "  mitigate — asks to ease / relieve congestion near a place; put the place in 'road_name'.\n"
     "  focus — asks to SHOW / zoom / fly to a place on the map (no change); put it in 'road_name'.\n"

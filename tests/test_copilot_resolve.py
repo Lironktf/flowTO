@@ -182,6 +182,79 @@ def test_worst_road_view_fits_most_congested_named_road():
     assert view.edge_ids == ["k1"]
 
 
+def _baseline_state_with_pressure():
+    """A fake state whose baseline graph has live pressure/load + a feeder road."""
+    g = nx.MultiDiGraph()
+    g.add_node(0, x=-79.41, y=43.63)
+    g.add_node(1, x=-79.40, y=43.63)
+    g.add_node(3, x=-79.42, y=43.63)
+    # King St West: over capacity (congested).
+    g.add_edge(
+        0,
+        1,
+        key=0,
+        edge_id="k1",
+        road_name="King Street West",
+        road_class="primary",
+        from_node=0,
+        to_node=1,
+        lanes=2,
+        capacity=500,
+        pressure=1.2,
+        load=600,
+        status="open",
+    )
+    # Bathurst St: flows INTO node 1 → an upstream feeder of King.
+    g.add_edge(
+        3,
+        1,
+        key=0,
+        edge_id="b1",
+        road_name="Bathurst Street",
+        road_class="secondary",
+        from_node=3,
+        to_node=1,
+        lanes=2,
+        capacity=400,
+        pressure=0.9,
+        load=350,
+        status="open",
+    )
+
+    class _S:
+        def baseline(self):
+            return {"graph": g}
+
+    return _S()
+
+
+def test_dispatch_explain_names_binding_constraint_and_feeder():
+    call = planner._dispatch(
+        "why is king jammed",
+        _baseline_state_with_pressure(),
+        _cls(intent="explain", road_name="King Street West"),
+        live=False,
+    )
+    assert call.tool == "answer"
+    assert "King Street West" in call.rationale
+    assert "capacity" in call.rationale  # binding constraint named
+    assert "Bathurst Street" in call.rationale  # the upstream feeder
+    assert call.view is not None and call.view.action == "fit"
+
+
+def test_dispatch_inspect_reports_road_stats():
+    call = planner._dispatch(
+        "stats on king",
+        _baseline_state_with_pressure(),
+        _cls(intent="inspect", road_name="King Street West"),
+        live=False,
+    )
+    assert call.tool == "answer"
+    assert "King Street West" in call.rationale
+    assert "lane" in call.rationale
+    assert call.requires_user_confirmation is False
+
+
 def test_dispatch_unresolvable_road_answers_not_found():
     call = planner._dispatch(
         "close the moon",

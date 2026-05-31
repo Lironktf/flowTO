@@ -165,6 +165,114 @@ def _worst_road_view(state) -> ViewDirective | None:
     return ViewDirective(action="fit", road_name=best_name, edge_ids=edge_ids)
 
 
+def _segments_for_road(graph, road_name) -> dict | None:
+    """Resolve a road name to its matched name + segment data + edge_ids."""
+    from .resolve import road_edges_by_name
+
+    res = road_edges_by_name(graph, road_name)
+    if not res.get("found"):
+        return None
+    name = res["road_name"]
+    segs, eids = [], []
+    for _u, _v, d in graph.edges(data=True):
+        if d.get("road_name") == name:
+            segs.append(d)
+            if d.get("edge_id"):
+                eids.append(d["edge_id"])
+    return {"name": name, "segs": segs, "edge_ids": eids}
+
+
+def _read_graph(state):
+    """Prefer the cached baseline (has live pressure/load); else the static graph."""
+    try:
+        return state.baseline()["graph"]
+    except Exception:  # noqa: BLE001
+        return getattr(state, "graph", None)
+
+
+def _inspect_road(state, cls) -> ToolCall:
+    """Flat stats for a named road (read-only)."""
+    graph = _read_graph(state)
+    if graph is None:
+        return _generic_preview()
+    info = _segments_for_road(graph, cls.road_name)
+    if info is None:
+        return ToolCall(
+            tool="answer",
+            rationale=f"I couldn't find a road matching {cls.road_name!r}.",
+            requires_user_confirmation=False,
+        )
+    segs = info["segs"]
+    cls_name = next((s.get("road_class") for s in segs if s.get("road_class")), "road")
+    lanes = max((s.get("lanes") or 0) for s in segs) if segs else 0
+    cap = sum((s.get("capacity") or 0) for s in segs) / max(1, len(segs))
+    pressures = [s.get("pressure") for s in segs if isinstance(s.get("pressure"), (int, float))]
+    load = sum((s.get("load") or 0) for s in segs)
+    closed = sum(1 for s in segs if s.get("status") == "closed")
+    avg_p = sum(pressures) / len(pressures) if pressures else 0.0
+    rationale = (
+        f"{info['name']}: {cls_name}, {int(lanes)} lane(s), {len(segs)} segment(s)"
+        + (f", {closed} closed" if closed else "")
+        + f". Avg capacity ~{cap:.0f} veh/h; current v/c {avg_p:.2f}, load {load:.0f}."
+    )
+    return ToolCall(
+        tool="answer",
+        rationale=rationale,
+        view=ViewDirective(action="fit", road_name=info["name"], edge_ids=info["edge_ids"]),
+        requires_user_confirmation=False,
+    )
+
+
+def _explain_congestion(state, cls) -> ToolCall:
+    """Explain WHY a named road is congested: binding constraint + top feeder roads."""
+    graph = _read_graph(state)
+    if graph is None:
+        return _generic_preview()
+    info = _segments_for_road(graph, cls.road_name)
+    if info is None:
+        return ToolCall(
+            tool="answer",
+            rationale=f"I couldn't find a road matching {cls.road_name!r}.",
+            requires_user_confirmation=False,
+        )
+    name, segs = info["name"], info["segs"]
+    pressures = [s.get("pressure") for s in segs if isinstance(s.get("pressure"), (int, float))]
+    avg_p = sum(pressures) / len(pressures) if pressures else 0.0
+    over = sum(1 for p in pressures if p > 1.0)
+    load = sum((s.get("load") or 0) for s in segs)
+    cap = sum((s.get("capacity") or 0) for s in segs) / max(1, len(segs))
+
+    # Upstream feeders: roads whose edges flow INTO this road's nodes.
+    road_nodes = {s.get("from_node") for s in segs} | {s.get("to_node") for s in segs}
+    feeders: dict = {}
+    for n in road_nodes:
+        if n is None or n not in graph:
+            continue
+        for _u, _v, d in graph.in_edges(n, data=True):
+            rn = d.get("road_name")
+            if rn and rn != name:
+                feeders[rn] = feeders.get(rn, 0.0) + (d.get("load") or 0.0)
+    top = [r for r in sorted(feeders, key=lambda r: -feeders[r]) if feeders[r] > 0][:2]
+
+    if avg_p < 0.5 and not over:
+        why = f"{name} isn't congested right now (v/c {avg_p:.2f})."
+    else:
+        binding = "demand exceeds its capacity" if load > cap else "it's near capacity"
+        why = (
+            f"{name} is congested (v/c {avg_p:.2f}"
+            + (f", {over} segment(s) over capacity" if over else "")
+            + f"): {binding} (load {load:.0f} vs ~{cap:.0f} veh/h)."
+        )
+        if top:
+            why += " Most inflow comes from " + " and ".join(top) + "."
+    return ToolCall(
+        tool="answer",
+        rationale=why,
+        view=ViewDirective(action="fit", road_name=name, edge_ids=info["edge_ids"]),
+        requires_user_confirmation=False,
+    )
+
+
 def _resolve_command(state, cls) -> ToolCall:
     """A close/reopen intent → a preview ToolCall via deterministic resolution.
 
@@ -259,6 +367,10 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
             view=_worst_road_view(state),
             requires_user_confirmation=False,
         )
+    if intent == "explain":
+        return _explain_congestion(state, cls)
+    if intent == "inspect":
+        return _inspect_road(state, cls)
     # Both "make it better" intents go to the sim-verified optimizer — a real,
     # scored plan, not a rehearsed script. (mitigate folds into optimize.)
     if intent in ("optimize", "mitigate"):

@@ -311,6 +311,9 @@ interface AppState {
   /** Resolve free text (road, else place) via the omnibox resolver and fly to it.
    *  Returns true if something was found. Used by the copilot's focus fallback. */
   focusQuery: (query: string) => Promise<boolean>;
+  /** Rebuild the baseline demand at the current scrubber time + selected date so the
+   *  simulation reflects that time-of-day (commute direction + rush factor). Heavy. */
+  retimeBaseline: () => Promise<void>;
   toggleTilt: () => void;
   reset: () => Promise<void>;
 }
@@ -1289,6 +1292,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!hit) return false;
     await get().flyToHit(hit);
     return true;
+  },
+
+  retimeBaseline: async () => {
+    const { scrubberMinute, dayOfYear } = get();
+    await recomputeAround(set, "Re-deriving demand for this time…", async () => {
+      try {
+        const res = await api.retimeBaseline(scrubberMinute, dayOfYear);
+        paintRecords(set, res.records); // repaint the map at the new time's baseline
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        set({ error: `Retime failed (${msg}).` });
+      }
+    });
   },
 
   reset: async () => {

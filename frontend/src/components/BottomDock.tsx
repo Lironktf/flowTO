@@ -29,6 +29,8 @@ export function BottomDock() {
   const setSpeed = useAppStore((s) => s.setSpeed);
   const dayOfYear = useAppStore((s) => s.dayOfYear);
   const setDayOfYear = useAppStore((s) => s.setDayOfYear);
+  const retimeBaseline = useAppStore((s) => s.retimeBaseline);
+  const recomputing = useAppStore((s) => s.recomputing);
   const selectedRoadId = useAppStore((s) => s.selectedRoadId);
   const selectRoad = useAppStore((s) => s.selectRoad);
   const graph = useAppStore((s) => s.graph);
@@ -140,6 +142,14 @@ export function BottomDock() {
         <div className="tl-clock">
           <span className="t">{fmtClock(minute)}</span>
           <span className="dow">{dateLabel(dayOfYear)}</span>
+          <button
+            className="tbtn retime"
+            title="Re-run the simulation with demand for this time of day & date (rush-hour direction, volume). Takes a moment."
+            disabled={recomputing}
+            onClick={() => void retimeBaseline()}
+          >
+            <Icon.clock />
+          </button>
         </div>
 
         <div className="day-control">

@@ -82,6 +82,9 @@ def main(argv=None) -> int:
     p.add_argument("--sim-backend", default="gpu",
                    help="equilibrium solver backend: gpu (cuGraph, GB10) | scipy | cpu; "
                         "gpu auto-falls back to cpu if cuGraph errors")
+    p.add_argument("--residual-solver", default="blast", choices=["blast", "full"],
+                   help="blast = re-route only affected bundles (fast, AON); "
+                        "full = re-solve the whole equilibrium per closure (verified, slow)")
     p.add_argument("--max-iter", type=int, default=50)
     p.add_argument("--rgap", type=float, default=1e-3)
     p.add_argument("--epochs", type=int, default=300)
@@ -129,6 +132,7 @@ def main(argv=None) -> int:
     t1 = time.time()
     residuals, coverage, sim_open_full = build_real_residuals(
         graph, factory_rows, od,
+        solver=args.residual_solver,
         backend=args.sim_backend, max_iter=args.max_iter, rgap=args.rgap,
     )
     print(f"[residuals] {coverage} in {time.time() - t1:.0f}s")

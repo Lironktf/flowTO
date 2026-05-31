@@ -21,6 +21,9 @@ export const HAS_MAPBOX_TOKEN = MAPBOX_TOKEN.length > 0;
 /** The Standard slot our congestion streets live in (above roads, below labels). */
 export const CONGESTION_SLOT = "middle" as const;
 
+/** Minimum zoom level supported by the tilted 3-D view. */
+export const THREE_D_MIN_ZOOM = 12;
+
 /** The four light presets Mapbox Standard ships. */
 export type LightPreset = "dawn" | "day" | "dusk" | "night";
 
@@ -116,14 +119,14 @@ export function addEarlyBuildings(map: StyleMap | null | undefined, dark: boolea
       source: "mapbox-streets",
       "source-layer": "building",
       slot: "middle",
-      minzoom: 12.5,
+      minzoom: THREE_D_MIN_ZOOM,
       maxzoom: 16,
       filter: ["==", ["get", "extrude"], "true"],
       paint: {
         "fill-extrusion-color": earlyBuildingColor(dark),
         "fill-extrusion-height": ["get", "height"],
         "fill-extrusion-base": ["get", "min_height"],
-        "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 12.5, 0, 14, 0.65, 15.5, 1],
+        "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], THREE_D_MIN_ZOOM, 0, 14, 0.65, 15.5, 1],
       },
     });
   } catch {

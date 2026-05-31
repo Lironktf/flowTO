@@ -27,6 +27,10 @@ import {
   setStandardConfig,
   STANDARD_STYLE,
 } from "../lib/mapbox";
+import {
+  cameraForView,
+  minZoomForView,
+} from "../lib/mapViewToggle";
 import { pressureRamp } from "../lib/pressureRamp";
 import { nearestNode, streetsByDirection } from "../api/graph";
 import { RECOMPUTE_STEPS, useAppStore } from "../state/appStore";
@@ -134,13 +138,13 @@ export function MapCanvas() {
     return () => { alive = false; };
   }, []);
 
-  // Camera: ease pitch/bearing on view + tilt; flyTo on recenter.
+  // A tilted map stays inside the 3-D range. Top-down clears the clamp so the
+  // user can zoom out freely without triggering a camera-mode transition.
   useEffect(() => {
     const m = mapRef.current?.getMap();
     if (!m) return;
-    const pitch = tiltOn ? 52 : 0;
-    const bearing = tiltOn ? -18 : 0;
-    m.easeTo({ pitch, bearing, duration: 700 });
+    const mapView = tiltOn ? "3D" : "2D";
+    m.easeTo({ ...cameraForView(mapView), duration: 700 });
     // The viewport box can change size when switching views (sidebars/panels);
     // resize once the layout has settled so the canvas isn't clipped/stretched.
     const t = setTimeout(() => mapRef.current?.getMap()?.resize(), 320);
@@ -474,6 +478,7 @@ export function MapCanvas() {
           ref={mapRef}
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
+          minZoom={minZoomForView(tiltOn ? "3D" : "2D")}
           mapStyle={STANDARD_STYLE}
           // Flat Mercator at every zoom — Mapbox's default 'globe' curves the
           // earth when you zoom out, which looks wrong for a city twin. Mercator
@@ -487,9 +492,13 @@ export function MapCanvas() {
             applyLightPreset(m as never, lightPresetForMinute(st.scrubberMinute, st.dayOfYear));
             setShow3dObjects(m as never, true);
             addEarlyBuildings(m as never, st.theme === "dark");
+            console.log("[MapCanvas] zoom:", m.getZoom());
           }}
           onClick={(e) => {
             if (placing) void placeAt([e.lngLat.lng, e.lngLat.lat]);
+          }}
+          onZoom={(e) => {
+            console.log("[MapCanvas] zoom:", e.viewState.zoom);
           }}
           style={{ position: "absolute", inset: 0 }}
         >

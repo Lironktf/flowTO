@@ -233,7 +233,30 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             from ..copilot.planner import plan_intervention
         except ImportError:
             raise HTTPException(501, "copilot not available (P09 not installed)") from None
-        return plan_intervention(payload.get("prompt", ""), state)
+        # An optional pre-computed classification ({"intent": ...}) drives dispatch
+        # deterministically (used by /route and by tests/debug to skip the model).
+        return plan_intervention(
+            payload.get("prompt", ""), state, classification=payload.get("classification")
+        )
+
+    @app.post("/copilot/route")
+    def copilot_route(payload: dict):
+        """Single intent classifier → routing decision (replaces the frontend regex
+        + backend keyword cascade). For plan-mode intents the dispatched ToolCall is
+        returned inline (no second hop); chat/agent modes tell the frontend which
+        streaming / loop endpoint to call. The classification is reused for dispatch
+        so the model classifies exactly once."""
+        try:
+            from ..copilot.classify import classify
+            from ..copilot.planner import plan_intervention
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        prompt = payload.get("prompt", "")
+        cls = classify(prompt)
+        out: dict = {"mode": cls.mode, "intent": cls.intent}
+        if cls.mode == "plan":
+            out["result"] = plan_intervention(prompt, state, classification=cls)
+        return out
 
     @app.post("/copilot/explain")
     def copilot_explain(payload: dict):

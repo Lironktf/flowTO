@@ -70,14 +70,34 @@ export interface Intervention {
   lng?: number;
 }
 
+export interface ViewDirective {
+  action: "fit" | "fly" | "select" | "recenter" | "tilt" | "time";
+  road_name?: string | null;
+  edge_ids?: string[];
+  lng?: number | null;
+  lat?: number | null;
+  zoom?: number | null;
+}
+
 export interface CopilotResponse {
   tool: string;
   rationale: string;
   interventions: Intervention[];
   citations: { ref: string; note: string }[];
+  warnings?: { severity?: string; title?: string; detail?: string; ref?: string | null }[];
+  view?: ViewDirective | null;
   requires_user_confirmation: boolean;
   blocked: boolean;
+  intent?: string;
   retrieved_policy?: { doc_id: string; title: string; source: string }[];
+}
+
+/** /copilot/route — the single classifier's decision. For plan-mode intents the
+ *  dispatched plan rides inline in `result` (no second hop). */
+export interface CopilotRouteResult {
+  mode: "plan" | "chat" | "agent";
+  intent: string;
+  result?: CopilotResponse;
 }
 
 export interface CopilotConfirmResult {
@@ -163,6 +183,8 @@ export const api = {
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
+  copilotRoute: (prompt: string, signal?: AbortSignal) =>
+    jpost<CopilotRouteResult>("/copilot/route", { prompt }, signal),
   copilotAgent: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotAgentResult>("/copilot/agent", { prompt }, signal),
   copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>

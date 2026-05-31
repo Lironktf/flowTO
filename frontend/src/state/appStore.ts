@@ -22,6 +22,7 @@ import {
   type EdgeMeta,
   type Intervention,
   type ScenarioSummary,
+  type ViewDirective,
 } from "../api/client";
 import {
   buildGraph,
@@ -337,6 +338,45 @@ function pollBaselineReady(set: SetFn) {
   void tick();
 }
 
+/** Map-frame bounds [[minLng,minLat],[maxLng,maxLat]] for a copilot ViewDirective.
+ *  Prefers the resolved edge_ids; falls back to matching the road_name across the
+ *  graph. Returns null when nothing resolves (the camera just stays put). */
+function bboxForView(
+  graph: RoadGraph | null,
+  view: ViewDirective,
+): [[number, number], [number, number]] | null {
+  if (!graph) return null;
+  let ids = view.edge_ids ?? [];
+  if (!ids.length && view.road_name) {
+    const want = view.road_name.toLowerCase();
+    ids = [];
+    for (const [id, seg] of graph.byId) {
+      if ((seg.road_name ?? "").toLowerCase().includes(want)) ids.push(id);
+    }
+  }
+  let minLng = Infinity,
+    minLat = Infinity,
+    maxLng = -Infinity,
+    maxLat = -Infinity,
+    n = 0;
+  for (const id of ids) {
+    const seg = graph.byId.get(id);
+    if (!seg?.geometry) continue;
+    for (const [lat, lng] of seg.geometry) {
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      n++;
+    }
+  }
+  if (!n) return null;
+  return [
+    [minLng, minLat],
+    [maxLng, maxLat],
+  ];
+}
+
 /** Build an Edit-mode closure scene object from copilot-proposed edge_ids, so a
  *  copilot closure shows identically to a manual one (marker, inspector, sealed
  *  edges) and applies through the same applyEdits → /scenarios + /run path. */
@@ -609,12 +649,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   copilotAsk: async (text) => {
-    // Auto-route: Deep → agent; a question → chat (stream); else → plan (which
-    // internally resolves close/segment/congestion commands or makes a plan).
-    const isQuestion =
-      /\?\s*$/.test(text) ||
-      /^(why|what|how|when|where|who|which|is|are|does|do|can|could|should|tell|explain)\b/i.test(text.trim());
-    const mode: CopilotMode = get().deepMode ? "agent" : isQuestion ? "chat" : "plan";
+    // Single classifier routes (replaces the old isQuestion regex). Deep mode is a
+    // manual override that forces the agent loop; otherwise /copilot/route runs one
+    // intent classification and tells us the surface (and, for plan intents, returns
+    // the dispatched plan inline so we don't make a second call).
     set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }], copilotThinking: true }));
     const controller = new AbortController();
     copilotAbort = controller;
@@ -633,9 +671,47 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (blocked) return flashBlocked(detail, ref);
       if (hasPlan) set({ planStaged: true });
     };
+    // Execute a read-only camera move from the copilot (auto-focus on the road it
+    // proposes / the place you asked to see). No confirm — it only moves the view.
+    const applyView = (view?: ViewDirective | null) => {
+      if (!view) return;
+      if (view.action === "recenter") return get().recenter();
+      if (view.action === "fly" && view.lng != null && view.lat != null)
+        return get().flyToLocation(view.lng, view.lat, view.zoom ?? undefined);
+      const bbox = bboxForView(get().graph, view);
+      if (bbox) get().fitToBounds(bbox);
+    };
+    const renderPlan = (resp: CopilotResponse) => {
+      const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
+      set((s) => ({
+        copilotLog: [
+          ...s.copilotLog,
+          {
+            role: "bot",
+            text: resp.rationale,
+            citations: resp.citations,
+            blocked: resp.blocked,
+            interventions: confirmable ? resp.interventions : undefined,
+            mode: "plan",
+          },
+        ],
+        copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
+      }));
+      applyView(resp.view);
+      afterPlan(confirmable, resp.blocked, resp.rationale, resp.citations?.[0]?.ref);
+    };
     const t0 = performance.now();
 
     try {
+      // Deep override → agent; else classify once via /route.
+      let mode: CopilotMode = "agent";
+      let routedPlan: CopilotResponse | undefined;
+      if (!get().deepMode) {
+        const routed = await api.copilotRoute(text, signal);
+        mode = routed.mode;
+        routedPlan = routed.result;
+      }
+
       if (mode === "agent") {
         const res = await api.copilotAgent(text, signal);
         const hasPlan = res.requires_user_confirmation && res.interventions.length > 0;
@@ -684,23 +760,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           signal,
         );
       } else {
-        const resp: CopilotResponse = await api.copilotPlan(text, signal);
-        const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
-        set((s) => ({
-          copilotLog: [
-            ...s.copilotLog,
-            {
-              role: "bot",
-              text: resp.rationale,
-              citations: resp.citations,
-              blocked: resp.blocked,
-              interventions: confirmable ? resp.interventions : undefined,
-              mode: "plan",
-            },
-          ],
-          copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
-        }));
-        afterPlan(confirmable, resp.blocked, resp.rationale, resp.citations?.[0]?.ref);
+        // plan mode — /route already dispatched the plan; fall back to /plan only
+        // if the inline result is somehow missing (defensive).
+        const resp = routedPlan ?? (await api.copilotPlan(text, signal));
+        renderPlan(resp);
       }
     } catch (e) {
       // User-initiated Stop (AbortError) is handled in copilotStop — stay quiet.

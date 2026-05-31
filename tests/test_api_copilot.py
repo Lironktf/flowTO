@@ -15,7 +15,10 @@ def _client():
 def test_copilot_plan_hero_returns_cited_preview():
     r = _client().post(
         "/copilot/plan",
-        json={"prompt": "Ease post-match gridlock near BMO Field without breaking bylaws."},
+        json={
+            "prompt": "Ease post-match gridlock near BMO Field without breaking bylaws.",
+            "classification": {"intent": "mitigate"},
+        },
     )
     assert r.status_code == 200
     body = r.json()
@@ -30,6 +33,17 @@ def test_copilot_plan_blocked_refuses():
     body = r.json()
     assert body["blocked"] is True
     assert any("880" in c["ref"] for c in body["citations"])
+
+
+def test_copilot_route_classifies_and_dispatches_inline():
+    # /route is the single classifier entry. Offline (no model) it degrades to a
+    # chat-mode decision and must never 500. A pre-classified plan intent dispatches
+    # inline so the frontend skips a second hop.
+    r = _client().post("/copilot/route", json={"prompt": "hello there"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] in ("chat", "plan", "agent")
+    assert "intent" in body
 
 
 def test_copilot_explain_summarizes_deltas():
@@ -53,7 +67,13 @@ def test_optimize_endpoint_returns_ranked_plan():
 def test_copilot_optimize_intent_invokes_optimizer():
     # "optimize" routes through the copilot to the P10 optimizer and returns a
     # confirmable preview (or a no-improvement note) — never a raw error.
-    r = _client().post("/copilot/plan", json={"prompt": "Optimize the network to cut congestion."})
+    r = _client().post(
+        "/copilot/plan",
+        json={
+            "prompt": "Optimize the network to cut congestion.",
+            "classification": {"intent": "optimize"},
+        },
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["tool"] == "preview_intervention"

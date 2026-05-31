@@ -27,3 +27,6 @@ frontend/dist/
 
 # Logs
 *.log
+
+# Playwright MCP transient snapshots
+.playwright-mcp/

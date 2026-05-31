@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { BottomDock } from "./components/BottomDock";
 import { CopilotRegion } from "./components/CopilotPanel";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FirstRun } from "./components/FirstRun";
 import { LeftDock } from "./components/LeftDock";
 import { MapCanvas } from "./components/MapCanvas";
@@ -27,7 +28,7 @@ export default function App() {
   }, [view, showLeft, showRight, showBottom, showRail]);
 
   return (
-    <>
+    <ErrorBoundary label="FlowTO">
       <div id="shell">
         <TopBar />
         <div id="rail">
@@ -44,11 +45,26 @@ export default function App() {
         </div>
         <div id="dock-right" className="dock">
           <RightDock />
-          <CopilotRegion />
+          <ErrorBoundary label="Copilot">
+            <CopilotRegion />
+          </ErrorBoundary>
         </div>
         <StatusBar />
       </div>
       <FirstRun />
-    </>
+      {/* Tiny-window guard: FlowTO is a desktop ops tool; hidden unless the window is too narrow. */}
+      <div id="smallscreen-notice">
+        <div className="ssn-card">
+          <span className="mark">
+            Flow<b>TO</b>
+          </span>
+          <div className="ssn-t">Best on a larger screen</div>
+          <div className="ssn-s">
+            FlowTO's live map, timeline, and copilot need a wider viewport. Open it on a desktop or
+            widen this window.
+          </div>
+        </div>
+      </div>
+    </ErrorBoundary>
   );
 }

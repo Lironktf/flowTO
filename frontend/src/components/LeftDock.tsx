@@ -47,7 +47,12 @@ function SavedSims() {
         {dirty && <div className="dirty-note">Unsaved changes — Save to {activeId ? "update" : "create"}.</div>}
         <div className="scn">
           {savedSims.length === 0 ? (
-            <div className="outliner-empty">No saved simulations yet. Edit the network, then Save.</div>
+            <div className="outliner-empty">
+              <span className="ee-ico">
+                <Icon.save />
+              </span>
+              No saved simulations yet. Edit the network, then Save.
+            </div>
           ) : (
             savedSims.map((sc) => (
               <div
@@ -138,7 +143,12 @@ function EditPanels() {
         </div>
         <div className="region-body">
           {objects.length === 0 ? (
-            <div className="outliner-empty">No interventions placed. Pick an edit type and click the map.</div>
+            <div className="outliner-empty">
+              <span className="ee-ico">
+                <Icon.pin />
+              </span>
+              No interventions placed. Pick an edit type and click the map.
+            </div>
           ) : (
             <div className="outliner">
               {objects.map((o) => (

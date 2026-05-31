@@ -9,6 +9,19 @@ const DELTA_ROWS: [string, string][] = [
   ["severe_edges", "severe"],
 ];
 
+/** Suggestion chips — one source (COPILOT_CHIPS), reused by the welcome and the bar. */
+function ChipRow({ disabled, onPick }: { disabled: boolean; onPick: (c: string) => void }) {
+  return (
+    <>
+      {COPILOT_CHIPS.map((c) => (
+        <button key={c} className="chip" disabled={disabled} onClick={() => onPick(c)}>
+          {c}
+        </button>
+      ))}
+    </>
+  );
+}
+
 export function CopilotRegion() {
   const log = useAppStore((s) => s.copilotLog);
   const ask = useAppStore((s) => s.copilotAsk);
@@ -57,13 +70,16 @@ export function CopilotRegion() {
           {` · ${latency.mode}`}
         </div>
       )}
-      <div className="copilot-log" ref={logRef}>
+      <div className={`copilot-log ${log.length === 0 ? "empty" : ""}`} ref={logRef}>
         {log.length === 0 && (
-          <div className="msg bot">
+          <div className="copilot-welcome">
             <span className="who">Copilot</span>
             <div className="bub">
               Ask me to ease congestion or test a closure — I preview every action and cite the bylaw
               constraints first.
+            </div>
+            <div className="copilot-welcome-chips">
+              <ChipRow disabled={thinking} onPick={submit} />
             </div>
           </div>
         )}
@@ -171,13 +187,11 @@ export function CopilotRegion() {
           </div>
         )}
       </div>
-      <div className="copilot-chips">
-        {COPILOT_CHIPS.map((c) => (
-          <button key={c} className="chip" disabled={thinking} onClick={() => submit(c)}>
-            {c}
-          </button>
-        ))}
-      </div>
+      {log.length > 0 && (
+        <div className="copilot-chips">
+          <ChipRow disabled={thinking} onPick={submit} />
+        </div>
+      )}
       <div className="copilot-input">
         <input
           value={text}

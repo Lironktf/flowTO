@@ -47,14 +47,32 @@ export function TopBar() {
           {status.label}
         </div>
         <div className="dock-toggles">
-          <button className={`iconbtn ${showLeft ? "on" : ""}`} onClick={() => toggleDock("left")} title="Left dock">
-            ▘
+          <button
+            className={`iconbtn ${showLeft ? "on" : ""}`}
+            onClick={() => toggleDock("left")}
+            title="Toggle left panel"
+            aria-label="Toggle left panel"
+            aria-pressed={showLeft}
+          >
+            <Icon.panelLeft />
           </button>
-          <button className={`iconbtn ${showBottom ? "on" : ""}`} onClick={() => toggleDock("bottom")} title="Bottom dock">
-            ▂
+          <button
+            className={`iconbtn ${showBottom ? "on" : ""}`}
+            onClick={() => toggleDock("bottom")}
+            title="Toggle bottom panel"
+            aria-label="Toggle bottom panel"
+            aria-pressed={showBottom}
+          >
+            <Icon.panelBottom />
           </button>
-          <button className={`iconbtn ${showRight ? "on" : ""}`} onClick={() => toggleDock("right")} title="Right dock">
-            ▝
+          <button
+            className={`iconbtn ${showRight ? "on" : ""}`}
+            onClick={() => toggleDock("right")}
+            title="Toggle right panel"
+            aria-label="Toggle right panel"
+            aria-pressed={showRight}
+          >
+            <Icon.panelRight />
           </button>
         </div>
         <button className="iconbtn" onClick={() => setTheme(theme === "light" ? "dark" : "light")} title="Theme">

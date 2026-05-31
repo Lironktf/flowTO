@@ -629,8 +629,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       // User-initiated Stop (AbortError) is handled in copilotStop — stay quiet.
       if (signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return;
-      const msg = e instanceof Error ? e.message : String(e);
-      set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: `Copilot unavailable: ${msg}` }] }));
+      // Raw detail (e.g. "POST /copilot/plan → 500") goes to the console, never the chat.
+      console.error("[copilot] request failed:", e);
+      const detail = e instanceof Error ? e.message : String(e);
+      const offline = /Failed to fetch|NetworkError|→ 5\d\d/.test(detail);
+      const text = offline
+        ? "Copilot is offline — the Nemotron model backend isn't reachable. Check the API server and try again."
+        : "Copilot couldn't complete that request. Please try again.";
+      set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text }] }));
     } finally {
       if (copilotAbort === controller) copilotAbort = null;
       set({ copilotThinking: false });

@@ -48,3 +48,16 @@ def test_optimize_endpoint_returns_ranked_plan():
     assert body["solver"] == "heuristic"
     assert body["best_metric"] <= body["baseline_metric"] + 1e-9
     assert "plan" in body
+
+
+def test_copilot_optimize_intent_invokes_optimizer():
+    # "optimize" routes through the copilot to the P10 optimizer and returns a
+    # confirmable preview (or a no-improvement note) — never a raw error.
+    r = _client().post("/copilot/plan", json={"prompt": "Optimize the network to cut congestion."})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["tool"] == "preview_intervention"
+    # Either it proposed sim-verified actions (cite the optimizer) or found none.
+    if body["interventions"]:
+        assert any("Optimizer" in c["ref"] for c in body["citations"])
+        assert body["requires_user_confirmation"] is True

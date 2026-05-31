@@ -22,8 +22,7 @@ CATEGORY_REASON = {
         "jurisdiction. Full closures cannot be simulated here."
     ),
     MUNICIPAL_EXPRESSWAY: (
-        "This is a City of Toronto municipal expressway. Full closures cannot "
-        "be simulated here."
+        "This is a City of Toronto municipal expressway. Full closures cannot " "be simulated here."
     ),
 }
 
@@ -45,7 +44,9 @@ def _load(path: str) -> dict[str, dict]:
 
 
 def _artifact_path(data_dir: str | None) -> str:
-    return os.path.join(os.path.abspath(data_dir or _repo_data_dir()), "graph", "restricted_roads.json")
+    return os.path.join(
+        os.path.abspath(data_dir or _repo_data_dir()), "graph", "restricted_roads.json"
+    )
 
 
 def restricted_index(data_dir: str | None = None) -> dict[str, dict]:

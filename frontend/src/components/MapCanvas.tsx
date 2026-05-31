@@ -88,6 +88,8 @@ export function MapCanvas() {
   const recomputeStep = useAppStore((s) => s.recomputeStep);
   const recomputeTitle = useAppStore((s) => s.recomputeTitle);
   const recenterNonce = useAppStore((s) => s.recenterNonce);
+  const flyNonce = useAppStore((s) => s.flyNonce);
+  const fitNonce = useAppStore((s) => s.fitNonce);
   const tiltOn = useAppStore((s) => s.tiltOn);
   const scrubMin = useAppStore((s) => s.scrubberMinute);
   const dayOfYear = useAppStore((s) => s.dayOfYear);
@@ -161,6 +163,20 @@ export function MapCanvas() {
     if (!m || recenterNonce === 0) return;
     m.flyTo({ center: MAP_CENTER, zoom: MAP_ZOOM, duration: 900 });
   }, [recenterNonce]);
+  // Search → fly the camera to a point hit (place); zoom defaults to a street-level view.
+  useEffect(() => {
+    const m = mapRef.current?.getMap();
+    const t = useAppStore.getState().flyTarget;
+    if (!m || flyNonce === 0 || !t) return;
+    m.flyTo({ center: [t.lng, t.lat], zoom: t.zoom ?? 15.5, duration: 1100, essential: true });
+  }, [flyNonce]);
+  // Search → frame an entire street: fit the camera to the road's full extent.
+  useEffect(() => {
+    const m = mapRef.current?.getMap();
+    const b = useAppStore.getState().fitTarget;
+    if (!m || fitNonce === 0 || !b) return;
+    m.fitBounds(b, { padding: 96, duration: 1100, maxZoom: 16, essential: true });
+  }, [fitNonce]);
 
   // Time of day → Mapbox Standard light preset (dawn/day/dusk/night), shifted by season.
   useEffect(() => {
@@ -181,6 +197,17 @@ export function MapCanvas() {
     setStandardConfig(m, "showPlaceLabels", overlays.placeLabels);
     setStandardConfig(m, "show3dObjects", overlays.buildings3d);
   }, [overlays]);
+
+  // Selected road → all edges that share its name (the whole street, not one
+  // segment). Memoized on selection/graph so the 81k-edge scan never runs per frame.
+  const selectedRoadPaths = useMemo(() => {
+    if (!selectedRoadId || !graph) return null;
+    const seg = graph.byId.get(selectedRoadId);
+    if (!seg) return null;
+    const name = seg.road_name;
+    const segs = name ? graph.edges.filter((e) => e.road_name === name) : [seg];
+    return segs.map((s) => ({ path: s.geometry.map(([la, ln]) => [ln, la] as [number, number]) }));
+  }, [selectedRoadId, graph]);
 
   const layers = useMemo(() => {
     const out: unknown[] = [];
@@ -216,15 +243,14 @@ export function MapCanvas() {
       }),
     );
 
-    // Selected-road highlight (sim).
-    const selSeg = selectedRoadId && graph ? graph.byId.get(selectedRoadId) : null;
-    if (selSeg) {
+    // Selected-road highlight (sim) — the full named street.
+    if (selectedRoadPaths) {
       out.push(
         new PathLayer({
           id: "road-selected",
           parameters: { depthCompare: "always" },
           slot: CONGESTION_SLOT,
-          data: [{ path: selSeg.geometry.map(([la, ln]) => [ln, la] as [number, number]) }],
+          data: selectedRoadPaths,
           getPath: (d: { path: [number, number][] }) => d.path,
           getColor: [36, 85, 214],
           getWidth: 14,
@@ -375,7 +401,7 @@ export function MapCanvas() {
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectRoad, pendingVertices, overlays]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectedRoadPaths, selectRoad, pendingVertices, overlays]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (

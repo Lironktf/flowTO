@@ -21,6 +21,7 @@ ToolName = Literal[
     "retrieve_policy",
     "explain_edge",
     "refuse",
+    "answer",  # conversational reply (no plan) — small talk / can't act
 ]
 
 

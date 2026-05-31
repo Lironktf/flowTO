@@ -43,6 +43,9 @@ api = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "websockets>=12.0", "pydanti
 # Real GTFS transit (P08): production accelerator for shape geometrization. The
 # stdlib reader in transit.gtfs_reader keeps tests hermetic without this.
 transit = ["gtfs_kit>=6.0"]
+# Bylaw corpus bake (P09): extract Municipal Code PDFs -> corpus .md. A pre-event
+# step only; the baked corpus is committed, so runtime never needs this.
+bake = ["pypdf>=4.0"]
 
 [tool.setuptools]
 package-dir = { "" = "src" }

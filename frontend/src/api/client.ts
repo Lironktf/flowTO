@@ -36,15 +36,6 @@ export interface DemoRun {
   records: Record5[];
 }
 
-export interface CopilotResponse {
-  tool: string;
-  rationale: string;
-  citations: { ref: string; note: string }[];
-  requires_user_confirmation: boolean;
-  blocked: boolean;
-  retrieved_policy?: { doc_id: string; title: string; source: string }[];
-}
-
 /**
  * Graph-mutation ops. The first six mirror the backend
  * (`src/torontosim/graph/mutations.py`). `demand_surge` is defined here for the
@@ -79,6 +70,46 @@ export interface Intervention {
   lng?: number;
 }
 
+export interface CopilotResponse {
+  tool: string;
+  rationale: string;
+  interventions: Intervention[];
+  citations: { ref: string; note: string }[];
+  requires_user_confirmation: boolean;
+  blocked: boolean;
+  retrieved_policy?: { doc_id: string; title: string; source: string }[];
+}
+
+export interface CopilotConfirmResult {
+  scenario_id: string;
+  summary: Record<string, number>;
+  summary_delta: Record<string, number>;
+  most_impacted_edges: { edge_id: string; road_name?: string | null; [k: string]: unknown }[];
+  explanation: string;
+}
+
+export interface AgentStepLog {
+  tool: string;
+  thought?: string;
+  observation: unknown;
+}
+
+export interface CopilotAgentResult {
+  answer: string;
+  interventions: Intervention[];
+  citations: { ref: string; note: string }[];
+  steps: AgentStepLog[];
+  requires_user_confirmation: boolean;
+  blocked: boolean;
+}
+
+export interface StreamDone {
+  first_token_ms: number | null;
+  total_ms: number | null;
+  backend?: string;
+  error?: string;
+}
+
 export interface ScenarioSummary {
   id: string;
   name?: string;
@@ -99,11 +130,12 @@ async function jget<T>(path: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-async function jpost<T>(path: string, body: unknown): Promise<T> {
+async function jpost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!r.ok) throw new Error(`POST ${path} → ${r.status}`);
   return r.json() as Promise<T>;
@@ -126,10 +158,15 @@ async function jdelete<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  health: () => jget<{ status: string; edges: number }>("/healthz"),
+  health: () => jget<{ status: string; edges: number; baseline_ready?: boolean }>("/healthz"),
   edges: () => jget<{ edges: EdgeMeta[] }>("/edges"),
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
-  copilotPlan: (prompt: string) => jpost<CopilotResponse>("/copilot/plan", { prompt }),
+  copilotPlan: (prompt: string, signal?: AbortSignal) =>
+    jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
+  copilotAgent: (prompt: string, signal?: AbortSignal) =>
+    jpost<CopilotAgentResult>("/copilot/agent", { prompt }, signal),
+  copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>
+    jpost<CopilotConfirmResult>("/copilot/confirm", { interventions, name }),
   // Edit-mode scenario flow (real engine, blast-radius recompute).
   createScenario: (payload: unknown) => jpost<{ id: string }>("/scenarios", payload),
   patchScenario: (id: string, payload: unknown) => jpatch<unknown>(`/scenarios/${id}`, payload),
@@ -152,6 +189,44 @@ export const api = {
   compareScenario: (id: string, against = "baseline") =>
     jget<CompareResult>(`/scenarios/${id}/compare?against=${against}`),
 };
+
+/**
+ * Stream a free-text copilot answer via SSE (`/copilot/stream`). Calls `onToken`
+ * as tokens arrive and `onDone` with the latency payload on the final event.
+ */
+export async function copilotStream(
+  prompt: string,
+  onToken: (t: string) => void,
+  onDone: (d: StreamDone) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const r = await fetch(`${BASE}/copilot/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+    signal,
+  });
+  if (!r.ok || !r.body) throw new Error(`POST /copilot/stream → ${r.status}`);
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    // SSE events are separated by a blank line.
+    let nl: number;
+    while ((nl = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, nl);
+      buf = buf.slice(nl + 2);
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      const evt = JSON.parse(line.slice(6)) as { token?: string; done?: boolean } & StreamDone;
+      if (evt.token) onToken(evt.token);
+      if (evt.done) onDone(evt);
+    }
+  }
+}
 
 /** Connect the binary tick WebSocket (live-tick scenarios → tick store). */
 export function connectStream(scenarioId: string): WebSocket {

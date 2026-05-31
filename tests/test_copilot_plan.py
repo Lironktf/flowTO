@@ -79,6 +79,83 @@ def test_router_blocked_request_refuses_unchanged():
     assert any("880" in r for r in refs)
 
 
+def _graph_state():
+    """A 2-edge named graph so candidate-edge resolution can be exercised."""
+    import networkx as nx
+
+    from torontosim.api.store import AppState
+    from torontosim.graph import schema
+
+    g = nx.MultiDiGraph()
+    for n, (x, y) in {0: (-79.41, 43.63), 1: (-79.40, 43.63), 2: (-79.40, 43.64)}.items():
+        g.add_node(n, x=x, y=y)
+    g.add_edge(
+        0,
+        1,
+        key=0,
+        **schema.make_edge(
+            edge_id="dufferin",
+            from_node=0,
+            to_node=1,
+            road_name="Dufferin Street",
+            road_class="secondary",
+            length_m=500.0,
+            speed_kmh=50.0,
+            lanes=2.0,
+            capacity=1200.0,
+            base_time_min=0.6,
+            one_way=False,
+            geometry=[[43.63, -79.41], [43.63, -79.40]],
+        ),
+    )
+    g.add_edge(
+        1,
+        2,
+        key=0,
+        **schema.make_edge(
+            edge_id="strachan",
+            from_node=1,
+            to_node=2,
+            road_name="Strachan Avenue",
+            road_class="tertiary",
+            length_m=400.0,
+            speed_kmh=40.0,
+            lanes=1.0,
+            capacity=800.0,
+            base_time_min=0.5,
+            one_way=False,
+            geometry=[[43.63, -79.40], [43.64, -79.40]],
+        ),
+    )
+    return AppState.from_graph(
+        g,
+        [{"origin": 0, "destination": 2, "trips": 900.0}],
+        weather="clear",
+        time_context={"hour": 17},
+    )
+
+
+def test_candidate_edges_resolved_by_name():
+    from torontosim.copilot.plan import candidate_edges
+
+    ids = [c["edge_id"] for c in candidate_edges(_graph_state(), "close Strachan Avenue near BMO")]
+    assert "strachan" in ids
+    assert "dufferin" not in ids  # not named in the prompt
+
+
+def test_plan_attaches_advisory_for_major_arterial(monkeypatch):
+    state = _graph_state()
+    # Promote Strachan to a major arterial so the advisory fires.
+    for _u, _v, d in state.graph.edges(data=True):
+        if d.get("edge_id") == "strachan":
+            d["road_class"] = "primary"
+    good = ToolCall(
+        tool="preview_intervention", interventions=[{"op": "close_edge", "edge_id": "strachan"}]
+    ).model_dump_json()
+    call = plan("close Strachan", state, model_call=_model([good]))
+    assert any("arterial" in c.note for c in call.citations)
+
+
 @pytest.mark.spark
 def test_live_nemotron_parses_rehearsed_prompts():
     import urllib.error

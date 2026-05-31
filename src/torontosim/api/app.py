@@ -11,11 +11,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from .encoding import pack_frame
 from .jobs import JobManager
 from .schemas import (
     CompareResult,
+    CopilotConfirm,
+    CopilotConfirmResult,
     RunRequest,
     RunResult,
     Scenario,
@@ -50,6 +53,22 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 _get_demo("baseline")
             except Exception:  # noqa: BLE001 — warmup is best-effort
                 pass
+            # Pre-warm the copilot's compare baselines so congestion queries,
+            # /confirm comparisons and the agent's scratch sims don't cold-compute
+            # a full ~80k-edge baseline on first use (paid once here, in the bg).
+            for warmer in (state.baseline, state.blast_baseline):
+                try:
+                    warmer()
+                except Exception:  # noqa: BLE001 — warmup is best-effort
+                    pass
+            # Pre-load the copilot model so the first ask dodges the cold load.
+            try:
+                from ..copilot import ollama_client, planner
+
+                if planner._live_enabled() and ollama_client.available():
+                    ollama_client.warmup()
+            except Exception:  # noqa: BLE001 — warmup is best-effort
+                pass
 
         threading.Thread(target=warm, daemon=True).start()
         yield
@@ -69,7 +88,12 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     # ---- health / debug ------------------------------------------------- #
     @app.get("/healthz")
     def healthz():
-        return {"status": "ok", "edges": len(state.edge_ids), "scenarios": len(store.scenarios)}
+        return {
+            "status": "ok",
+            "edges": len(state.edge_ids),
+            "scenarios": len(store.scenarios),
+            "baseline_ready": state.baseline_ready,  # gates the copilot UI until warm
+        }
 
     @app.get("/debug/state")
     def debug_state():
@@ -108,7 +132,10 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
 
     @app.get("/scenarios")
     def list_scenarios():
-        return {"scenarios": store.list()}
+        # Strip internal keys (e.g. _last_result holds a full graph) — they are
+        # not part of a scenario's public shape and aren't JSON-serializable.
+        public = [{k: v for k, v in sc.items() if not k.startswith("_")} for sc in store.list()]
+        return {"scenarios": public}
 
     @app.get("/scenarios/{sid}", response_model=Scenario)
     def get_scenario(sid: str):
@@ -219,6 +246,101 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 payload.get("summary_delta", {}), top_edges=payload.get("most_impacted_edges")
             )
         }
+
+    @app.post("/copilot/stream")
+    def copilot_stream(payload: dict):
+        """SSE token stream for the free-text ask/explain path + a latency HUD.
+
+        Streams Nemotron tokens as Server-Sent Events; the final event carries
+        first-token and total latency (ms). Grounds any bylaw claim in RAG.
+        """
+        import json as _json
+        import time
+
+        from ..copilot import ollama_client, rag
+
+        prompt = payload.get("prompt", "")
+        try:
+            hits = rag.retrieve(prompt, k=3)
+        except Exception:  # noqa: BLE001
+            hits = []
+        ctx = "\n".join(f"- {h['title']}" for h in hits)
+        system = (
+            "You are a Toronto city-planning copilot. Answer the planner concisely (≤4 sentences). "
+            "Ground any bylaw/policy claim ONLY in this context; do not invent citations:\n" + ctx
+        )
+
+        def gen():
+            t0 = time.monotonic()
+            first_ms = None
+            try:
+                for evt in ollama_client.stream(system, prompt):
+                    if evt["first"]:
+                        first_ms = round((time.monotonic() - t0) * 1000)
+                    out = {"token": evt["token"], "done": evt["done"]}
+                    if evt["done"]:
+                        out["first_token_ms"] = first_ms
+                        out["total_ms"] = evt["total_ms"]
+                        out["backend"] = rag.backend_name()
+                    yield f"data: {_json.dumps(out)}\n\n"
+            except Exception as exc:  # noqa: BLE001 — surface a clean done event
+                yield f"data: {_json.dumps({'error': str(exc), 'done': True})}\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.get("/copilot/debug", response_class=HTMLResponse)
+    def copilot_debug_page():
+        """Standalone copilot debug console (no build step — just open the URL)."""
+        from ..copilot.debug_page import DEBUG_HTML
+
+        return HTMLResponse(DEBUG_HTML)
+
+    @app.post("/copilot/agent")
+    def copilot_agent(payload: dict):
+        """Bounded, read-only multi-tool agent loop (investigate → propose).
+
+        Nemotron chains read-only tools (simulate-on-scratch, optimize, retrieve)
+        then proposes a plan for human confirmation — it never mutates the store.
+        """
+        try:
+            from ..copilot.agent import run_agent
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        before = len(store.scenarios)
+        result = run_agent(payload.get("prompt", ""), state)
+        assert len(store.scenarios) == before  # the loop must stay read-only
+        return result.model_dump()
+
+    @app.post("/copilot/confirm", response_model=CopilotConfirmResult)
+    def copilot_confirm(payload: CopilotConfirm):
+        """Apply a previewed tool call → create scenario → run → compare → explain.
+
+        The copilot never mutates the sim directly; this is the explicit
+        user-confirmed apply step. Auto-runs so the planner sees results at once.
+        """
+        try:
+            from ..copilot.explain import explain_compare
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+
+        interventions = [iv.to_op() for iv in payload.interventions]
+        if not interventions:
+            raise HTTPException(422, "no interventions to apply")
+        _validate_edges(interventions)
+
+        sc = store.create({"name": payload.name, "interventions": interventions})
+        sid = sc["id"]
+        result = store.run(sid, payload.run.model_dump())
+        diff = store.compare(sid)
+        delta = diff.get("summary_delta", {})
+        edges = diff.get("most_impacted_edges", [])
+        return CopilotConfirmResult(
+            scenario_id=sid,
+            summary=result["summary"],
+            summary_delta=delta,
+            most_impacted_edges=edges,
+            explanation=explain_compare(delta, top_edges=edges),
+        )
 
     @app.post("/optimize")
     def optimize(payload: dict):

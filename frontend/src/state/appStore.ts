@@ -16,6 +16,8 @@
 import { create } from "zustand";
 import {
   api,
+  copilotStream,
+  type AgentStepLog,
   type CopilotResponse,
   type EdgeMeta,
   type Intervention,
@@ -29,6 +31,7 @@ import {
   streetsByDirection,
   withReverseTwins,
   type RoadGraph,
+  type Segment,
 } from "../api/graph";
 import { DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
 import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
@@ -80,13 +83,39 @@ export interface Warning {
   kind?: "restricted"; // restricted-road closure guardrail (shown in the left menu)
 }
 
+export type CopilotMode = "plan" | "chat" | "agent";
+
 interface CopilotMessage {
   role: "user" | "bot";
   text: string;
   steps?: string[];
   citations?: { ref: string; note: string }[];
   blocked?: boolean;
+  // A previewed, confirmable plan (preview-before-apply): the ops to apply.
+  interventions?: Intervention[];
+  applied?: boolean;
+  reverted?: boolean;
+  // Post-confirm result for the metric card (Δ vs baseline).
+  result?: {
+    summaryDelta: Record<string, number>;
+    mostImpacted: { edge_id: string; road_name?: string | null }[];
+  };
+  // Agent-mode investigation trace + live-streaming flag.
+  agentSteps?: AgentStepLog[];
+  streaming?: boolean;
+  // Which mode produced this reply (badge), and whether it was aborted.
+  mode?: CopilotMode;
+  aborted?: boolean;
 }
+
+interface CopilotLatency {
+  ms: number;
+  firstTokenMs?: number;
+  mode: CopilotMode;
+}
+
+// Non-reactive holder for the in-flight request's abort controller.
+let copilotAbort: AbortController | null = null;
 
 interface Telemetry {
   recompute: number;
@@ -139,6 +168,10 @@ interface AppState {
   pendingVertices: PendingVertex[];
   // copilot / timeline / telemetry
   copilotLog: CopilotMessage[];
+  deepMode: boolean; // 🧠 Deep → force the Agent investigate-loop; else auto-route
+  copilotReady: boolean; // false until the backend's compare baseline is warm
+  copilotThinking: boolean;
+  copilotLatency: CopilotLatency | null;
   scrubberMinute: number;
   dayOfYear: number;
   playing: boolean;
@@ -147,6 +180,10 @@ interface AppState {
   // camera nonces (watched by MapCanvas)
   recenterNonce: number;
   tiltOn: boolean;
+  flyTarget: { lng: number; lat: number; zoom?: number } | null;
+  flyNonce: number;
+  fitTarget: [[number, number], [number, number]] | null;
+  fitNonce: number;
 
   setTheme: (t: "light" | "dark") => void;
   setDensity: (d: "comfortable" | "compact") => void;
@@ -164,6 +201,10 @@ interface AppState {
   copilotAsk: (text: string) => Promise<void>;
   applyPlan: () => Promise<void>;
   discardPlan: () => void;
+  copilotConfirm: (msgIndex: number) => Promise<void>;
+  copilotRevert: (msgIndex: number) => Promise<void>;
+  toggleDeep: () => void;
+  copilotStop: () => void;
   // editor
   selectTool: (id: EditTool) => void;
   placeAt: (coord: [number, number]) => Promise<void>;
@@ -180,6 +221,8 @@ interface AppState {
   setPlaying: (p: boolean) => void;
   setSpeed: (s: number) => void;
   recenter: () => void;
+  flyToLocation: (lng: number, lat: number, zoom?: number) => void;
+  fitToBounds: (bounds: [[number, number], [number, number]]) => void;
   toggleTilt: () => void;
   reset: () => Promise<void>;
 }
@@ -258,12 +301,63 @@ function composeWarnings(objects: SceneObject[], graph: RoadGraph | null): Warni
   return [...restrictedClosureWarnings(objects, graph), ...buildWarnings()];
 }
 
-function paintBaseline(set: SetFn, records: [number, number, number, number, number][]) {
+/** Push per-edge records into the tick store and trigger a deck.gl recolor. */
+function paintRecords(set: SetFn, records: [number, number, number, number, number][]) {
   writeRecords(records);
   set((s) => ({
     pressureSeq: s.pressureSeq + 1,
     warnings: composeWarnings(s.objects, s.graph),
   }));
+}
+
+/** Repaint the twin from a scenario's last run (fetch records → paint). */
+async function paintScenario(set: SetFn, sid: string) {
+  const rec = await api.scenarioRecords(sid);
+  paintRecords(set, rec.records);
+}
+
+/** Poll /healthz until the backend's compare baseline is warm, then ungate the
+ *  copilot. The full baseline is ~minutes on the 81k graph; this hides that
+ *  behind a "warming up" state instead of a hung first request. */
+function pollBaselineReady(set: SetFn) {
+  let tries = 0;
+  const tick = async () => {
+    try {
+      const h = await api.health();
+      if (h.baseline_ready) return set({ copilotReady: true });
+    } catch {
+      /* ignore — retry */
+    }
+    if (++tries < 120) setTimeout(tick, 3000); // give up after ~6 min
+  };
+  void tick();
+}
+
+/** Build an Edit-mode closure scene object from copilot-proposed edge_ids, so a
+ *  copilot closure shows identically to a manual one (marker, inspector, sealed
+ *  edges) and applies through the same applyEdits → /scenarios + /run path. */
+function closureObjectFromEdges(graph: RoadGraph | null, edgeIds: string[], n: number): SceneObject {
+  const segs = edgeIds.map((id) => graph?.byId.get(id)).filter((s): s is Segment => !!s);
+  const roadName = segs[0]?.road_name;
+  let sLat = 0;
+  let sLng = 0;
+  let npts = 0;
+  for (const sg of segs) for (const [la, ln] of sg.geometry) {
+    sLat += la;
+    sLng += ln;
+    npts += 1;
+  }
+  const coord: [number, number] = npts ? [sLng / npts, sLat / npts] : [-79.4, 43.65];
+  return {
+    id: `obj-copilot-${n}`,
+    type: "closure",
+    name: `Closure${roadName ? " · " + roadName : ""}`,
+    visible: true,
+    n,
+    coord,
+    roadName,
+    edgeIds,
+  };
 }
 
 async function recomputeAround(set: SetFn, title: string, fn: () => Promise<void>) {
@@ -347,12 +441,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedId: null,
   pendingVertices: [],
   copilotLog: [],
+  deepMode: false,
+  copilotReady: false,
+  copilotThinking: false,
+  copilotLatency: null,
   scrubberMinute: TIMELINE.defaultMin,
   dayOfYear: DEFAULT_DAY_OF_YEAR,
   playing: false,
   speed: 1,
   telemetry: { ...IDLE },
   recenterNonce: 0,
+  flyTarget: null,
+  flyNonce: 0,
+  fitTarget: null,
+  fitNonce: 0,
   tiltOn: true,
 
   setTheme: (t) => {
@@ -398,7 +500,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       try {
         const base = await api.demoRun("baseline");
-        paintBaseline(set, base.records);
+        paintRecords(set, base.records);
         set({ status: { state: "nominal", label: "Baseline · nominal" } });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -408,6 +510,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
       void get().loadSavedSims();
+      pollBaselineReady(set); // ungate the copilot once the compare baseline is warm
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       set({ error: `Could not reach the API (${msg}). Start scripts/run_api.sh.` });
@@ -463,7 +566,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       try {
         await api.run(id, { recompute: "full", congestion_model: "bpr" });
         const rec = await api.scenarioRecords(id);
-        paintBaseline(set, rec.records);
+        paintRecords(set, rec.records);
       } catch {
         /* leave current paint if the run fails */
       }
@@ -485,39 +588,208 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setCurrentName: (name) => set({ currentName: name, dirty: true }),
 
+  toggleDeep: () => set((s) => ({ deepMode: !s.deepMode })),
+
+  copilotStop: () => {
+    copilotAbort?.abort();
+    copilotAbort = null;
+    set((s) => {
+      const log = s.copilotLog.slice();
+      const last = log[log.length - 1];
+      if (last && last.role === "bot" && last.streaming) {
+        log[log.length - 1] = { ...last, streaming: false, aborted: true };
+      }
+      return { copilotLog: log, copilotThinking: false };
+    });
+  },
+
   copilotAsk: async (text) => {
-    set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }] }));
-    let resp: CopilotResponse;
-    try {
-      resp = await api.copilotPlan(text);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: `Copilot unavailable: ${msg}` }] }));
-      return;
-    }
-    set((s) => ({
-      copilotLog: [
-        ...s.copilotLog,
-        { role: "bot", text: resp.rationale, citations: resp.citations, blocked: resp.blocked },
-      ],
-    }));
-    if (resp.blocked) {
+    // Auto-route: Deep → agent; a question → chat (stream); else → plan (which
+    // internally resolves close/segment/congestion commands or makes a plan).
+    const isQuestion =
+      /\?\s*$/.test(text) ||
+      /^(why|what|how|when|where|who|which|is|are|does|do|can|could|should|tell|explain)\b/i.test(text.trim());
+    const mode: CopilotMode = get().deepMode ? "agent" : isQuestion ? "chat" : "plan";
+    set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }], copilotThinking: true }));
+    const controller = new AbortController();
+    copilotAbort = controller;
+    const { signal } = controller;
+
+    const flashBlocked = (detail: string, ref?: string) => {
       set((s) => ({
         status: { state: "blocked", label: "Action blocked · bylaw conflict" },
         warnings: [
-          {
-            id: "bylaw",
-            severity: "danger",
-            title: "Bylaw conflict",
-            detail: resp.rationale,
-            ref: resp.citations?.[0]?.ref,
-          },
-          ...s.warnings,
+          { id: "copilot-bylaw", severity: "danger", title: "Bylaw conflict", detail, ref },
+          ...s.warnings.filter((w) => w.id !== "copilot-bylaw"),
         ],
       }));
-      return;
+    };
+    const afterPlan = (hasPlan: boolean, blocked: boolean, detail = "", ref?: string) => {
+      if (blocked) return flashBlocked(detail, ref);
+      if (hasPlan) set({ planStaged: true });
+    };
+    const t0 = performance.now();
+
+    try {
+      if (mode === "agent") {
+        const res = await api.copilotAgent(text, signal);
+        const hasPlan = res.requires_user_confirmation && res.interventions.length > 0;
+        set((s) => ({
+          copilotLog: [
+            ...s.copilotLog,
+            {
+              role: "bot",
+              text: res.answer,
+              citations: res.citations,
+              blocked: res.blocked,
+              agentSteps: res.steps,
+              interventions: hasPlan ? res.interventions : undefined,
+              mode: "agent",
+            },
+          ],
+          copilotLatency: { ms: Math.round(performance.now() - t0), mode: "agent" },
+        }));
+        afterPlan(hasPlan, res.blocked, res.answer, res.citations?.[0]?.ref);
+      } else if (mode === "chat") {
+        set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: "", streaming: true, mode: "chat" }] }));
+        let first: number | undefined;
+        const patchLast = (fn: (m: CopilotMessage) => CopilotMessage) =>
+          set((s) => {
+            const log = s.copilotLog.slice();
+            const last = log[log.length - 1];
+            if (last) log[log.length - 1] = fn(last);
+            return { copilotLog: log };
+          });
+        await copilotStream(
+          text,
+          (tok) => {
+            if (first === undefined) first = Math.round(performance.now() - t0);
+            patchLast((m) => ({ ...m, text: m.text + tok }));
+          },
+          (done) => {
+            patchLast((m) => ({ ...m, streaming: false }));
+            set({
+              copilotLatency: {
+                ms: done.total_ms ?? Math.round(performance.now() - t0),
+                firstTokenMs: done.first_token_ms ?? first,
+                mode: "chat",
+              },
+            });
+          },
+          signal,
+        );
+      } else {
+        const resp: CopilotResponse = await api.copilotPlan(text, signal);
+        const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
+        set((s) => ({
+          copilotLog: [
+            ...s.copilotLog,
+            {
+              role: "bot",
+              text: resp.rationale,
+              citations: resp.citations,
+              blocked: resp.blocked,
+              interventions: confirmable ? resp.interventions : undefined,
+              mode: "plan",
+            },
+          ],
+          copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
+        }));
+        afterPlan(confirmable, resp.blocked, resp.rationale, resp.citations?.[0]?.ref);
+      }
+    } catch (e) {
+      // User-initiated Stop (AbortError) is handled in copilotStop — stay quiet.
+      if (signal.aborted || (e instanceof DOMException && e.name === "AbortError")) return;
+      // Raw detail (e.g. "POST /copilot/plan → 500") goes to the console, never the chat.
+      console.error("[copilot] request failed:", e);
+      const detail = e instanceof Error ? e.message : String(e);
+      const offline = /Failed to fetch|NetworkError|→ 5\d\d/.test(detail);
+      const text = offline
+        ? "Copilot is offline — the Nemotron model backend isn't reachable. Check the API server and try again."
+        : "Copilot couldn't complete that request. Please try again.";
+      set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text }] }));
+    } finally {
+      if (copilotAbort === controller) copilotAbort = null;
+      set({ copilotThinking: false });
     }
-    set({ planStaged: true });
+  },
+
+  copilotConfirm: async (msgIndex) => {
+    const msg = get().copilotLog[msgIndex];
+    const interventions = msg?.interventions;
+    if (!interventions || !interventions.length || msg.applied) return;
+
+    const markApplied = (text: string, result?: CopilotMessage["result"]) =>
+      set((s) => ({
+        copilotLog: s.copilotLog
+          .map((m, i) => (i === msgIndex ? { ...m, applied: true } : m))
+          .concat({ role: "bot", text, result }),
+        status: { state: "surge", label: "Plan applied · twin updated" },
+      }));
+
+    set({ status: { state: "recomputing", label: "Applying plan · running sim" } });
+    try {
+      // All-closure plans → materialize as an Edit scene object and apply through
+      // the shared applyEdits path (managed marker + sealed edges + repaint).
+      const closeIds = interventions
+        .filter((iv) => iv.op === "close_edge" && iv.edge_id)
+        .map((iv) => iv.edge_id as string);
+      if (closeIds.length === interventions.length) {
+        const obj = closureObjectFromEdges(get().graph, closeIds, get().objects.length + 1);
+        set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select", dirty: true }));
+        await get().applyEdits(); // creates scenario → run(blast) → paints map + marker
+        const sid = get().scenarioId;
+        let result: CopilotMessage["result"];
+        if (sid) {
+          try {
+            const cmp = await api.compareScenario(sid);
+            result = {
+              summaryDelta: cmp.summary_delta ?? {},
+              mostImpacted: (cmp.most_impacted_edges ?? []).map((e) => ({ edge_id: e.edge_id })),
+            };
+          } catch {
+            /* card is best-effort */
+          }
+        }
+        markApplied(`${obj.name} applied — twin recomputed.`, result);
+        return;
+      }
+
+      // Mixed / capacity changes → server-side confirm (create → run → compare → explain).
+      const res = await api.copilotConfirm(interventions as Intervention[]);
+      await paintScenario(set, res.scenario_id);
+      set({ scenarioId: res.scenario_id });
+      markApplied(res.explanation, {
+        summaryDelta: res.summary_delta,
+        mostImpacted: res.most_impacted_edges,
+      });
+      void get().loadSavedSims(); // make the applied scenario selectable in Sim
+    } catch (e) {
+      const emsg = e instanceof Error ? e.message : String(e);
+      set((s) => ({
+        copilotLog: [...s.copilotLog, { role: "bot", text: `Apply failed: ${emsg}` }],
+        status: { state: "nominal", label: "Baseline · nominal" },
+      }));
+    }
+  },
+
+  copilotRevert: async (msgIndex) => {
+    set({ status: { state: "recomputing", label: "Reverting to baseline…" } });
+    try {
+      const base = await api.demoRun("baseline");
+      paintRecords(set, base.records); // repaint the twin back to baseline
+      set((s) => ({
+        copilotLog: s.copilotLog.map((m, i) => (i === msgIndex ? { ...m, reverted: true } : m)),
+        scenarioId: null,
+        status: { state: "nominal", label: "Reverted · baseline" },
+      }));
+    } catch (e) {
+      const emsg = e instanceof Error ? e.message : String(e);
+      set((s) => ({
+        copilotLog: [...s.copilotLog, { role: "bot", text: `Revert failed: ${emsg}` }],
+        status: { state: "nominal", label: "Baseline · nominal" },
+      }));
+    }
   },
 
   applyPlan: async () => {
@@ -661,13 +933,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           await api.patchScenario(sid, { interventions });
         }
         await api.run(sid, { recompute: "blast", congestion_model: "bpr" });
-        const rec = await api.scenarioRecords(sid);
-        writeRecords(rec.records);
-        set((s) => ({
-          pressureSeq: s.pressureSeq + 1,
-          warnings: composeWarnings(s.objects, s.graph),
-          telemetry: { ...s.telemetry, subEdges: 1284 },
-        }));
+        await paintScenario(set, sid);
+        set((s) => ({ telemetry: { ...s.telemetry, subEdges: 1284 } }));
       } catch {
         /* keep the placement even if the recompute call fails */
       }
@@ -682,6 +949,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSpeed: (sp) => set({ speed: sp }),
 
   recenter: () => set((s) => ({ recenterNonce: s.recenterNonce + 1 })),
+  flyToLocation: (lng, lat, zoom) =>
+    set((s) => ({ flyTarget: { lng, lat, zoom }, flyNonce: s.flyNonce + 1 })),
+  fitToBounds: (bounds) => set((s) => ({ fitTarget: bounds, fitNonce: s.fitNonce + 1 })),
   toggleTilt: () => set((s) => ({ tiltOn: !s.tiltOn })),
 
   reset: async () => {
@@ -704,7 +974,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
     try {
       const base = await api.demoRun("baseline");
-      paintBaseline(set, base.records);
+      paintRecords(set, base.records);
     } catch {
       /* ignore */
     }

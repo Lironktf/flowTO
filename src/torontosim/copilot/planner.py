@@ -355,14 +355,26 @@ def _focus_call(state, cls) -> ToolCall:
         return _generic_preview()
     graph = _read_graph(state)
     info = _segments_for_road(graph, name) if graph is not None else None
+    # Only frame a road when the match confidently covers what the user said. A
+    # weak match ('Liberty Village' -> 'Liberty Street', 0.5) is almost certainly a
+    # place, not that road — so we pass the raw name through (no edge_ids) and the
+    # frontend's omnibox resolver geocodes it. This keeps navigation a single source
+    # of truth: roads frame precisely, places fall through to the same geocoder the
+    # search bar uses.
     if info is not None:
-        return ToolCall(
-            tool="answer",
-            rationale=f"Showing {info['name']} on the map.",
-            view=ViewDirective(action="fit", road_name=info["name"], edge_ids=info["edge_ids"]),
-            requires_user_confirmation=False,
-        )
-    # Unresolved → still send a best-effort camera move by name (no ids to highlight).
+        from .resolve import distinctive_coverage
+
+        if distinctive_coverage(name, info["name"]) >= 0.6:
+            return ToolCall(
+                tool="answer",
+                rationale=f"Showing {info['name']} on the map.",
+                view=ViewDirective(
+                    action="fit", road_name=info["name"], edge_ids=info["edge_ids"]
+                ),
+                requires_user_confirmation=False,
+            )
+    # No confident road match → best-effort camera move by name; the frontend
+    # resolves it (local roads, then Mapbox places).
     return ToolCall(
         tool="answer",
         rationale=f"Showing {name} on the map.",

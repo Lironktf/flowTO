@@ -133,6 +133,22 @@ def test_dispatch_focus_returns_view_no_plan():
     assert call.view.road_name == "King Street West"
 
 
+def test_dispatch_focus_passes_place_through_for_geocoding():
+    # 'King Village' weakly matches the road 'King Street West' (shares only 'king',
+    # coverage 0.5) — that's a place, not that road. Focus must NOT frame the road;
+    # it passes the raw name through (no edge_ids) so the frontend omnibox geocodes it.
+    call = planner._dispatch(
+        "show me King Village",
+        _state(),
+        _cls(intent="focus", road_name="King Village"),
+        live=False,
+    )
+    assert call.tool == "answer"
+    assert call.view is not None and call.view.action == "fit"
+    assert call.view.road_name == "King Village"
+    assert not call.view.edge_ids  # no road framed → frontend resolves the place
+
+
 def test_dispatch_set_time_returns_time_view():
     call = planner._dispatch(
         "show rush hour", _state(), _cls(intent="set_time", minute=1020), live=False

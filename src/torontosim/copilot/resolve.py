@@ -58,6 +58,20 @@ def _distinctive(tokens: set) -> set:
     return {t for t in tokens if t not in _GENERIC_ROAD_WORDS}
 
 
+def distinctive_coverage(query: str, name: str) -> float:
+    """Fraction of ``query``'s distinctive tokens present in ``name`` (0..1).
+
+    1.0 means every name-carrying word the user said appears in the matched road
+    ('Gardiner' -> 'Gardiner Expressway'); a low value means only some did
+    ('Liberty Village' -> 'Liberty Street' shares just 'liberty' = 0.5), which for
+    navigation signals a place, not that road. Empty distinctive query -> 1.0.
+    """
+    dq = _distinctive(_tokens(query))
+    if not dq:
+        return 1.0
+    return len(dq & _distinctive(_tokens(name))) / len(dq)
+
+
 # Road-class prominence (higher = more major), for tiebreaking ambiguous name matches.
 _CLASS_RANK = {
     "motorway": 6,

@@ -23,7 +23,9 @@ CKAN_DATASETS = {
     "centreline": ("toronto-centreline-tcl", "csv", None),
     "intersections": ("intersection-file-city-of-toronto", "geojson", None),
     "tmc": ("traffic-volumes-at-intersections-for-all-modes", "csv", "raw_data_2020_2029"),
-    "signals": ("traffic-signals-tabular", "csv", None),
+    # The signals package bundles beacons + pedestrian crossovers + signals; pick
+    # the 4326 "Traffic Signal" layer (~2.5k rows) over the first/smaller CSV.
+    "signals": ("traffic-signals-tabular", "csv", "Traffic Signal - 4326"),
     "bridges": ("bridge-structure", "geojson", None),
     "zones": ("neighbourhoods", "geojson", None),
 }

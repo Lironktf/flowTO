@@ -61,13 +61,19 @@ def compute_residuals(
     )
 
 
-def simulate_open_intervened(graph, od_matrix):  # pragma: no cover - needs the sim on the GB10
+def simulate_open_intervened(  # pragma: no cover - needs the sim on the GB10
+    graph, od_matrix, *, backend: str = "scipy", max_iter: int = 100, rgap: float = 1e-4
+):
     """Thin real adapter: build (open, intervened) callbacks over the P04 sim.
 
-    Returns ``(simulate_open, simulate_intervened)`` for ``compute_residuals``. Runs
-    the deterministic equilibrium engine; the open solve is cached. Imported lazily so
-    this module stays importable (and unit-testable) without the simulation stack.
+    Returns ``(simulate_open, simulate_intervened)`` for ``compute_residuals`` /
+    ``scenario_gen.generate_pairs``. Runs the deterministic equilibrium engine; the
+    open solve is cached. ``max_iter``/``rgap`` cap the Frank-Wolfe loop — a looser
+    cap trades equilibrium precision for speed (fine for Stage-1 training pairs).
+    Imported lazily so this module stays unit-testable without the simulation stack.
     """
+    import copy
+
     from torontosim.simulation.simulate_traffic import apply_scenario, simulate_traffic
 
     def _flows(result) -> dict[str, float]:
@@ -76,26 +82,23 @@ def simulate_open_intervened(graph, od_matrix):  # pragma: no cover - needs the 
             for u, v, k, d in result["graph"].edges(keys=True, data=True)
         }
 
+    def _solve(g) -> dict[str, float]:
+        return _flows(simulate_traffic(
+            g, od_matrix, engine="equilibrium", backend=backend, auto_calibrate=False,
+            copy_graph=False, max_equilibrium_iter=max_iter, rgap_target=rgap,
+        ))
+
     _open_cache: dict[str, dict] = {}
 
     def simulate_open() -> dict[str, float]:
         if "r" not in _open_cache:
-            _open_cache["r"] = simulate_traffic(
-                graph, od_matrix, engine="equilibrium", backend="scipy",
-                auto_calibrate=False, copy_graph=True,
-            )
-        return _flows(_open_cache["r"])
+            _open_cache["r"] = _solve(copy.deepcopy(graph))
+        return _open_cache["r"]
 
     def simulate_intervened(ops: list) -> dict[str, float]:
-        res = simulate_traffic(
-            graph, od_matrix, engine="equilibrium", backend="scipy",
-            auto_calibrate=False, copy_graph=True,
-        )
-        apply_scenario(res["graph"], ops)
-        res2 = simulate_traffic(
-            res["graph"], od_matrix, engine="equilibrium", backend="scipy",
-            auto_calibrate=False, copy_graph=False,
-        )
-        return _flows(res2)
+        # mutate a fresh copy, then one capped equilibrium solve on the same OD.
+        gg = copy.deepcopy(graph)
+        apply_scenario(gg, ops)
+        return _solve(gg)
 
     return simulate_open, simulate_intervened

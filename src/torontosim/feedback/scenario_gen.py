@@ -41,12 +41,19 @@ def sample_interventions(
     ``{"id", "edge_id", "sign", "ops"}`` where ``ops`` are scenario mutations.
     """
     rng = np.random.default_rng(seed)
-    n = int(min(n, len(edges)))
-    if n == 0:
-        return []
     weights = np.array(
         [ROAD_CLASS_WEIGHT.get(str(rc), 2) for rc in edges["road_class"]], dtype=np.float64
     )
+    # bias HARD toward edges that actually carry flow — closing an empty road does
+    # nothing, so an unloaded edge makes a useless (zero-residual) training pair.
+    if "load" in edges.columns:
+        load = np.clip(edges["load"].to_numpy(dtype=np.float64), 0.0, None)
+        if load.sum() > 0:
+            weights = weights * load
+    n_nonzero = int((weights > 0).sum())
+    n = int(min(n, n_nonzero if n_nonzero > 0 else len(edges)))
+    if n == 0:
+        return []
     weights = weights / weights.sum()
     pick = rng.choice(len(edges), size=n, replace=False, p=weights)
 
@@ -98,16 +105,23 @@ def generate_pairs(
     )
 
 
-def generate_from_sim(graph, od_matrix, *, n: int, seed: int) -> pd.DataFrame:  # pragma: no cover - sim on GB10
-    """Real adapter: sample interventions over the graph's edges and run the sim."""
+def generate_from_sim(graph, od_matrix, *, n: int, seed: int, **sim_kwargs) -> pd.DataFrame:  # pragma: no cover - sim on GB10
+    """Real adapter: solve the open equilibrium, sample interventions biased toward
+    LOADED edges (so each one actually reroutes), and run the sim. ``sim_kwargs``
+    (backend / max_iter / rgap) tune the equilibrium solve for speed."""
     from .groundtruth.counterfactual import simulate_open_intervened
 
+    simulate_open, simulate_intervened = simulate_open_intervened(graph, od_matrix, **sim_kwargs)
+    sim_open = simulate_open()  # {edge_id: load} — used to weight the sampling
     edges = pd.DataFrame(
         [
-            {"edge_id": str(d.get("edge_id") or f"{u}-{v}-{k}"), "road_class": d.get("road_class", "other")}
+            {
+                "edge_id": (eid := str(d.get("edge_id") or f"{u}-{v}-{k}")),
+                "road_class": d.get("road_class", "other"),
+                "load": float(sim_open.get(eid, 0.0)),
+            }
             for u, v, k, d in graph.edges(keys=True, data=True)
         ]
     )
     interventions = sample_interventions(edges, n=n, seed=seed)
-    simulate_open, simulate_intervened = simulate_open_intervened(graph, od_matrix)
     return generate_pairs(interventions, simulate_open, simulate_intervened)

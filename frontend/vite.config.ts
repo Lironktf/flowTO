@@ -1,8 +1,12 @@
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  // Two independent HTML entries: the marketing landing (/) and the app (/app.html).
+  // Separate module graphs keep the heavy mapbox/deck.gl app out of the landing bundle.
+  appType: "mpa",
   plugins: [react()],
   server: {
     port: 5173,
@@ -19,6 +23,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: {
+        landing: resolve(__dirname, "index.html"),
+        app: resolve(__dirname, "app.html"),
+      },
       output: {
         // Split the heavy map/render libs into their own cacheable vendor chunks
         // so the app shell + first paint aren't blocked by 2.7 MB of mapbox/deck.

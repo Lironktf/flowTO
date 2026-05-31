@@ -64,9 +64,11 @@ def _finite_triples(held):
         for i in range(len(held["r_obs"]))
         if all(math.isfinite(held[k][i]) for k in ("r_obs", "r_gnn", "r_sim"))
     ]
-    return ([held["r_obs"][i] for i in keep],
-            [held["r_gnn"][i] for i in keep],
-            [held["r_sim"][i] for i in keep])
+    return (
+        [held["r_obs"][i] for i in keep],
+        [held["r_gnn"][i] for i in keep],
+        [held["r_sim"][i] for i in keep],
+    )
 
 
 def main(argv=None) -> int:
@@ -79,14 +81,21 @@ def main(argv=None) -> int:
     p.add_argument("--out", default="data/gnn/stage2_metrics.json")
     p.add_argument("--radius-m", type=float, default=500.0)
     p.add_argument("--max-pairs", type=int, default=2000)
-    p.add_argument("--sim-backend", default="gpu",
-                   help="equilibrium solver backend: gpu (cuGraph, GB10) | scipy | cpu; "
-                        "gpu auto-falls back to cpu if cuGraph errors")
-    p.add_argument("--residual-solver", default="blast", choices=["blast", "full"],
-                   help="sim solver for BOTH the real residuals and the Stage-1 pretrain "
-                        "scenario-gen (kept matched so warm-start is method-consistent): "
-                        "blast = re-route only affected bundles (fast, AON, closures only); "
-                        "full = re-solve the whole equilibrium (verified, slow, closures+openings)")
+    p.add_argument(
+        "--sim-backend",
+        default="gpu",
+        help="equilibrium solver backend: gpu (cuGraph, GB10) | scipy | cpu; "
+        "gpu auto-falls back to cpu if cuGraph errors",
+    )
+    p.add_argument(
+        "--residual-solver",
+        default="blast",
+        choices=["blast", "full"],
+        help="sim solver for BOTH the real residuals and the Stage-1 pretrain "
+        "scenario-gen (kept matched so warm-start is method-consistent): "
+        "blast = re-route only affected bundles (fast, AON, closures only); "
+        "full = re-solve the whole equilibrium (verified, slow, closures+openings)",
+    )
     p.add_argument("--max-iter", type=int, default=50)
     p.add_argument("--rgap", type=float, default=1e-3)
     p.add_argument("--epochs", type=int, default=300)
@@ -96,8 +105,12 @@ def main(argv=None) -> int:
     p.add_argument("--gate-min-n", type=int, default=10)
     p.add_argument("--pretrain-scenarios", type=int, default=200)
     p.add_argument("--pretrain-epochs", type=int, default=100)
-    p.add_argument("--limit-closures", type=int, default=0,
-                   help="cap #restrictions (0 = all) to bound the CLOSED-solve count")
+    p.add_argument(
+        "--limit-closures",
+        type=int,
+        default=0,
+        help="cap #restrictions (0 = all) to bound the CLOSED-solve count",
+    )
     args = p.parse_args(argv)
 
     t_all = time.time()
@@ -133,9 +146,13 @@ def main(argv=None) -> int:
     # --- real residuals (sim OPEN vs CLOSED) --------------------------------
     t1 = time.time()
     residuals, coverage, sim_open_full = build_real_residuals(
-        graph, factory_rows, od,
+        graph,
+        factory_rows,
+        od,
         solver=args.residual_solver,
-        backend=args.sim_backend, max_iter=args.max_iter, rgap=args.rgap,
+        backend=args.sim_backend,
+        max_iter=args.max_iter,
+        rgap=args.rgap,
     )
     print(f"[residuals] {coverage} in {time.time() - t1:.0f}s")
     if residuals.empty:
@@ -148,11 +165,21 @@ def main(argv=None) -> int:
         print(f"[stage1] no checkpoint at {args.stage1_ckpt} — pretraining on Centreline")
         t2 = time.time()
         sim_pairs = generate_from_sim(
-            graph, od, n=args.pretrain_scenarios, seed=0, solver=args.residual_solver,
-            backend=args.sim_backend, max_iter=args.max_iter, rgap=args.rgap,
+            graph,
+            od,
+            n=args.pretrain_scenarios,
+            seed=0,
+            solver=args.residual_solver,
+            backend=args.sim_backend,
+            max_iter=args.max_iter,
+            rgap=args.rgap,
         )
         train_stage1(
-            graph, sim_pairs, epochs=args.pretrain_epochs, hidden_dim=64, seed=42,
+            graph,
+            sim_pairs,
+            epochs=args.pretrain_epochs,
+            hidden_dim=64,
+            seed=42,
             ckpt_path=args.stage1_ckpt,
         )
         print(f"[stage1] pretrained + saved in {time.time() - t2:.0f}s")
@@ -162,20 +189,26 @@ def main(argv=None) -> int:
     # --- Stage-2 fine-tune ---------------------------------------------------
     t3 = time.time()
     s2 = train_stage2(
-        graph, residuals, sim_open_full, stage1_ckpt=args.stage1_ckpt,
-        epochs=args.epochs, lr=args.lr, patience=args.patience, ckpt_path=args.stage2_ckpt,
+        graph,
+        residuals,
+        sim_open_full,
+        stage1_ckpt=args.stage1_ckpt,
+        epochs=args.epochs,
+        lr=args.lr,
+        patience=args.patience,
+        ckpt_path=args.stage2_ckpt,
     )
     held = s2.pop("held_out")
     print(f"[stage2] {s2} in {time.time() - t3:.0f}s")
 
     # --- activation gate -----------------------------------------------------
     r_obs, r_gnn, r_sim = _finite_triples(held)
-    gate = activation_gate(
-        r_obs, r_gnn, r_sim, eps=args.gate_eps, min_n=args.gate_min_n
-    )
+    gate = activation_gate(r_obs, r_gnn, r_sim, eps=args.gate_eps, min_n=args.gate_min_n)
     print(f"\n=== ACTIVATION GATE ===\n{json.dumps(gate, indent=2)}")
-    print(f"\nVERDICT: {gate['verdict'].upper()}  "
-          f"(err_gnn={gate['err_gnn_rmse']:.3f} vs err_sim={gate['err_sim_rmse']:.3f}, n={gate['n']})")
+    print(
+        f"\nVERDICT: {gate['verdict'].upper()}  "
+        f"(err_gnn={gate['err_gnn_rmse']:.3f} vs err_sim={gate['err_sim_rmse']:.3f}, n={gate['n']})"
+    )
 
     report = {
         "coverage": coverage,

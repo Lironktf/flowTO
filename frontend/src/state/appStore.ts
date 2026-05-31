@@ -22,6 +22,7 @@ import {
   type EdgeMeta,
   type Intervention,
   type ScenarioSummary,
+  type ViewDirective,
 } from "../api/client";
 import {
   buildGraph,
@@ -33,7 +34,7 @@ import {
   type RoadGraph,
   type Segment,
 } from "../api/graph";
-import { DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
+import { COPILOT_CHIPS, DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
 import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
 
 export type View = "sim" | "edit";
@@ -93,6 +94,8 @@ interface CopilotMessage {
   blocked?: boolean;
   // A previewed, confirmable plan (preview-before-apply): the ops to apply.
   interventions?: Intervention[];
+  // Severity-coded warnings from the SSOT assess pass (warn-don't-block).
+  warnings?: { severity?: string; title?: string; detail?: string; ref?: string | null }[];
   applied?: boolean;
   reverted?: boolean;
   // Post-confirm result for the metric card (Δ vs baseline).
@@ -112,6 +115,14 @@ interface CopilotLatency {
   ms: number;
   firstTokenMs?: number;
   mode: CopilotMode;
+}
+
+// A staged (previewed, not-yet-applied) copilot plan. Single source of truth so
+// the chat confirm and the map preview act on the same plan + edges — one apply.
+interface StagedPlan {
+  msgIndex: number; // the bot message in copilotLog carrying this plan
+  interventions: Intervention[];
+  edgeIds: string[]; // close_edge targets — drives the map preview overlay
 }
 
 // Non-reactive holder for the in-flight request's abort controller.
@@ -138,7 +149,6 @@ interface AppState {
   showLeft: boolean;
   showRight: boolean;
   showBottom: boolean;
-  showRail: boolean;
   // machine
   loaded: boolean;
   loading: boolean;
@@ -146,7 +156,7 @@ interface AppState {
   recomputing: boolean;
   recomputeStep: number;
   recomputeTitle: string;
-  planStaged: boolean;
+  stagedPlan: StagedPlan | null; // a previewed copilot plan awaiting confirm (single source)
   status: { state: StatusState; label: string };
   // data
   edges: EdgeMeta[];
@@ -171,6 +181,8 @@ interface AppState {
   deepMode: boolean; // 🧠 Deep → force the Agent investigate-loop; else auto-route
   copilotReady: boolean; // false until the backend's compare baseline is warm
   copilotThinking: boolean;
+  copilotPendingMode: CopilotMode | null; // resolved mode while thinking → labels the one loader
+  copilotChips: string[]; // suggestion prompts (dynamic from /copilot/suggestions; static fallback)
   copilotLatency: CopilotLatency | null;
   scrubberMinute: number;
   dayOfYear: number;
@@ -188,7 +200,7 @@ interface AppState {
 
   setTheme: (t: "light" | "dark") => void;
   setDensity: (d: "comfortable" | "compact") => void;
-  toggleDock: (which: "left" | "right" | "bottom" | "rail") => void;
+  toggleDock: (which: "left" | "right" | "bottom") => void;
   setView: (v: View) => void;
   loadTwin: () => Promise<void>;
   // saved sims
@@ -337,6 +349,45 @@ function pollBaselineReady(set: SetFn) {
   void tick();
 }
 
+/** Map-frame bounds [[minLng,minLat],[maxLng,maxLat]] for a copilot ViewDirective.
+ *  Prefers the resolved edge_ids; falls back to matching the road_name across the
+ *  graph. Returns null when nothing resolves (the camera just stays put). */
+function bboxForView(
+  graph: RoadGraph | null,
+  view: ViewDirective,
+): [[number, number], [number, number]] | null {
+  if (!graph) return null;
+  let ids = view.edge_ids ?? [];
+  if (!ids.length && view.road_name) {
+    const want = view.road_name.toLowerCase();
+    ids = [];
+    for (const [id, seg] of graph.byId) {
+      if ((seg.road_name ?? "").toLowerCase().includes(want)) ids.push(id);
+    }
+  }
+  let minLng = Infinity,
+    minLat = Infinity,
+    maxLng = -Infinity,
+    maxLat = -Infinity,
+    n = 0;
+  for (const id of ids) {
+    const seg = graph.byId.get(id);
+    if (!seg?.geometry) continue;
+    for (const [lat, lng] of seg.geometry) {
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      n++;
+    }
+  }
+  if (!n) return null;
+  return [
+    [minLng, minLat],
+    [maxLng, maxLat],
+  ];
+}
+
 /** Build an Edit-mode closure scene object from copilot-proposed edge_ids, so a
  *  copilot closure shows identically to a manual one (marker, inspector, sealed
  *  edges) and applies through the same applyEdits → /scenarios + /run path. */
@@ -397,17 +448,17 @@ function interventionsFromObjects(objects: SceneObject[]): Intervention[] {
     if (o.type === "closure") {
       for (const edgeId of o.edgeIds ?? []) out.push({ op: "close_edge", edge_id: edgeId });
     } else if (o.type === "surge" && o.surge) {
-      // Best-effort: backend demand-change support is pending (see client.ts).
+      // Demand surge (relief = negative) → OD injection at the placed point.
       const signed = o.surge.kind === "relief" ? -Math.abs(o.surge.amount) : Math.abs(o.surge.amount);
       out.push({
-        op: "demand_change",
+        op: "demand_surge",
         edge_id: o.edgeId,
         directions: (["n", "e", "s", "w"] as const).filter((d) => o.surge!.dirs[d]),
         amount: signed,
         mode: o.surge.mode,
         lng: o.coord[0],
         lat: o.coord[1],
-      } as unknown as Intervention);
+      });
     }
   }
   return out;
@@ -421,14 +472,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   showLeft: true,
   showRight: true,
   showBottom: true,
-  showRail: false,
   loaded: false,
   loading: false,
   error: null,
   recomputing: false,
   recomputeStep: 0,
   recomputeTitle: "",
-  planStaged: false,
+  stagedPlan: null,
   status: { state: "nominal", label: "Baseline · nominal" },
   edges: [],
   graph: null,
@@ -448,6 +498,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   deepMode: false,
   copilotReady: false,
   copilotThinking: false,
+  copilotPendingMode: null,
+  copilotChips: [...COPILOT_CHIPS], // replaced by graph-grounded chips once loaded
   copilotLatency: null,
   scrubberMinute: TIMELINE.defaultMin,
   dayOfYear: DEFAULT_DAY_OF_YEAR,
@@ -475,7 +527,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       showLeft: which === "left" ? !s.showLeft : s.showLeft,
       showRight: which === "right" ? !s.showRight : s.showRight,
       showBottom: which === "bottom" ? !s.showBottom : s.showBottom,
-      showRail: which === "rail" ? !s.showRail : s.showRail,
     })),
 
   setView: (v) => {
@@ -483,7 +534,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       view: v,
       showBottom: v === "sim",
-      showRail: v === "edit",
       activeTool: v === "sim" ? "select" : get().activeTool,
       pendingVertices: [],
     });
@@ -515,6 +565,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
       void get().loadSavedSims();
+      // Graph-grounded suggestion chips (real road names); static fallback on failure.
+      void api
+        .copilotSuggestions()
+        .then((s) => {
+          if (s.prompts?.length) set({ copilotChips: s.prompts });
+        })
+        .catch(() => {});
       pollBaselineReady(set); // ungate the copilot once the compare baseline is warm
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -604,18 +661,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (last && last.role === "bot" && last.streaming) {
         log[log.length - 1] = { ...last, streaming: false, aborted: true };
       }
-      return { copilotLog: log, copilotThinking: false };
+      return { copilotLog: log, copilotThinking: false, copilotPendingMode: null };
     });
   },
 
   copilotAsk: async (text) => {
-    // Auto-route: Deep → agent; a question → chat (stream); else → plan (which
-    // internally resolves close/segment/congestion commands or makes a plan).
-    const isQuestion =
-      /\?\s*$/.test(text) ||
-      /^(why|what|how|when|where|who|which|is|are|does|do|can|could|should|tell|explain)\b/i.test(text.trim());
-    const mode: CopilotMode = get().deepMode ? "agent" : isQuestion ? "chat" : "plan";
-    set((s) => ({ copilotLog: [...s.copilotLog, { role: "user", text }], copilotThinking: true }));
+    // Single classifier routes (replaces the old isQuestion regex). Deep mode is a
+    // manual override that forces the agent loop; otherwise /copilot/route runs one
+    // intent classification and tells us the surface (and, for plan intents, returns
+    // the dispatched plan inline so we don't make a second call).
+    set((s) => ({
+      copilotLog: [...s.copilotLog, { role: "user", text }],
+      copilotThinking: true,
+      copilotPendingMode: get().deepMode ? "agent" : null, // deep is known upfront
+      stagedPlan: null, // a new ask supersedes any previously staged plan
+    }));
     const controller = new AbortController();
     copilotAbort = controller;
     const { signal } = controller;
@@ -629,13 +689,86 @@ export const useAppStore = create<AppState>((set, get) => ({
         ],
       }));
     };
-    const afterPlan = (hasPlan: boolean, blocked: boolean, detail = "", ref?: string) => {
+    // Stage the plan as the single source of truth: capture the bot message it
+    // rode on (just pushed → last index), its interventions, and the close_edge
+    // targets for the map preview. Both confirm surfaces act on this.
+    // Push copilot warnings into the shared RightDock warnings panel (replacing
+    // any from a prior copilot turn), so they sit alongside clickops/risk flags.
+    type W = { severity?: string; title?: string; detail?: string; ref?: string | null };
+    const pushWarnings = (ws?: W[]) => {
+      if (!ws?.length) return;
+      set((s) => ({
+        warnings: [
+          ...ws.map((w, k) => ({
+            id: `copilot-${k}`,
+            severity: (w.severity as "info" | "warn" | "danger") ?? "warn",
+            title: w.title ?? "Advisory",
+            detail: w.detail ?? "",
+            ref: w.ref ?? undefined,
+          })),
+          ...s.warnings.filter((x) => !x.id.startsWith("copilot-")),
+        ],
+      }));
+    };
+    const afterPlan = (interventions: Intervention[] | undefined, blocked: boolean, detail = "", ref?: string) => {
       if (blocked) return flashBlocked(detail, ref);
-      if (hasPlan) set({ planStaged: true });
+      if (!interventions || interventions.length === 0) return;
+      const edgeIds = interventions
+        .filter((iv) => iv.op === "close_edge" && iv.edge_id)
+        .map((iv) => iv.edge_id as string);
+      set((s) => ({ stagedPlan: { msgIndex: s.copilotLog.length - 1, interventions, edgeIds } }));
+    };
+    // Execute a read-only camera move from the copilot (auto-focus on the road it
+    // proposes / the place you asked to see). No confirm — it only moves the view.
+    const applyView = (view?: ViewDirective | null) => {
+      if (!view) return;
+      if (view.action === "recenter") return get().recenter();
+      if (view.action === "tilt") return get().toggleTilt();
+      if (view.action === "time" && view.minute != null) return get().setScrubber(view.minute);
+      if (view.action === "fly" && view.lng != null && view.lat != null)
+        return get().flyToLocation(view.lng, view.lat, view.zoom ?? undefined);
+      const bbox = bboxForView(get().graph, view);
+      if (bbox) get().fitToBounds(bbox);
+    };
+    const renderPlan = (resp: CopilotResponse) => {
+      const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
+      set((s) => ({
+        copilotLog: [
+          ...s.copilotLog,
+          {
+            role: "bot",
+            text: resp.rationale,
+            citations: resp.citations,
+            blocked: resp.blocked,
+            interventions: confirmable ? resp.interventions : undefined,
+            warnings: resp.warnings,
+            mode: "plan",
+          },
+        ],
+        copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
+      }));
+      applyView(resp.view);
+      pushWarnings(resp.warnings);
+      afterPlan(
+        confirmable ? resp.interventions : undefined,
+        resp.blocked,
+        resp.rationale,
+        resp.citations?.[0]?.ref,
+      );
     };
     const t0 = performance.now();
 
     try {
+      // Deep override → agent; else classify once via /route.
+      let mode: CopilotMode = "agent";
+      let routedPlan: CopilotResponse | undefined;
+      if (!get().deepMode) {
+        const routed = await api.copilotRoute(text, signal);
+        mode = routed.mode;
+        routedPlan = routed.result;
+      }
+      set({ copilotPendingMode: mode }); // now the single loader can label itself
+
       if (mode === "agent") {
         const res = await api.copilotAgent(text, signal);
         const hasPlan = res.requires_user_confirmation && res.interventions.length > 0;
@@ -649,15 +782,25 @@ export const useAppStore = create<AppState>((set, get) => ({
               blocked: res.blocked,
               agentSteps: res.steps,
               interventions: hasPlan ? res.interventions : undefined,
+              warnings: res.warnings,
               mode: "agent",
             },
           ],
           copilotLatency: { ms: Math.round(performance.now() - t0), mode: "agent" },
         }));
-        afterPlan(hasPlan, res.blocked, res.answer, res.citations?.[0]?.ref);
+        pushWarnings(res.warnings);
+        afterPlan(
+          hasPlan ? res.interventions : undefined,
+          res.blocked,
+          res.answer,
+          res.citations?.[0]?.ref,
+        );
       } else if (mode === "chat") {
-        set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text: "", streaming: true, mode: "chat" }] }));
+        // Don't push the streaming bubble upfront — keep the single "thinking"
+        // loader visible until the first token, then start the reply. This way
+        // chat uses the same loader as plan/agent (no separate cursor symbol).
         let first: number | undefined;
+        let started = false;
         const patchLast = (fn: (m: CopilotMessage) => CopilotMessage) =>
           set((s) => {
             const log = s.copilotLog.slice();
@@ -669,10 +812,21 @@ export const useAppStore = create<AppState>((set, get) => ({
           text,
           (tok) => {
             if (first === undefined) first = Math.round(performance.now() - t0);
-            patchLast((m) => ({ ...m, text: m.text + tok }));
+            if (!started) {
+              started = true;
+              set((s) => ({
+                copilotLog: [...s.copilotLog, { role: "bot", text: tok, streaming: true, mode: "chat" }],
+              }));
+            } else {
+              patchLast((m) => ({ ...m, text: m.text + tok }));
+            }
           },
           (done) => {
-            patchLast((m) => ({ ...m, streaming: false }));
+            if (started) patchLast((m) => ({ ...m, streaming: false }));
+            else
+              set((s) => ({
+                copilotLog: [...s.copilotLog, { role: "bot", text: "(no response)", mode: "chat" }],
+              }));
             set({
               copilotLatency: {
                 ms: done.total_ms ?? Math.round(performance.now() - t0),
@@ -684,23 +838,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           signal,
         );
       } else {
-        const resp: CopilotResponse = await api.copilotPlan(text, signal);
-        const confirmable = resp.requires_user_confirmation && (resp.interventions?.length ?? 0) > 0;
-        set((s) => ({
-          copilotLog: [
-            ...s.copilotLog,
-            {
-              role: "bot",
-              text: resp.rationale,
-              citations: resp.citations,
-              blocked: resp.blocked,
-              interventions: confirmable ? resp.interventions : undefined,
-              mode: "plan",
-            },
-          ],
-          copilotLatency: { ms: Math.round(performance.now() - t0), mode: "plan" },
-        }));
-        afterPlan(confirmable, resp.blocked, resp.rationale, resp.citations?.[0]?.ref);
+        // plan mode — /route already dispatched the plan; fall back to /plan only
+        // if the inline result is somehow missing (defensive).
+        const resp = routedPlan ?? (await api.copilotPlan(text, signal));
+        renderPlan(resp);
       }
     } catch (e) {
       // User-initiated Stop (AbortError) is handled in copilotStop — stay quiet.
@@ -715,7 +856,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((s) => ({ copilotLog: [...s.copilotLog, { role: "bot", text }] }));
     } finally {
       if (copilotAbort === controller) copilotAbort = null;
-      set({ copilotThinking: false });
+      set({ copilotThinking: false, copilotPendingMode: null });
     }
   },
 
@@ -730,6 +871,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           .map((m, i) => (i === msgIndex ? { ...m, applied: true } : m))
           .concat({ role: "bot", text, result }),
         status: { state: "surge", label: "Plan applied · twin updated" },
+        stagedPlan: null, // applied → no longer staged (clears the map preview/banner)
       }));
 
     set({ status: { state: "recomputing", label: "Applying plan · running sim" } });
@@ -757,6 +899,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         }
         markApplied(`${obj.name} applied — twin recomputed.`, result);
+        void get().loadSavedSims(); // register the applied closure in the Simulate rail
         return;
       }
 
@@ -797,11 +940,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  // Apply the staged plan through the ONE correct path (copilotConfirm on the
+  // message that carries it) — not applyEdits-on-objects, which ignored the plan.
   applyPlan: async () => {
-    set({ planStaged: false });
-    await get().applyEdits();
+    const sp = get().stagedPlan;
+    if (!sp) return;
+    await get().copilotConfirm(sp.msgIndex);
   },
-  discardPlan: () => set({ planStaged: false }),
+  discardPlan: () => set({ stagedPlan: null }),
 
   selectTool: (id) =>
     set({ activeTool: id, selectedId: id === "select" ? get().selectedId : null, pendingVertices: [] }),
@@ -988,7 +1134,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeSavedSimId: null,
       currentName: "Untitled simulation",
       dirty: false,
-      planStaged: false,
+      stagedPlan: null,
       selectedRoadId: null,
       copilotLog: [],
       scrubberMinute: TIMELINE.defaultMin,

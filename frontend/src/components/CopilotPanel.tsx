@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { COPILOT_CHIPS } from "../config";
 import { useAppStore } from "../state/appStore";
 import { Icon } from "./Icons";
 
@@ -9,11 +8,31 @@ const DELTA_ROWS: [string, string][] = [
   ["severe_edges", "severe"],
 ];
 
-/** Suggestion chips — one source (COPILOT_CHIPS), reused by the welcome and the bar. */
+/** Road/segment-aware confirm label. Closing one road = its directional segments,
+ *  NOT "N changes" — count distinct roads (via the graph) vs segments. */
+export function confirmLabel(
+  interventions: { op?: string; edge_id?: string }[],
+  graph: { byId: Map<string, { road_name?: string }> } | null,
+): string {
+  const segs = interventions.length;
+  const segPart = `${segs} segment${segs === 1 ? "" : "s"}`;
+  const roads = new Set<string>();
+  let resolvable = !!graph;
+  for (const iv of interventions) {
+    const nm = iv.edge_id && graph ? graph.byId.get(iv.edge_id)?.road_name : undefined;
+    if (nm) roads.add(nm);
+    else resolvable = false;
+  }
+  if (resolvable && roads.size > 1) return `Confirm & run · ${roads.size} roads · ${segPart}`;
+  return `Confirm & run · ${segPart}`;
+}
+
+/** Suggestion chips — graph-grounded prompts from the store (static fallback). */
 function ChipRow({ disabled, onPick }: { disabled: boolean; onPick: (c: string) => void }) {
+  const chips = useAppStore((s) => s.copilotChips);
   return (
     <>
-      {COPILOT_CHIPS.map((c) => (
+      {chips.map((c) => (
         <button key={c} className="chip" disabled={disabled} onClick={() => onPick(c)}>
           {c}
         </button>
@@ -32,7 +51,16 @@ export function CopilotRegion() {
   const stop = useAppStore((s) => s.copilotStop);
   const latency = useAppStore((s) => s.copilotLatency);
   const thinking = useAppStore((s) => s.copilotThinking);
+  const graph = useAppStore((s) => s.graph);
+  const pendingMode = useAppStore((s) => s.copilotPendingMode);
   const ready = useAppStore((s) => s.copilotReady);
+  // One loader; only the label changes with the resolved mode.
+  const thinkLabel =
+    pendingMode === "agent"
+      ? "investigating…"
+      : pendingMode === "chat"
+        ? "responding…"
+        : "thinking…";
   const [text, setText] = useState("");
 
   const logRef = useRef<HTMLDivElement>(null);
@@ -93,11 +121,6 @@ export function CopilotRegion() {
             </span>
             <div className="bub">
               {m.text}
-              {m.streaming && (
-                <span className="stream-cursor" aria-hidden>
-                  ▍
-                </span>
-              )}
               {m.aborted && <span className="aborted-tag"> (stopped)</span>}
               {m.agentSteps && m.agentSteps.length > 0 && (
                 <details className="agent-trace-wrap">
@@ -128,14 +151,25 @@ export function CopilotRegion() {
                   ))}
                 </div>
               )}
+              {m.warnings && m.warnings.length > 0 && (
+                <div className="copilot-warnings">
+                  {m.warnings.map((w, j) => (
+                    <div key={j} className={`warn-row ${w.severity ?? "warn"}`}>
+                      <span className="warn-title">{w.title}</span>
+                      {w.detail ? <span className="warn-detail"> — {w.detail}</span> : null}
+                      {w.ref ? <span className="ref"> · {w.ref}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              )}
               {m.interventions && m.interventions.length > 0 && (
                 <div className="copilot-confirm">
                   <button className="btn primary" disabled={m.applied} onClick={() => void confirm(i)}>
                     {m.applied
                       ? "✓ Applied"
-                      : `Confirm & run (${m.interventions.length} change${
-                          m.interventions.length > 1 ? "s" : ""
-                        })`}
+                      : (m.warnings ?? []).some((w) => w.severity === "danger")
+                        ? `Confirm anyway · ${confirmLabel(m.interventions, graph).replace("Confirm & run · ", "")}`
+                        : confirmLabel(m.interventions, graph)}
                   </button>
                 </div>
               )}
@@ -184,7 +218,7 @@ export function CopilotRegion() {
               <span className="dot" />
               <span className="dot" />
               <span className="dot" />
-              <span className="think-label">{deepMode ? "investigating…" : "thinking…"}</span>
+              <span className="think-label">{thinkLabel}</span>
             </div>
           </div>
         )}

@@ -18,15 +18,14 @@ from torontosim.feedback.benchmark import (
     r2,
     rank_topk_overlap,
     render_markdown,
-    rmse,
     risk_accuracy,
+    rmse,
     spatial_holdout_split,
     write_report,
 )
 from torontosim.feedback.benchmark.configs import (
     BASELINE_EDGE_FEATURES,
     BASELINE_NODE_FEATURES,
-    REGISTRY,
     select_columns,
 )
 
@@ -106,10 +105,10 @@ def test_risk_accuracy_buckets():
 
 
 def test_rank_topk_overlap():
-    pred = [0.0, 5.0, -9.0, 1.0]      # top-2 by |.|: idx 2,1
-    target = [0.0, 8.0, -9.0, 2.0]    # top-2 by |.|: idx 2,1
+    pred = [0.0, 5.0, -9.0, 1.0]  # top-2 by |.|: idx 2,1
+    target = [0.0, 8.0, -9.0, 2.0]  # top-2 by |.|: idx 2,1
     assert rank_topk_overlap(pred, target, 2) == 1.0
-    target2 = [10.0, 0.1, 0.1, 9.0]   # top-2: idx 0,3 → no overlap with 2,1
+    target2 = [10.0, 0.1, 0.1, 9.0]  # top-2: idx 0,3 → no overlap with 2,1
     assert rank_topk_overlap(pred, target2, 2) == 0.0
 
 
@@ -122,8 +121,8 @@ def test_evaluate_includes_topk_when_asked():
 def test_spatial_holdout_no_group_leakage():
     groups = np.array(["A", "A", "B", "B", "C", "C", "D", "D"])
     train, test = spatial_holdout_split(groups, test_frac=0.5, seed=1)
-    assert not (train & test).any()           # disjoint
-    assert (train | test).all()               # covers all
+    assert not (train & test).any()  # disjoint
+    assert (train | test).all()  # covers all
     # every group is wholly in train xor test
     for g in np.unique(groups):
         idx = groups == g
@@ -144,8 +143,8 @@ def test_compare_picks_correct_winners():
         "pruned": {"mae": 0.15, "r2": 0.85},
     }
     cmp = compare_configs(results, reference="baseline")
-    assert cmp["metrics"]["mae"]["winner"] == "pruned"       # lower better
-    assert cmp["metrics"]["r2"]["winner"] == "pruned"        # higher better
+    assert cmp["metrics"]["mae"]["winner"] == "pruned"  # lower better
+    assert cmp["metrics"]["r2"]["winner"] == "pruned"  # higher better
     assert cmp["metrics"]["mae"]["delta_vs_reference"]["pruned"] == pytest.approx(-0.05)
 
 

@@ -32,11 +32,10 @@ def load_observed_counts(time_context: dict, csv_path: str | None = None) -> dic
     since an exact (hour, dow, month, weather) slice has very few sensors.
     Returns ``{node_id: mean_vehicle_count}``. Empty if the CSV is unavailable.
     """
-    try:
-        import pandas as pd
-
-        df = pd.read_csv(csv_path or _COUNTS_CSV)
-    except Exception:  # noqa: BLE001 — pandas/CSV unavailable
+    # cuDF reads + groups on the GPU when available (~4×, see benchmarks/),
+    # else pandas. The grouped result is moved to host before the dict build.
+    df = _read_counts(csv_path or _COUNTS_CSV)
+    if df is None:
         return {}
 
     hour = time_context.get("hour")
@@ -49,7 +48,27 @@ def load_observed_counts(time_context: dict, csv_path: str | None = None) -> dic
     if sub.empty:
         return {}
     grouped = sub.groupby("node_id")["vehicle_count"].mean()
+    if hasattr(grouped, "to_pandas"):  # cuDF -> host for the python dict build
+        grouped = grouped.to_pandas()
     return {int(n): float(c) for n, c in grouped.items() if c > 0}
+
+
+def _read_counts(path: str):
+    """Read the counts CSV, preferring cuDF; return None if unavailable."""
+    from ._gpu import cudf_or_none
+
+    cudf = cudf_or_none()
+    if cudf is not None:
+        try:
+            return cudf.read_csv(path)
+        except Exception:  # noqa: BLE001 — fall back to pandas
+            pass
+    try:
+        import pandas as pd
+
+        return pd.read_csv(path)
+    except Exception:  # noqa: BLE001 — pandas/CSV unavailable
+        return None
 
 
 def _node_paths(graph, od_pairs) -> dict:

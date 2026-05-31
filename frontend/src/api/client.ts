@@ -63,11 +63,22 @@ export interface Intervention {
   speed_kmh?: number;
   lanes?: number;
   capacity?: number;
-  // demand_surge (frontend-defined; backend support pending)
+  // demand_surge — inject/scale OD trips at a node or point (backend: simulation/demand.py)
   amount?: number;
   mode?: "absolute" | "relative";
   lat?: number;
   lng?: number;
+  directions?: string[];
+}
+
+export interface ViewDirective {
+  action: "fit" | "fly" | "select" | "recenter" | "tilt" | "time";
+  road_name?: string | null;
+  edge_ids?: string[];
+  lng?: number | null;
+  lat?: number | null;
+  zoom?: number | null;
+  minute?: number | null; // action="time": minute-of-day to scrub to
 }
 
 export interface CopilotResponse {
@@ -75,9 +86,20 @@ export interface CopilotResponse {
   rationale: string;
   interventions: Intervention[];
   citations: { ref: string; note: string }[];
+  warnings?: { severity?: string; title?: string; detail?: string; ref?: string | null }[];
+  view?: ViewDirective | null;
   requires_user_confirmation: boolean;
   blocked: boolean;
+  intent?: string;
   retrieved_policy?: { doc_id: string; title: string; source: string }[];
+}
+
+/** /copilot/route — the single classifier's decision. For plan-mode intents the
+ *  dispatched plan rides inline in `result` (no second hop). */
+export interface CopilotRouteResult {
+  mode: "plan" | "chat" | "agent";
+  intent: string;
+  result?: CopilotResponse;
 }
 
 export interface CopilotConfirmResult {
@@ -94,10 +116,18 @@ export interface AgentStepLog {
   observation: unknown;
 }
 
+export interface CopilotWarning {
+  severity?: "info" | "warn" | "danger";
+  title?: string;
+  detail?: string;
+  ref?: string | null;
+}
+
 export interface CopilotAgentResult {
   answer: string;
   interventions: Intervention[];
   citations: { ref: string; note: string }[];
+  warnings?: CopilotWarning[];
   steps: AgentStepLog[];
   requires_user_confirmation: boolean;
   blocked: boolean;
@@ -163,6 +193,11 @@ export const api = {
   demoRun: (scenario: string) => jget<DemoRun>(`/demo/run?scenario=${scenario}`),
   copilotPlan: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotResponse>("/copilot/plan", { prompt }, signal),
+  copilotRoute: (prompt: string, signal?: AbortSignal) =>
+    jpost<CopilotRouteResult>("/copilot/route", { prompt }, signal),
+  copilotSuggestions: () => jget<{ prompts: string[] }>("/copilot/suggestions"),
+  assess: (interventions: Intervention[], prompt = "", signal?: AbortSignal) =>
+    jpost<{ warnings: CopilotWarning[] }>("/assess", { interventions, prompt }, signal),
   copilotAgent: (prompt: string, signal?: AbortSignal) =>
     jpost<CopilotAgentResult>("/copilot/agent", { prompt }, signal),
   copilotConfirm: (interventions: Intervention[], name = "Copilot scenario") =>

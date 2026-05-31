@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import lru_cache
 from pathlib import Path
 
 import torch
@@ -44,6 +45,33 @@ def load_checkpoint_model(model_path: Path, device: torch.device):
     return model, checkpoint
 
 
+@lru_cache(maxsize=4)
+@torch.no_grad()
+def _prepare_inference(
+    model_path: str,
+    dataset_path: str,
+    graph_path: str,
+    device_str: str,
+):
+    """Load + device-resident dataset/model, with node embeddings precomputed.
+
+    Cached so repeated baseline predictions (every time-context / scenario in the
+    live twin) reuse the on-device tensors instead of re-reading the dataset and
+    checkpoint from disk and re-uploading to the GPU each call. The node
+    embeddings ``h`` depend only on the graph + node features (not the time
+    context) and dropout is off in eval mode, so they are encoded once here and
+    reused across every prediction. Pass distinct paths to invalidate.
+    """
+    device = torch.device(device_str)
+    dataset = _load_or_build_dataset(Path(dataset_path), Path(graph_path))
+    model, checkpoint = load_checkpoint_model(Path(model_path), device)
+    x = dataset["x"].to(device)
+    edge_index = dataset["edge_index"].to(device)
+    edge_attr = dataset["edge_attr"].to(device)
+    h = model.encode_nodes(x, edge_index)  # context-independent — encode once
+    return dataset, model, checkpoint, edge_index, edge_attr, h, device
+
+
 @torch.no_grad()
 def predict_baseline_edges(
     model_path: Path = DEFAULT_MODEL_PATH,
@@ -55,12 +83,10 @@ def predict_baseline_edges(
     prefer_cuda: bool = True,
 ) -> dict:
     device = torch_device(prefer_cuda=prefer_cuda)
-    dataset = _load_or_build_dataset(dataset_path, graph_path)
-    model, checkpoint = load_checkpoint_model(model_path, device)
+    dataset, model, checkpoint, edge_index, edge_attr, h, device = _prepare_inference(
+        str(model_path), str(dataset_path), str(graph_path), str(device)
+    )
 
-    x = dataset["x"].to(device)
-    edge_index = dataset["edge_index"].to(device)
-    edge_attr = dataset["edge_attr"].to(device)
     raw_ctx = torch.tensor([context_vector(time_context)], dtype=torch.float32)
     ctx = apply_standardizer(raw_ctx, checkpoint["context_standardizer"]).to(device)
 
@@ -70,7 +96,9 @@ def predict_baseline_edges(
         end = min(start + batch_size, num_edges)
         edge_sample_idx = torch.arange(start, end, dtype=torch.long, device=device)
         batch_ctx = ctx.expand(end - start, -1)
-        pred = model(x, edge_index, edge_attr, batch_ctx, edge_sample_idx)
+        # Reuse the once-encoded node embeddings; only the small edge head runs
+        # per batch (previously every batch re-ran full graph message passing).
+        pred = model.score_edges(h, edge_index, edge_attr, batch_ctx, edge_sample_idx)
         preds.append(pred.detach().cpu())
     pressures = torch.cat(preds).numpy()
 

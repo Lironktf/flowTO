@@ -22,9 +22,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from ..api.schemas import Intervention
 from . import ollama_client, rag
-from .constraints import advisories, check_request
 from .plan import candidate_edges, sanitize_interventions
-from .tools import Citation
+from .tools import Citation, Warning
 
 ModelCall = Callable[[str, str, dict], str]
 
@@ -63,6 +62,7 @@ class AgentResult(BaseModel):
     answer: str
     interventions: list[Intervention] = Field(default_factory=list)
     citations: list[Citation] = Field(default_factory=list)
+    warnings: list[Warning] = Field(default_factory=list)
     steps: list[dict] = Field(default_factory=list)
     requires_user_confirmation: bool = False
     blocked: bool = False
@@ -136,21 +136,15 @@ def _candidate_block(state, goal: str) -> str:
 
 def _finalize_propose(goal: str, step: AgentStep, state, steps: list[dict]) -> AgentResult:
     ivs = sanitize_interventions(step.interventions, _valid_edges(state))
-    ops = [iv.to_op() for iv in ivs]
-    violations = check_request(goal, ops, state)
-    if violations:
-        return AgentResult(
-            answer="That plan breaches a hard constraint, so I won't apply it.",
-            citations=[Citation(ref=v.ref, note=v.note) for v in violations],
-            steps=steps,
-            blocked=True,
-            requires_user_confirmation=False,
-        )
-    cites = [Citation(ref=w.ref, note=w.note) for w in advisories(goal, ops, state)]
+    # Warn-don't-block: the SSOT assess pass returns severity-coded warnings the
+    # user can override — the agent never silently refuses a plan.
+    from .assess import assess
+
+    warnings = assess(ivs, state, prompt=goal) if ivs else []
     return AgentResult(
         answer=step.rationale or step.answer or "Proposed a plan — confirm to apply.",
         interventions=ivs,
-        citations=cites,
+        warnings=warnings,
         steps=steps,
         requires_user_confirmation=bool(ivs),
     )
@@ -189,6 +183,7 @@ def run_agent(
     open_schema = _open_schema()
     term_schema = _terminal_schema()
     steps: list[dict] = []
+    seen: dict = {}  # (tool, args) → observation, to skip repeated identical work
 
     for i in range(max_steps):
         remaining = max_steps - i
@@ -211,20 +206,32 @@ def run_agent(
                 {"tool": "propose", "thought": step.thought, "observation": "proposed a plan"}
             )
             return _finalize_propose(goal, step, state, steps)
+        # Dedup: if the model re-runs an identical tool call, reuse the cached
+        # observation and nudge it to pick a different action (saves a sim/optimize).
+        key = None
         if step.tool == "retrieve_policy":
-            obs = rag.retrieve(step.query or goal, k=3)
+            key = ("retrieve_policy", step.query or goal)
+            obs = seen[key] if key in seen else rag.retrieve(step.query or goal, k=3)
         elif step.tool == "simulate":
             clean = sanitize_interventions(step.interventions, _valid_edges(state))
-            obs = (
-                _simulate(state, [iv.to_op() for iv in clean])
-                if clean
-                else {"error": "no valid edge_id in the proposed interventions"}
-            )
+            if not clean:
+                obs = {"error": "no valid edge_id in the proposed interventions"}
+            else:
+                ops = [iv.to_op() for iv in clean]
+                key = ("simulate", json.dumps(ops, sort_keys=True))
+                obs = seen[key] if key in seen else _simulate(state, ops)
         elif step.tool == "optimize":
-            obs = _optimize(state)
+            key = ("optimize", "")
+            obs = seen[key] if key in seen else _optimize(state)
         else:  # pragma: no cover — schema-constrained
             break
-        steps.append({"tool": step.tool, "thought": step.thought, "observation": obs})
+        repeated = key is not None and key in seen
+        if key is not None:
+            seen[key] = obs
+        thought = step.thought + (
+            " [repeat — prior result reused; try a different action or finish]" if repeated else ""
+        )
+        steps.append({"tool": step.tool, "thought": thought, "observation": obs})
 
     # Step cap or parse failure: summarize what we learned, no plan committed.
     return AgentResult(

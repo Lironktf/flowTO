@@ -19,6 +19,7 @@ from .schemas import (
     CompareResult,
     CopilotConfirm,
     CopilotConfirmResult,
+    Intervention,
     RunRequest,
     RunResult,
     Scenario,
@@ -70,8 +71,26 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             except Exception:  # noqa: BLE001 — warmup is best-effort
                 pass
 
+        # Keep-alive: the model's keep_alive is 10m, so re-ping every 5m to keep it
+        # resident — kills the ~8-11s cold reload mid-session. Cancellable on shutdown.
+        stop_keepalive = threading.Event()
+
+        def keepalive():
+            from ..copilot import ollama_client, planner
+
+            while not stop_keepalive.wait(300):  # 5 min, comfortably inside keep_alive=10m
+                try:
+                    if planner._live_enabled() and ollama_client.available(timeout=3.0):
+                        ollama_client.warmup(timeout=30.0)
+                except Exception:  # noqa: BLE001 — best-effort; never crash the loop
+                    pass
+
         threading.Thread(target=warm, daemon=True).start()
-        yield
+        threading.Thread(target=keepalive, daemon=True).start()
+        try:
+            yield
+        finally:
+            stop_keepalive.set()
 
     app = FastAPI(title="TorontoSim API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
@@ -233,7 +252,51 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             from ..copilot.planner import plan_intervention
         except ImportError:
             raise HTTPException(501, "copilot not available (P09 not installed)") from None
-        return plan_intervention(payload.get("prompt", ""), state)
+        # An optional pre-computed classification ({"intent": ...}) drives dispatch
+        # deterministically (used by /route and by tests/debug to skip the model).
+        return plan_intervention(
+            payload.get("prompt", ""), state, classification=payload.get("classification")
+        )
+
+    @app.get("/copilot/suggestions")
+    def copilot_suggestions():
+        """Dynamic suggestion chips grounded in the real graph (no hardcoded prompts)."""
+        try:
+            from ..copilot.planner import suggested_prompts
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        return {"prompts": suggested_prompts(state)}
+
+    @app.post("/copilot/route")
+    def copilot_route(payload: dict):
+        """Single intent classifier → routing decision (replaces the frontend regex
+        + backend keyword cascade). For plan-mode intents the dispatched ToolCall is
+        returned inline (no second hop); chat/agent modes tell the frontend which
+        streaming / loop endpoint to call. The classification is reused for dispatch
+        so the model classifies exactly once."""
+        try:
+            from ..copilot.classify import classify
+            from ..copilot.planner import plan_intervention
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        prompt = payload.get("prompt", "")
+        cls = classify(prompt)
+        out: dict = {"mode": cls.mode, "intent": cls.intent}
+        if cls.mode == "plan":
+            out["result"] = plan_intervention(prompt, state, classification=cls)
+        return out
+
+    @app.post("/assess")
+    def assess_closure(payload: dict):
+        """SSOT warn-don't-block assessment — shared by clickops + copilot. Returns
+        severity-coded warnings for the proposed interventions; never refuses."""
+        try:
+            from ..copilot.assess import assess
+        except ImportError:
+            raise HTTPException(501, "copilot not available (P09 not installed)") from None
+        ivs = [Intervention.model_validate(iv) for iv in payload.get("interventions", [])]
+        warnings = assess(ivs, state, prompt=payload.get("prompt", ""))
+        return {"warnings": [w.model_dump() for w in warnings]}
 
     @app.post("/copilot/explain")
     def copilot_explain(payload: dict):
@@ -389,10 +452,16 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
     }
 
     def _compute_demo(scenario: str) -> dict:
+        import os
+
         from ..demo import wc_surge
 
         res = wc_surge.run_scenario(
-            scenario, graph=state.graph, baseline_od=state.od_matrix, engine="kpath"
+            scenario,
+            graph=state.graph,
+            baseline_od=state.od_matrix,
+            engine="kpath",
+            backend=os.environ.get("TS_BACKEND", "cpu"),
         )
         return {
             "scenario": scenario,

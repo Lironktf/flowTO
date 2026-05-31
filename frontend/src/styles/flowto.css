@@ -38,7 +38,6 @@
   --r-sm: 5px;
 
   /* dock sizing */
-  --rail-w:   46px;
   --left-w:   274px;
   --right-w:  346px;
   --top-h:    46px;
@@ -98,13 +97,13 @@ button { font-family: inherit; }
 #shell {
   position: fixed; inset: 0;
   display: grid;
-  grid-template-columns: var(--rail-w) var(--left-w) 1fr var(--right-w);
+  grid-template-columns: var(--left-w) 1fr var(--right-w);
   grid-template-rows: var(--top-h) 1fr var(--bottom-h) var(--status-h);
   grid-template-areas:
-    "topbar topbar topbar topbar"
-    "rail   left   view   right"
-    "rail   left   bottom right"
-    "status status status status";
+    "topbar topbar topbar"
+    "left   view   right"
+    "left   bottom right"
+    "status status status";
   background: var(--chrome);
   transition: grid-template-columns .26s cubic-bezier(.4,0,.1,1),
               grid-template-rows .26s cubic-bezier(.4,0,.1,1);
@@ -112,10 +111,8 @@ button { font-family: inherit; }
 body.no-left   #shell { --left-w: 0px; }
 body.no-right  #shell { --right-w: 0px; }
 body.no-bottom #shell { --bottom-h: 0px; }
-body.no-rail   #shell { --rail-w: 0px; }
 
 #topbar  { grid-area: topbar; }
-#rail    { grid-area: rail; }
 #dock-left   { grid-area: left; }
 #viewport    { grid-area: view; }
 #dock-bottom { grid-area: bottom; }
@@ -126,20 +123,19 @@ body.no-rail   #shell { --rail-w: 0px; }
 .dock { overflow: hidden; min-width: 0; min-height: 0; }
 body.no-left   #dock-left,
 body.no-right  #dock-right,
-body.no-bottom #dock-bottom,
-body.no-rail   #rail { opacity: 0; pointer-events: none; }
+body.no-bottom #dock-bottom { opacity: 0; pointer-events: none; }
 
 /* show only the regions belonging to the active view */
 body[data-view="sim"]  .v-edit { display: none !important; }
 body[data-view="edit"] .v-sim  { display: none !important; }
 
 /* ============================================================ TOPBAR */
-/* Three zones aligned to the docks: [rail+left] [map] [right]. minmax() keeps a
+/* Three zones aligned to the docks: [left] [map] [right]. minmax() keeps a
    zone from shrinking below its content when its dock is collapsed. */
 #topbar {
   display: grid; align-items: center;
   grid-template-columns:
-    minmax(max-content, calc(var(--rail-w) + var(--left-w)))
+    minmax(max-content, var(--left-w))
     1fr
     minmax(max-content, var(--right-w));
   background: var(--chrome-hi);
@@ -260,34 +256,6 @@ body[data-view="edit"] .v-sim  { display: none !important; }
 .iconbtn:hover { color: var(--ink); border-color: var(--ink-3); }
 .iconbtn.on { background: var(--cobalt-wash); border-color: var(--cobalt-line); color: var(--cobalt-ink); }
 .iconbtn svg { width: 16px; height: 16px; }
-
-/* ============================================================ TOOL RAIL (editor) */
-#rail {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 8px 0;
-  background: var(--chrome);
-  border-right: 1px solid var(--hair);
-  transition: opacity .2s;
-}
-.rail-tool {
-  appearance: none; cursor: pointer; position: relative;
-  width: 34px; height: 34px; border-radius: var(--r-sm);
-  display: grid; place-items: center;
-  border: 1px solid transparent; background: transparent; color: var(--ink-3);
-  transition: background .14s, color .14s, border-color .14s;
-}
-.rail-tool svg { width: 19px; height: 19px; }
-.rail-tool:hover { background: var(--chrome-hi); color: var(--ink); }
-.rail-tool.active { background: var(--cobalt-wash); color: var(--cobalt-ink); border-color: var(--cobalt-line); }
-.rail-tool.active::before { content:""; position: absolute; left: -8px; top: 7px; bottom: 7px; width: 2px; border-radius: 2px; background: var(--cobalt); }
-.rail-tip {
-  position: absolute; left: 42px; top: 50%; transform: translateY(-50%) translateX(-4px);
-  background: var(--ink); color: var(--paper); padding: 4px 8px; border-radius: 5px;
-  font-size: 10.5px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .12s, transform .12s; z-index: 20;
-  box-shadow: 0 4px 14px rgba(0,0,0,.25);
-}
-.rail-tool:hover .rail-tip { opacity: 1; transform: translateY(-50%) translateX(0); }
-.rail-sep { width: 22px; height: 1px; background: var(--hair); margin: 5px 0; }
 
 /* ============================================================ DOCKS (generic) */
 #dock-left  { background: var(--chrome); border-right: 1px solid var(--hair); display: flex; flex-direction: column; transition: opacity .2s; }

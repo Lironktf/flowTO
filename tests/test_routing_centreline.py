@@ -17,13 +17,25 @@ def test_centreline_id_round_trips(tmp_path):
     g = nx.MultiDiGraph()
     g.add_node(0, x=-79.40, y=43.64)
     g.add_node(1, x=-79.39, y=43.65)
-    g.add_edge(0, 1, key=0, **schema.make_edge(
-        edge_id="e0", from_node=0, to_node=1, road_class="primary",
-        length_m=100.0, speed_kmh=50.0, lanes=2.0, capacity=1000.0,
-        base_time_min=0.1, one_way=True,
-        geometry=[[43.64, -79.40], [43.65, -79.39]],
-        centreline_id=2920777,
-    ))
+    g.add_edge(
+        0,
+        1,
+        key=0,
+        **schema.make_edge(
+            edge_id="e0",
+            from_node=0,
+            to_node=1,
+            road_class="primary",
+            length_m=100.0,
+            speed_kmh=50.0,
+            lanes=2.0,
+            capacity=1000.0,
+            base_time_min=0.1,
+            one_way=True,
+            geometry=[[43.64, -79.40], [43.65, -79.39]],
+            centreline_id=2920777,
+        ),
+    )
     p = tmp_path / "g.json"
     export_graph_json(g, str(p))
     g2 = import_graph_json(str(p), heal=False)

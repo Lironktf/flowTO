@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pandas as pd
-
 from torontosim.feedback.groundtruth.counterfactual import compute_residuals
 
 
@@ -23,12 +21,12 @@ def test_residuals_signed_and_referenced_to_sim_open():
 
     e1 = df.loc["e1"]
     assert e1["sim_open"] == 100.0 and e1["sim_int"] == 60.0
-    assert e1["r_sim"] == -40.0       # 60 - 100 (sim's predicted drop)
-    assert e1["r_obs"] == -30.0       # 70 - 100 (real drop, smaller than sim predicted)
+    assert e1["r_sim"] == -40.0  # 60 - 100 (sim's predicted drop)
+    assert e1["r_obs"] == -30.0  # 70 - 100 (real drop, smaller than sim predicted)
 
     e2 = df.loc["e2"]
-    assert e2["r_sim"] == 40.0        # 90 - 50
-    assert e2["r_obs"] == 35.0        # 85 - 50
+    assert e2["r_sim"] == 40.0  # 90 - 50
+    assert e2["r_obs"] == 35.0  # 85 - 50
 
 
 def test_no_residual_without_observed_or_sim_baseline():
@@ -43,6 +41,8 @@ def test_unaffected_link_has_zero_sim_residual():
     # an intervention that changes nothing → r_sim == 0, r_obs reflects reality
     interventions = [{"ID": "r1", "ops": []}]
     observed = {("r1", "e1"): 100.0}
-    df = compute_residuals(interventions, observed, _sim_open, lambda ops: _sim_open()).set_index("edge_id")
+    df = compute_residuals(interventions, observed, _sim_open, lambda ops: _sim_open()).set_index(
+        "edge_id"
+    )
     assert df.loc["e1", "r_sim"] == 0.0
     assert df.loc["e1", "r_obs"] == 0.0

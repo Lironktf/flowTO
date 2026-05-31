@@ -22,10 +22,23 @@ from pathlib import Path
 import pandas as pd
 
 KEEP = [
-    "ID", "Road", "Name", "District", "RoadClass", "Planned",
-    "Latitude", "Longitude", "StartTime", "EndTime",
-    "MaxImpact", "CurrImpact", "Type", "SubType",
-    "DirectionsAffected", "WorkEventType", "Signing",
+    "ID",
+    "Road",
+    "Name",
+    "District",
+    "RoadClass",
+    "Planned",
+    "Latitude",
+    "Longitude",
+    "StartTime",
+    "EndTime",
+    "MaxImpact",
+    "CurrImpact",
+    "Type",
+    "SubType",
+    "DirectionsAffected",
+    "WorkEventType",
+    "Signing",
 ]
 
 

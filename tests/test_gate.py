@@ -12,13 +12,13 @@ R_SIM = R_OBS + rng.normal(scale=0.5, size=40)  # sim is a noisy estimate of rea
 
 
 def test_gnn_must_beat_the_sim_to_ship():
-    perfect = activation_gate(R_OBS, R_OBS, R_SIM, min_n=10)   # GNN == reality
+    perfect = activation_gate(R_OBS, R_OBS, R_SIM, min_n=10)  # GNN == reality
     assert perfect["ship"] is True and perfect["verdict"] == "ship GNN"
     assert perfect["err_gnn_rmse"] == 0.0
 
 
 def test_gnn_equal_to_sim_does_not_ship():
-    tie = activation_gate(R_OBS, R_SIM, R_SIM, min_n=10)       # GNN == sim
+    tie = activation_gate(R_OBS, R_SIM, R_SIM, min_n=10)  # GNN == sim
     assert tie["ship"] is False and tie["verdict"] == "keep sim"
     assert tie["improvement_rmse"] == 0.0
 

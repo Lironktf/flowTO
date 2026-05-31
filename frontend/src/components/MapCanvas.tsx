@@ -83,7 +83,7 @@ export function MapCanvas() {
   const selectRoad = useAppStore((s) => s.selectRoad);
   const pendingVertices = useAppStore((s) => s.pendingVertices);
   const activeTool = useAppStore((s) => s.activeTool);
-  const planStaged = useAppStore((s) => s.planStaged);
+  const stagedPlan = useAppStore((s) => s.stagedPlan);
   const recomputing = useAppStore((s) => s.recomputing);
   const recomputeStep = useAppStore((s) => s.recomputeStep);
   const recomputeTitle = useAppStore((s) => s.recomputeTitle);
@@ -96,7 +96,6 @@ export function MapCanvas() {
   const dayOfYear = useAppStore((s) => s.dayOfYear);
   const placeAt = useAppStore((s) => s.placeAt);
   const selectObject = useAppStore((s) => s.selectObject);
-  const applyPlan = useAppStore((s) => s.applyPlan);
   const discardPlan = useAppStore((s) => s.discardPlan);
   const dark = theme === "dark";
   const placing = view === "edit" && activeTool !== "select";
@@ -210,6 +209,19 @@ export function MapCanvas() {
     return segs.map((s) => ({ path: s.geometry.map(([la, ln]) => [ln, la] as [number, number]) }));
   }, [selectedRoadId, graph]);
 
+  // Staged copilot plan — the edges it PROPOSES to close, previewed (amber) before
+  // the user confirms. Distinct from applied-grey closures and the blue selection.
+  const stagedPreviewPaths = useMemo(() => {
+    const ids = stagedPlan?.edgeIds;
+    if (!ids?.length || !graph) return null;
+    const out: { path: [number, number][] }[] = [];
+    for (const id of ids) {
+      const seg = graph.byId.get(id);
+      if (seg) out.push({ path: seg.geometry.map(([la, ln]) => [ln, la] as [number, number]) });
+    }
+    return out.length ? out : null;
+  }, [stagedPlan, graph]);
+
   const layers = useMemo(() => {
     const out: unknown[] = [];
     const pressure = getArrays().pressure;
@@ -258,6 +270,26 @@ export function MapCanvas() {
           widthUnits: "meters",
           widthMinPixels: 4,
           widthMaxPixels: 22,
+          capRounded: true,
+          jointRounded: true,
+        }),
+      );
+    }
+
+    // Staged-plan preview — the proposed-closure road in amber (not yet applied).
+    if (stagedPreviewPaths) {
+      out.push(
+        new PathLayer({
+          id: "staged-preview",
+          parameters: { depthCompare: "always" },
+          slot: CONGESTION_SLOT,
+          data: stagedPreviewPaths,
+          getPath: (d: { path: [number, number][] }) => d.path,
+          getColor: [224, 160, 27, 220], // amber = proposed / pending confirm
+          getWidth: 12,
+          widthUnits: "meters",
+          widthMinPixels: 4,
+          widthMaxPixels: 20,
           capRounded: true,
           jointRounded: true,
         }),
@@ -420,7 +452,7 @@ export function MapCanvas() {
       );
     }
     return out;
-  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectedRoadPaths, selectRoad, pendingVertices, overlays, flyPin]);
+  }, [edgePaths, pressureSeq, intensity, dark, view, routes, objects, selectedId, hoverPinId, selectObject, graph, selectedRoadId, selectedRoadPaths, stagedPreviewPaths, selectRoad, pendingVertices, overlays, flyPin]);
 
   if (!HAS_MAPBOX_TOKEN) {
     return (
@@ -540,15 +572,14 @@ export function MapCanvas() {
             background: "linear-gradient(90deg,var(--c-free),var(--c-light),var(--c-mod),var(--c-heavy),var(--c-sev))" }} />
         </div>
       </div>
-      {planStaged && (
+      {stagedPlan && (
         <div className="vp-hud bc">
           <div className="plan-bar">
             <span className="pb-ico"><Icon.check /></span>
             <span className="pb-tx">
-              <span className="pb-t">Copilot plan ready</span>
-              <span className="pb-s">Apply to recompute the network with the proposed actions</span>
+              <span className="pb-t">Plan staged · {stagedPlan?.edgeIds.length ?? 0} segment(s) previewed</span>
+              <span className="pb-s">Review &amp; confirm in the copilot panel →</span>
             </span>
-            <button className="btn primary btn-sm" onClick={() => void applyPlan()}>Apply &amp; recompute</button>
             <button className="btn ghost btn-sm" onClick={() => discardPlan()}>Discard</button>
           </div>
         </div>

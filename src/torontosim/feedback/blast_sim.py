@@ -73,7 +73,9 @@ def simulate_open_intervened_blast(  # pragma: no cover - exercised by tests via
             if i is None:
                 continue
             name = op.get("op")
-            if name == "close_edge" or (name == "change_capacity" and op.get("multiplier", 0.0) <= 0):
+            if name == "close_edge" or (
+                name == "change_capacity" and op.get("multiplier", 0.0) <= 0
+            ):
                 new_costs[i] = np.inf
                 changed.append(i)
             # partial capacity / openings need congestion feedback → full solver only

@@ -19,9 +19,7 @@ def _higher_better(metric: str) -> bool:
     return metric in HIGHER_IS_BETTER or "overlap" in metric or "accuracy" in metric
 
 
-def compare_configs(
-    results: dict[str, dict[str, float]], reference: str = "baseline"
-) -> dict:
+def compare_configs(results: dict[str, dict[str, float]], reference: str = "baseline") -> dict:
     """Build a comparison structure: per-metric winner + per-config deltas vs ref.
 
     ``results`` maps config → metric dict. Configs need not share every metric; a
@@ -40,9 +38,7 @@ def compare_configs(
         pick = max if _higher_better(metric) else min
         winner = pick(scored, key=scored.get)
         ref_val = results.get(reference, {}).get(metric)
-        deltas = (
-            {c: v - ref_val for c, v in scored.items()} if ref_val is not None else {}
-        )
+        deltas = {c: v - ref_val for c, v in scored.items()} if ref_val is not None else {}
         per_metric[metric] = {
             "values": scored,
             "winner": winner,
@@ -81,9 +77,7 @@ def render_markdown(comparison: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write_report(
-    comparison: dict, json_path: str | Path, md_path: str | Path
-) -> None:
+def write_report(comparison: dict, json_path: str | Path, md_path: str | Path) -> None:
     json_path, md_path = Path(json_path), Path(md_path)
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(comparison, indent=2, sort_keys=True))

@@ -36,6 +36,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+from ._gpu import cudf_or_none
 from .features import (
     FEATURE_ORDER,
     compute_static_node_features,
@@ -138,14 +139,26 @@ def generate_synthetic_training_data(
             }
         )
 
-    df = pd.DataFrame(rows)
+    df = _make_df(rows)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    df.to_csv(out_path, index=False)
+    df.to_csv(out_path, index=False)  # cuDF's to_csv is ~30× faster, see benchmarks/
     print(
         f"  wrote {out_path}  ({len(df):,} rows, "
-        f"vehicle_count mean={df['vehicle_count'].mean():.0f})"
+        f"vehicle_count mean={float(df['vehicle_count'].mean()):.0f})"
     )
     return out_path
+
+
+def _make_df(rows: list[dict]):
+    """Build the synthetic frame, preferring cuDF (~6× incl. to_csv). cuDF wants
+    a dict-of-columns rather than a list-of-dicts; falls back to pandas."""
+    cudf = cudf_or_none()
+    if cudf is not None and rows:
+        try:
+            return cudf.DataFrame({k: [r[k] for r in rows] for k in rows[0]})
+        except Exception:  # noqa: BLE001 — fall back to pandas
+            pass
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------
@@ -154,9 +167,18 @@ def generate_synthetic_training_data(
 
 
 def _load_xy(path: str):
-    df = pd.read_csv(path)
+    # cuDF reads + selects on the GPU when available (~3.8×, see benchmarks/);
+    # to_numpy returns host arrays either way, so sklearn downstream is unchanged.
+    df, xp = _read_features_df(path)
     if "weather_code" not in df.columns and "weather" in df.columns:
-        df["weather_code"] = df["weather"].map(weather_code).fillna(0).astype(int)
+        if xp is pd:
+            df["weather_code"] = df["weather"].map(weather_code).fillna(0).astype(int)
+        else:
+            # cuDF Series.map needs a dict; replicate weather_code()'s normalisation.
+            from .features import DEFAULT_WEATHER_CODE, WEATHER_CODE
+
+            w = df["weather"].astype(str).str.strip().str.lower()
+            df["weather_code"] = w.map(WEATHER_CODE).fillna(DEFAULT_WEATHER_CODE).astype(int)
     missing = [c for c in FEATURE_ORDER if c not in df.columns]
     if missing:
         raise ValueError(f"CSV {path} missing feature columns: {missing}")
@@ -165,6 +187,17 @@ def _load_xy(path: str):
     X = df[FEATURE_ORDER].to_numpy(dtype=float)
     y = df["vehicle_count"].to_numpy(dtype=float)
     return X, y
+
+
+def _read_features_df(path: str):
+    """Read the feature CSV, preferring cuDF. Returns (df, backend_module)."""
+    cudf = cudf_or_none()
+    if cudf is not None:
+        try:
+            return cudf.read_csv(path), cudf
+        except Exception as e:  # noqa: BLE001 — fall back to pandas
+            print(f"  [load] cuDF read unavailable ({e}); using pandas")
+    return pd.read_csv(path), pd
 
 
 def _train_val_arrays(training_data_path: str, val_path: Optional[str]):
@@ -222,21 +255,52 @@ def _make_estimator(backend: str, params: Optional[dict] = None):
     return HistGradientBoostingRegressor(**defaults), "HistGradientBoostingRegressor"
 
 
-def _save(model, kind, mae, r2, model_path, extra=None):
+def _save(
+    model,
+    kind,
+    mae,
+    r2,
+    model_path,
+    extra=None,
+    *,
+    seed=None,
+    backend=None,
+    training_data_path=None,
+    training_rows=None,
+):
+    import json
+
     import joblib
 
+    from .contract import SCHEMA_VERSION, build_manifest
+
+    manifest = build_manifest(
+        kind=kind,
+        feature_order=FEATURE_ORDER,
+        target="vehicle_count",
+        seed=seed,
+        backend=backend,
+        training_data_path=training_data_path,
+        training_rows=training_rows,
+        metrics={"mae": float(mae), "r2": float(r2)},
+    )
     payload = {
         "model": model,
         "feature_order": FEATURE_ORDER,
         "target": "vehicle_count",
         "kind": kind,
-        "metrics": {"mae": float(mae), "r2": float(r2)},
+        "schema_version": SCHEMA_VERSION,
+        "metrics": manifest.metrics,
+        "manifest": manifest.to_dict(),
     }
     if extra:
         payload.update(extra)
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
     joblib.dump(payload, model_path)
-    print(f"  saved {model_path}")
+    # Sidecar manifest: provenance readable without unpickling the model.
+    with open(model_path + ".manifest.json", "w") as fh:
+        json.dump(manifest.to_dict(), fh, indent=2)
+    print(f"  saved {model_path} (+ .manifest.json)")
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +333,17 @@ def train_demand_model(
     print(f"  trained {kind} on {len(X_tr):,} rows")
     print(f"  holdout MAE={mae:.1f} vehicles, R^2={r2:.3f}")
 
-    _save(model, kind, mae, r2, model_path)
+    _save(
+        model,
+        kind,
+        mae,
+        r2,
+        model_path,
+        seed=42,
+        backend=backend,
+        training_data_path=training_data_path,
+        training_rows=len(X_tr),
+    )
     return model
 
 

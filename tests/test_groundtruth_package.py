@@ -66,7 +66,7 @@ def test_manifest_counts_and_caveats():
     assert m["rows"] == 4 and m["closures"] == 3 and m["openings"] == 1
     assert m["with_baseline"] == 3
     assert m["direction_up"] == 2 and m["direction_down"] == 1
-    assert m["confounder_clean"] == 3            # one row is confounder_dominated
+    assert m["confounder_clean"] == 3  # one row is confounder_dominated
     assert m["caveats"] and isinstance(m["caveats"], list)
     assert sum(m["split"].values()) == 4
 

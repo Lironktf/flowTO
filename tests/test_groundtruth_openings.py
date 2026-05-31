@@ -55,9 +55,7 @@ def test_split_after_respects_cap_days():
 
 
 def test_opening_label_recovery_is_positive():
-    after_agg = pd.DataFrame(
-        {"ID": ["r1"], "centreline_id": ["A"], "after_vol_mean": [180.0]}
-    )
+    after_agg = pd.DataFrame({"ID": ["r1"], "centreline_id": ["A"], "after_vol_mean": [180.0]})
     after = pd.DataFrame({"ID": ["r1"], "centreline_id": ["A"], "hour": [8], "dow": [2]})
     during = pd.DataFrame(
         {
@@ -65,7 +63,7 @@ def test_opening_label_recovery_is_positive():
             "centreline_id": ["A", "A"],
             "hour": [8, 8],
             "dow": [2, 2],
-            "vol": [100, 120],   # during-closure baseline mean 110
+            "vol": [100, 120],  # during-closure baseline mean 110
             "count_id": [1, 2],
             "cars": [100, 120],
             "trucks": [0, 0],
@@ -75,5 +73,5 @@ def test_opening_label_recovery_is_positive():
     lab = build_opening_labels(after_agg, after, during).iloc[0]
     assert lab["intervention_sign"] == "opening"
     assert lab["has_baseline"] == 1
-    assert lab["vol_delta"] == 70.0          # 180 - 110
-    assert lab["direction"] == 1             # more traffic after reopening
+    assert lab["vol_delta"] == 70.0  # 180 - 110
+    assert lab["direction"] == 1  # more traffic after reopening

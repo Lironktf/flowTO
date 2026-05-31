@@ -28,11 +28,18 @@ def main(argv=None) -> int:
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--hidden-dim", type=int, default=64)
     p.add_argument("--max-pairs", type=int, default=2000)
-    p.add_argument("--sim-backend", default="gpu",
-                   help="equilibrium solver backend: gpu (cuGraph) | scipy | cpu")
-    p.add_argument("--solver", default="full", choices=["full", "blast"],
-                   help="full = whole-equilibrium per scenario (closures+openings); "
-                        "blast = re-route affected bundles only (fast, closures only)")
+    p.add_argument(
+        "--sim-backend",
+        default="gpu",
+        help="equilibrium solver backend: gpu (cuGraph) | scipy | cpu",
+    )
+    p.add_argument(
+        "--solver",
+        default="full",
+        choices=["full", "blast"],
+        help="full = whole-equilibrium per scenario (closures+openings); "
+        "blast = re-route affected bundles only (fast, closures only)",
+    )
     p.add_argument("--max-iter", type=int, default=25)
     p.add_argument("--rgap", type=float, default=1e-3)
     p.add_argument("--seed", type=int, default=42)
@@ -47,8 +54,14 @@ def main(argv=None) -> int:
 
     t1 = time.time()
     pairs = generate_from_sim(
-        graph, od, n=args.scenarios, seed=0, solver=args.solver,
-        backend=args.sim_backend, max_iter=args.max_iter, rgap=args.rgap,
+        graph,
+        od,
+        n=args.scenarios,
+        seed=0,
+        solver=args.solver,
+        backend=args.sim_backend,
+        max_iter=args.max_iter,
+        rgap=args.rgap,
     )
     print(
         f"scenario gen: {pairs['scenario_id'].nunique()} scenarios, {len(pairs):,} rows "
@@ -58,7 +71,11 @@ def main(argv=None) -> int:
 
     t2 = time.time()
     m = train_stage1(
-        graph, pairs, epochs=args.epochs, hidden_dim=args.hidden_dim, seed=args.seed,
+        graph,
+        pairs,
+        epochs=args.epochs,
+        hidden_dim=args.hidden_dim,
+        seed=args.seed,
         ckpt_path=args.ckpt,
     )
     print(f"train: {time.time() - t2:.0f}s · saved {args.ckpt}")

@@ -45,6 +45,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from ._gpu import cudf_or_none
 from .features import (
     DOWNTOWN_LATLON,
     compute_static_node_features,
@@ -187,32 +188,15 @@ def load_weather(weather_dir: str = WEATHER_DIR) -> Dict[tuple, str]:
 # TMC counts
 # ---------------------------------------------------------------------------
 
-def load_tmc(raw_dir: str = RAW_DIR) -> pd.DataFrame:
-    """Load + concatenate TMC raw CSVs into a tidy frame with a vehicle total.
+# ISO format of the open-data `start_time` (e.g. '2020-03-10T13:30:00'). cuDF's
+# to_datetime needs an explicit format (it has no errors="coerce" for arrays);
+# any row that doesn't match raises and trips the pandas fallback in load_tmc.
+_TMC_TS_FMT = "%Y-%m-%dT%H:%M:%S"
 
-    Resolves the real open-data column names and derives time parts from
-    `start_time` (ISO, e.g. '2020-03-10T13:30:00').
-    """
-    # Prefer the P01 baked Parquet store when present (data/parquet/tmc.parquet);
-    # fall back to Liron's raw CSVs so this stays runnable before a `bake`.
-    parquet = os.path.join(_REPO_ROOT, "data", "parquet", "tmc.parquet")
-    if os.path.exists(parquet):
-        df = pd.read_parquet(parquet)
-        print(f"[tmc] parquet store: {len(df):,} rows ({parquet})")
-    else:
-        files = sorted(glob.glob(os.path.join(raw_dir, "tmc_raw_data_*.csv")))
-        if not files:
-            raise FileNotFoundError(
-                f"no tmc_raw_data_*.csv in {raw_dir} — see scripts/fetch_data.sh "
-                "(or run `python -m torontosim.datapipeline fetch --only tmc && … bake`)"
-            )
-        frames = []
-        for f in files:
-            df = pd.read_csv(f, low_memory=False)
-            frames.append(df)
-            print(f"[tmc] {os.path.basename(f)}: {len(df):,} rows")
-        df = pd.concat(frames, ignore_index=True)
 
+def _finalize_tmc(df, xp, gpu: bool):
+    """Resolve columns and derive the tidy frame, on backend module ``xp``
+    (pandas or cudf). Shared by the GPU and pandas paths of ``load_tmc``."""
     c_lat = _first_col(df, "latitude", "lat")
     c_lon = _first_col(df, "longitude", "lng", "lon")
     c_loc = _first_col(df, "centreline_id", "location_id", "location_name")
@@ -223,13 +207,17 @@ def load_tmc(raw_dir: str = RAW_DIR) -> pd.DataFrame:
     present = [c for c in VEHICLE_COLS if c in df.columns]
     if not present:
         raise ValueError("TMC file has none of the expected vehicle movement columns")
-    df[present] = df[present].apply(pd.to_numeric, errors="coerce").fillna(0)
+    # Per-column to_numeric works on both backends (cuDF can't take pandas'
+    # frame.apply) and matches the old df[present].apply(pd.to_numeric) result.
+    for c in present:
+        df[c] = xp.to_numeric(df[c], errors="coerce").fillna(0)
     df["veh_15min"] = df[present].sum(axis=1)
 
-    ts = pd.to_datetime(df[c_start], errors="coerce")
+    ts = (xp.to_datetime(df[c_start], format=_TMC_TS_FMT) if gpu
+          else xp.to_datetime(df[c_start], errors="coerce"))
     df = df.assign(
-        loc_id=df[c_loc], lat=pd.to_numeric(df[c_lat], errors="coerce"),
-        lon=pd.to_numeric(df[c_lon], errors="coerce"), ts=ts,
+        loc_id=df[c_loc], lat=xp.to_numeric(df[c_lat], errors="coerce"),
+        lon=xp.to_numeric(df[c_lon], errors="coerce"), ts=ts,
     ).dropna(subset=["loc_id", "lat", "lon", "ts"])
     df["year"] = df["ts"].dt.year
     df["month"] = df["ts"].dt.month
@@ -238,6 +226,48 @@ def load_tmc(raw_dir: str = RAW_DIR) -> pd.DataFrame:
     df["day_of_week"] = df["ts"].dt.dayofweek  # Mon=0
     df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
     return df
+
+
+def load_tmc(raw_dir: str = RAW_DIR) -> pd.DataFrame:
+    """Load + concatenate TMC raw CSVs into a tidy frame with a vehicle total.
+
+    Resolves the real open-data column names and derives time parts from
+    `start_time` (ISO, e.g. '2020-03-10T13:30:00'). Uses cuDF on the GPU when
+    available (~5× faster, see benchmarks/) and falls back to pandas otherwise;
+    either way it returns a pandas DataFrame so callers are unaffected.
+    """
+    # Prefer the P01 baked Parquet store when present (data/parquet/tmc.parquet);
+    # fall back to Liron's raw CSVs so this stays runnable before a `bake`.
+    parquet = os.path.join(_REPO_ROOT, "data", "parquet", "tmc.parquet")
+    if os.path.exists(parquet):
+        df = pd.read_parquet(parquet)
+        print(f"[tmc] parquet store: {len(df):,} rows ({parquet})")
+        return _finalize_tmc(df, pd, gpu=False)
+
+    files = sorted(glob.glob(os.path.join(raw_dir, "tmc_raw_data_*.csv")))
+    if not files:
+        raise FileNotFoundError(
+            f"no tmc_raw_data_*.csv in {raw_dir} — see scripts/fetch_data.sh "
+            "(or run `python -m torontosim.datapipeline fetch --only tmc && … bake`)"
+        )
+
+    cudf = cudf_or_none()
+    if cudf is not None:
+        try:
+            gdf = cudf.concat([cudf.read_csv(f) for f in files], ignore_index=True)
+            out = _finalize_tmc(gdf, cudf, gpu=True)
+            print(f"[tmc] cuDF (GPU): {len(out):,} rows from {len(files)} file(s)")
+            return out.to_pandas()
+        except Exception as e:  # noqa: BLE001 — any cuDF issue -> pandas path
+            print(f"[tmc] cuDF path unavailable ({e}); using pandas")
+
+    frames = []
+    for f in files:
+        df = pd.read_csv(f, low_memory=False)
+        frames.append(df)
+        print(f"[tmc] {os.path.basename(f)}: {len(df):,} rows")
+    df = pd.concat(frames, ignore_index=True)
+    return _finalize_tmc(df, pd, gpu=False)
 
 
 def build_dataset(

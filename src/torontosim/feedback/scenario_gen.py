@@ -145,7 +145,9 @@ def generate_from_sim(
     else:
         from .groundtruth.counterfactual import simulate_open_intervened
 
-        simulate_open, simulate_intervened = simulate_open_intervened(graph, od_matrix, **sim_kwargs)
+        simulate_open, simulate_intervened = simulate_open_intervened(
+            graph, od_matrix, **sim_kwargs
+        )
         sample_kwargs = {}
 
     sim_open = simulate_open()  # {edge_id: load} — used to weight the sampling

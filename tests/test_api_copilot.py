@@ -12,24 +12,55 @@ def _client():
     return TestClient(create_app(_small_state()))
 
 
-def test_copilot_plan_hero_returns_cited_preview():
+def test_copilot_plan_mitigate_invokes_optimizer():
+    # De-hardcoded: mitigate routes to the sim-verified optimizer (no rehearsed
+    # hero script / invented bylaw citations).
     r = _client().post(
         "/copilot/plan",
-        json={"prompt": "Ease post-match gridlock near BMO Field without breaking bylaws."},
+        json={
+            "prompt": "Ease congestion across downtown.",
+            "classification": {"intent": "mitigate"},
+        },
     )
     assert r.status_code == 200
     body = r.json()
     assert body["tool"] == "preview_intervention"
-    assert body["requires_user_confirmation"] is True
-    assert any("950" in c["ref"] for c in body["citations"])
+    if body["interventions"]:
+        assert any("Optimizer" in c["ref"] for c in body["citations"])
+        assert body["requires_user_confirmation"] is True
 
 
-def test_copilot_plan_blocked_refuses():
+def test_copilot_plan_warns_not_blocks():
+    # Warn-don't-block: /copilot/plan never refuses (no block flag).
     r = _client().post("/copilot/plan", json={"prompt": "Just close Lake Shore both ways."})
     assert r.status_code == 200
+    assert r.json()["blocked"] is False
+
+
+def test_assess_endpoint_returns_severity_coded_warnings():
+    # The SSOT assess endpoint returns warnings (never a refusal) for a closure
+    # that matches a protected corridor by text.
+    r = _client().post(
+        "/assess",
+        json={
+            "interventions": [{"op": "close_edge", "edge_id": "e0"}],
+            "prompt": "close lake shore both ways",
+        },
+    )
+    assert r.status_code == 200
+    ws = r.json()["warnings"]
+    assert any(w["severity"] == "danger" for w in ws)
+
+
+def test_copilot_route_classifies_and_dispatches_inline():
+    # /route is the single classifier entry. Offline (no model) it degrades to a
+    # chat-mode decision and must never 500. A pre-classified plan intent dispatches
+    # inline so the frontend skips a second hop.
+    r = _client().post("/copilot/route", json={"prompt": "hello there"})
+    assert r.status_code == 200
     body = r.json()
-    assert body["blocked"] is True
-    assert any("880" in c["ref"] for c in body["citations"])
+    assert body["mode"] in ("chat", "plan", "agent")
+    assert "intent" in body
 
 
 def test_copilot_explain_summarizes_deltas():
@@ -53,7 +84,13 @@ def test_optimize_endpoint_returns_ranked_plan():
 def test_copilot_optimize_intent_invokes_optimizer():
     # "optimize" routes through the copilot to the P10 optimizer and returns a
     # confirmable preview (or a no-improvement note) — never a raw error.
-    r = _client().post("/copilot/plan", json={"prompt": "Optimize the network to cut congestion."})
+    r = _client().post(
+        "/copilot/plan",
+        json={
+            "prompt": "Optimize the network to cut congestion.",
+            "classification": {"intent": "optimize"},
+        },
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["tool"] == "preview_intervention"

@@ -71,6 +71,6 @@ def test_generate_from_sim_blast_is_closures_only():
     od = [{"origin": "A", "destination": "D", "trips": 100.0}]
     pairs = generate_from_sim(g, od, n=2, seed=0, solver="blast", backend="cpu")
     assert not pairs.empty
-    assert set(pairs["sign"].unique()) <= {"closure"}      # no openings under blast
+    assert set(pairs["sign"].unique()) <= {"closure"}  # no openings under blast
     # at least one scenario actually moves flow (sim_int != sim_open somewhere)
     assert (pairs["delta_flow"].abs() > 1e-9).any()

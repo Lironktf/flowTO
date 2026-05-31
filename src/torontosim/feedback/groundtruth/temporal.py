@@ -49,9 +49,21 @@ def tmc_observations(tmc: pd.DataFrame) -> pd.DataFrame:
         t[f"dir_{d}"] = _sum([c for c in VEH if c.startswith(f"{d}_appr")])
 
     keep = [
-        "centreline_id", "count_id", "dt", "hour", "dow", "vol",
-        "cars", "trucks", "buses", "peds", "bikes",
-        "dir_n", "dir_s", "dir_e", "dir_w",
+        "centreline_id",
+        "count_id",
+        "dt",
+        "hour",
+        "dow",
+        "vol",
+        "cars",
+        "trucks",
+        "buses",
+        "peds",
+        "bikes",
+        "dir_n",
+        "dir_s",
+        "dir_e",
+        "dir_w",
     ]
     return t[keep]
 

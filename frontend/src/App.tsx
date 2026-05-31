@@ -18,6 +18,15 @@ export default function App() {
   const showLeft = useAppStore((s) => s.showLeft);
   const showRight = useAppStore((s) => s.showRight);
   const showBottom = useAppStore((s) => s.showBottom);
+  const loadTwin = useAppStore((s) => s.loadTwin);
+
+  // Auto-boot the twin on mount: the landing page leads straight here, so there's
+  // no manual "Load the twin" gate anymore. loadTwin() guards on `loaded`, so
+  // StrictMode's double-invoke is harmless; FirstRun is just a self-dismissing
+  // splash that hides once the graph loads.
+  useEffect(() => {
+    void loadTwin();
+  }, [loadTwin]);
 
   // Drive the body attributes/classes (CSS does view scoping + dock collapse).
   useEffect(() => {

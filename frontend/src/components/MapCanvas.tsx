@@ -97,6 +97,7 @@ export function MapCanvas() {
   const discardPlan = useAppStore((s) => s.discardPlan);
   const dark = theme === "dark";
   const placing = view === "edit" && activeTool !== "select";
+  const [hoverStreet, setHoverStreet] = useState(false);
   const [overlays, setOverlays] = useState({ poi: true, transit: true, roadLabels: true, placeLabels: true, buildings3d: true });
   const [layersOpen, setLayersOpen] = useState(false);
 
@@ -186,6 +187,13 @@ export function MapCanvas() {
         updateTriggers: { getColor: [pressureSeq, intensity, dark] },
         onClick: (info: { object?: EdgePath }) => {
           if (useAppStore.getState().view === "sim" && info.object) selectRoad(info.object.edge_id);
+        },
+        onHover: (info: { object?: EdgePath }) => {
+          // In Edit placement, only show the crosshair while over a street (the
+          // edge that highlights blue); idempotent sets so React bails when unchanged.
+          const st = useAppStore.getState();
+          const placingNow = st.view === "edit" && st.activeTool !== "select";
+          setHoverStreet(placingNow && !!info.object);
         },
       }),
     );
@@ -363,14 +371,14 @@ export function MapCanvas() {
 
   return (
     <>
-      <div id="map" className={placing ? "placing" : ""} style={{ position: "absolute", inset: 0 }}>
+      <div id="map" className={placing && hoverStreet ? "on-street" : ""} style={{ position: "absolute", inset: 0 }}>
         <Map
           ref={mapRef}
           mapboxAccessToken={MAPBOX_TOKEN}
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
           mapStyle={STANDARD_STYLE}
           reuseMaps
-          cursor={placing ? "crosshair" : "grab"}
+          cursor="grab"
           onLoad={(e) => {
             const m = e.target;
             const st = useAppStore.getState();

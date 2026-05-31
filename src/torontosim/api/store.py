@@ -47,6 +47,15 @@ class AppState:
     _recompute_locks: dict = field(default_factory=dict)
     _cache_lock: object = field(default_factory=threading.Lock)
 
+    @property
+    def baseline_ready(self) -> bool:
+        """True once the (heavy) compare baseline is computed — gates the copilot UI.
+
+        Re-added after the main-merge: app.py's /healthz references this, but the
+        AppState refactor on this branch had dropped it (the heavy baseline is now
+        lazy, so this is simply False until something computes it)."""
+        return self._baseline is not None
+
     @classmethod
     def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None):
         edge_ids = sorted(

@@ -49,24 +49,6 @@ const PIN_COLOR: Record<string, [number, number, number]> = {
 const SURGE_COLOR: [number, number, number] = [224, 112, 27];
 const RELIEF_COLOR: [number, number, number] = [245, 184, 122];
 
-/**
- * Edit-mode placement cursor: a target reticle drawn in the tool's colour so it
- * reads as "drop a <tool> here" rather than the generic crosshair. Encoded as an
- * SVG data-URI with its hotspot at the centre (16,16).
- */
-function dropCursor(rgb: [number, number, number]): string {
-  const c = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-  const svg =
-    `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>` +
-    `<circle cx='16' cy='16' r='9' fill='none' stroke='white' stroke-width='4'/>` +
-    `<circle cx='16' cy='16' r='9' fill='none' stroke='${c}' stroke-width='2'/>` +
-    `<circle cx='16' cy='16' r='2' fill='${c}'/>` +
-    `<g stroke='${c}' stroke-width='2' stroke-linecap='round'>` +
-    `<path d='M16 1.5v5'/><path d='M16 25.5v5'/><path d='M1.5 16h5'/><path d='M25.5 16h5'/></g>` +
-    `</svg>`;
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, crosshair`;
-}
-
 /** deck.gl TextLayer angle (degrees, CCW from east) for travel from a→b ([lng,lat]). */
 function travelAngle(a: [number, number], b: [number, number]): number {
   return (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
@@ -388,7 +370,7 @@ export function MapCanvas() {
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
           mapStyle={STANDARD_STYLE}
           reuseMaps
-          cursor={placing ? dropCursor(PIN_COLOR[activeTool] ?? SURGE_COLOR) : "grab"}
+          cursor={placing ? "crosshair" : "grab"}
           onLoad={(e) => {
             const m = e.target;
             const st = useAppStore.getState();

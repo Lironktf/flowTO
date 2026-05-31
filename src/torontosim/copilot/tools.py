@@ -57,6 +57,7 @@ class ViewDirective(BaseModel):
     lng: Optional[float] = None
     lat: Optional[float] = None
     zoom: Optional[float] = None
+    minute: Optional[int] = None  # action="time": minute-of-day (0–1440) to scrub to
 
 
 class ToolCall(BaseModel):

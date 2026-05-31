@@ -359,6 +359,15 @@ def _dispatch(prompt: str, state, cls, live: bool) -> ToolCall:
         return _capacity_command(state, cls)
     if intent == "focus":
         return _focus_call(state, cls)
+    if intent == "set_time":
+        minute = int(cls.minute) % 1440 if cls.minute is not None else 1020  # default 5pm peak
+        hh, mm = divmod(minute, 60)
+        return ToolCall(
+            tool="answer",
+            rationale=f"Showing the network at {hh:02d}:{mm:02d}.",
+            view=ViewDirective(action="time", minute=minute),
+            requires_user_confirmation=False,
+        )
 
     # chat / investigate / unresolved → a live freeform plan, else a safe default.
     if live:

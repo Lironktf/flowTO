@@ -111,6 +111,16 @@ def test_dispatch_focus_returns_view_no_plan():
     assert call.view.road_name == "King Street West"
 
 
+def test_dispatch_set_time_returns_time_view():
+    call = planner._dispatch(
+        "show rush hour", _state(), _cls(intent="set_time", minute=1020), live=False
+    )
+    assert call.tool == "answer"
+    assert call.view is not None and call.view.action == "time"
+    assert call.view.minute == 1020
+    assert call.requires_user_confirmation is False
+
+
 def test_dispatch_query_congestion_is_read_only_answer():
     call = planner._dispatch(
         "where is congestion worst", _state(), _cls(intent="query_congestion"), live=False

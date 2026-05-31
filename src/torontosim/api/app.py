@@ -71,8 +71,26 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             except Exception:  # noqa: BLE001 — warmup is best-effort
                 pass
 
+        # Keep-alive: the model's keep_alive is 10m, so re-ping every 5m to keep it
+        # resident — kills the ~8-11s cold reload mid-session. Cancellable on shutdown.
+        stop_keepalive = threading.Event()
+
+        def keepalive():
+            from ..copilot import ollama_client, planner
+
+            while not stop_keepalive.wait(300):  # 5 min, comfortably inside keep_alive=10m
+                try:
+                    if planner._live_enabled() and ollama_client.available(timeout=3.0):
+                        ollama_client.warmup(timeout=30.0)
+                except Exception:  # noqa: BLE001 — best-effort; never crash the loop
+                    pass
+
         threading.Thread(target=warm, daemon=True).start()
-        yield
+        threading.Thread(target=keepalive, daemon=True).start()
+        try:
+            yield
+        finally:
+            stop_keepalive.set()
 
     app = FastAPI(title="TorontoSim API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(

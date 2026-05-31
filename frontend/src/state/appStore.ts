@@ -723,6 +723,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     const applyView = (view?: ViewDirective | null) => {
       if (!view) return;
       if (view.action === "recenter") return get().recenter();
+      if (view.action === "tilt") return get().toggleTilt();
+      if (view.action === "time" && view.minute != null) return get().setScrubber(view.minute);
       if (view.action === "fly" && view.lng != null && view.lat != null)
         return get().flyToLocation(view.lng, view.lat, view.zoom ?? undefined);
       const bbox = bboxForView(get().graph, view);
@@ -897,6 +899,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         }
         markApplied(`${obj.name} applied — twin recomputed.`, result);
+        void get().loadSavedSims(); // register the applied closure in the Simulate rail
         return;
       }
 

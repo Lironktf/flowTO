@@ -40,6 +40,7 @@ Intent = Literal[
     "optimize",
     "mitigate",
     "focus",
+    "set_time",
     "investigate",
     "chat",
 ]
@@ -56,6 +57,7 @@ class ClassifyResult(BaseModel):
     from_intersection: str = ""
     to_intersection: str = ""
     multiplier: Optional[float] = None
+    minute: Optional[int] = None  # set_time: minute-of-day 0–1440
 
     @property
     def mode(self) -> Literal["agent", "chat", "plan"]:
@@ -82,6 +84,8 @@ _SYSTEM = (
     "  optimize — asks for the best / recommended plan (let the optimizer decide).\n"
     "  mitigate — asks to ease / relieve congestion near a place; put the place in 'road_name'.\n"
     "  focus — asks to SHOW / zoom / fly to a place on the map (no change); put it in 'road_name'.\n"
+    "  set_time — asks to view a specific time of day; put the minute-of-day (0-1440) in 'minute' "
+    "(8am=480, noon=720, 5pm=1020).\n"
     "  investigate — a compound or multi-step request ('figure out why X and propose a fix').\n"
     "  chat — greetings, small talk, or a general question not about changing the network.\n"
     "Phrasing and punctuation do NOT matter: 'close King St' and 'can you close King St?' are both "

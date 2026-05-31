@@ -78,6 +78,7 @@ export interface ViewDirective {
   lng?: number | null;
   lat?: number | null;
   zoom?: number | null;
+  minute?: number | null; // action="time": minute-of-day to scrub to
 }
 
 export interface CopilotResponse {

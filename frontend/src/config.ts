@@ -23,8 +23,10 @@ export const TIMELINE = {
   defaultMin: 8 * 60,
 };
 
-// Default day-of-year for the season control (Fri 12 Jun 2026 ≈ day 163).
-export const DEFAULT_DAY_OF_YEAR = 163;
+// Default day-of-year for the season control. Wed 10 Jun 2026 = day 161 — chosen
+// because TMC counts are gathered on Tue/Wed/Thu, so a Wednesday gives the richest,
+// near-24h measured baseline (Mon/Fri have little-to-no survey data).
+export const DEFAULT_DAY_OF_YEAR = 161;
 
 // Edit-mode tools — exactly two, per the spec.
 //   closure: pick TWO intersections → seal the corridor between them

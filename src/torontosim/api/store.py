@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from ..simulation.simulate_traffic import (
@@ -29,6 +31,16 @@ class AppState:
     edge_ids: list = field(default_factory=list)  # index -> edge_id (str)
     edge_index: dict = field(default_factory=dict)  # edge_id -> index
     _baseline: dict | None = None
+    # Baseline OD is built lazily (see ensure_od) so the server boots without
+    # loading the demand model. od_max_pairs is the gravity cap for that build.
+    od_max_pairs: int = 800
+    _od_lock: object = field(default_factory=threading.Lock)
+    # Param-driven recompute cache (api/recompute.py): LRU keyed on
+    # (model, time_context, interventions) -> {records, summary, ...}. A per-key
+    # lock collapses concurrent identical requests; _cache_lock guards the maps.
+    _recompute_cache: "OrderedDict" = field(default_factory=OrderedDict)
+    _recompute_locks: dict = field(default_factory=dict)
+    _cache_lock: object = field(default_factory=threading.Lock)
 
     @classmethod
     def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None):
@@ -46,9 +58,33 @@ class AppState:
             edge_index=edge_index,
         )
 
+    def ensure_od(self) -> list:
+        """Build the baseline OD matrix on first legacy use, then cache it.
+
+        The main UX (baseline + ML day-stream) never calls this — ``api/recompute``
+        grounds its own OD per request — so startup can skip the demand-model load.
+        Only the legacy scenario run/preview/compare and ``/demo/run`` need a
+        shared baseline OD; the first such call pays a one-time model+predict+OD
+        build (double-checked under a lock so concurrent callers share the work).
+        """
+        if self.od_matrix:
+            return self.od_matrix
+        with self._od_lock:
+            if self.od_matrix:
+                return self.od_matrix
+            from ..model.generate_od_matrix import generate_od_matrix
+            from ..model.predict_node_demand import load_demand_model, predict_node_demand
+
+            tc = self.time_context or {"hour": 17, "day_of_week": 4, "month": 6, "weather": "clear"}
+            model = load_demand_model()
+            demand = predict_node_demand(self.graph, model, tc)
+            self.od_matrix = generate_od_matrix(self.graph, demand, tc, max_pairs=self.od_max_pairs)
+            return self.od_matrix
+
     def baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
         """Cached baseline run (no interventions) — the compare reference."""
         if self._baseline is None:
+            self.ensure_od()
             self._baseline = simulate_traffic(
                 self.graph,
                 self.od_matrix,
@@ -128,6 +164,7 @@ class ScenarioStore:
 
     def run(self, sid: str, req: dict) -> dict:
         sc = self.scenarios[sid]
+        self.state.ensure_od()  # legacy path: build the shared baseline OD on first use
         result = simulate_scenario(
             self.state.graph,
             self.state.od_matrix,
@@ -145,6 +182,7 @@ class ScenarioStore:
 
     def preview(self, sid: str, interventions: list, req: dict) -> dict:
         """Run a hypothetical intervention set WITHOUT committing it."""
+        self.state.ensure_od()  # legacy path: build the shared baseline OD on first use
         result = simulate_scenario(
             self.state.graph,
             self.state.od_matrix,

@@ -66,12 +66,17 @@ def load_default_state(
     max_pairs: int = 800,
     graph_source: str | None = None,
 ) -> AppState:  # pragma: no cover - runtime/server path
-    from ..model.generate_od_matrix import generate_od_matrix
-    from ..model.predict_node_demand import load_demand_model, predict_node_demand
+    """Fast boot: load the graph only.
 
+    The demand model (~27 MB) + baseline OD are NOT built here — they're produced
+    lazily on first *legacy* use via ``AppState.ensure_od`` (scenario run/preview/
+    compare and ``/demo/run``). The main UX (measured/ML baseline + the ML
+    day-stream) never needs ``state.od_matrix``: ``api/recompute.py`` grounds its
+    own OD per request. So the server starts serving ``/edges`` and ``/day/stream``
+    immediately instead of blocking startup on a model load + 27k-node prediction.
+    """
     tc = time_context or {"hour": 17, "day_of_week": 4, "month": 6, "weather": "clear"}
     graph = load_graph(graph_source, graph_path=graph_path)
-    model = load_demand_model()
-    demand = predict_node_demand(graph, model, tc)
-    od = generate_od_matrix(graph, demand, tc, max_pairs=max_pairs)
-    return AppState.from_graph(graph, od, weather=tc.get("weather", "clear"), time_context=tc)
+    state = AppState.from_graph(graph, [], weather=tc.get("weather", "clear"), time_context=tc)
+    state.od_max_pairs = max_pairs
+    return state

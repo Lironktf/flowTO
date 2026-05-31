@@ -11,6 +11,8 @@ src/torontosim/api/_bootstrap.py
 src/torontosim/api/app.py
 src/torontosim/api/encoding.py
 src/torontosim/api/jobs.py
+src/torontosim/api/prewarm.py
+src/torontosim/api/recompute.py
 src/torontosim/api/schemas.py
 src/torontosim/api/store.py
 src/torontosim/blastradius/__init__.py
@@ -51,6 +53,7 @@ src/torontosim/graph/repair.py
 src/torontosim/graph/routing.py
 src/torontosim/graph/schema.py
 src/torontosim/model/__init__.py
+src/torontosim/model/demand_surge.py
 src/torontosim/model/features.py
 src/torontosim/model/generate_od_matrix.py
 src/torontosim/model/ingest_real_data.py

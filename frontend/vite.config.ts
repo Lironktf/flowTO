@@ -8,7 +8,8 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // Proxy API + WS to the P06 FastAPI backend during dev.
-      "/api": { target: "http://localhost:8000", changeOrigin: true, rewrite: (p) => p.replace(/^\/api/, "") },
+      // ws:true is required so the /day/stream WebSocket upgrades through the proxy.
+      "/api": { target: process.env.VITE_PROXY_TARGET || "http://localhost:8000", changeOrigin: true, ws: true, rewrite: (p) => p.replace(/^\/api/, "") },
     },
   },
   test: {

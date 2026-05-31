@@ -12,6 +12,7 @@ Predict baseline car demand per node for a given time context.
 
 from __future__ import annotations
 
+import functools
 import math
 import os
 from typing import Dict
@@ -99,7 +100,14 @@ def load_demand_model(model_path: str = MODEL_PATH, kind: str = "auto"):
     # GNN without code changes (same as xgboost, everywhere). Explicit kind wins.
     if kind == "auto":
         kind = os.environ.get("FLOWTO_DEMAND_MODEL", "xgboost").lower()
+    # The payload is treated read-only by predict_node_demand, so it's safe to
+    # cache: a full-day fill (24 hourly calls) then loads the pickle once, not
+    # 24×. Keyed on (model_path, resolved kind).
+    return _load_demand_model_cached(model_path, kind)
 
+
+@functools.lru_cache(maxsize=8)
+def _load_demand_model_cached(model_path: str, kind: str):
     if kind == "gnn":
         return {
             "kind": "gnn",

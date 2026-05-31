@@ -100,6 +100,21 @@ def test_router_other_falls_through():
     assert call is None
 
 
+def test_answer_congestion_survives_tied_pressure_and_unnamed_edges():
+    # Regression: sorting (pressure, road_name) crashed on the real graph when
+    # pressures tied and a road_name was None (str < None unorderable).
+    g = nx.MultiDiGraph()
+    g.add_edge(0, 1, key=0, road_name=None, status="open", pressure=0.5, load=10)
+    g.add_edge(1, 2, key=0, road_name="King Street West", status="open", pressure=0.5, load=10)
+
+    class _FakeState:
+        def baseline(self):
+            return {"graph": g}
+
+    out = planner._answer_congestion(_FakeState())  # must not raise
+    assert isinstance(out, str) and "Congestion is worst" in out
+
+
 def test_router_unresolvable_road_answers_not_found():
     call = planner._try_command(
         "close the moon", _state(), _model({"intent": "close_road", "road_name": "Moon Base Alpha"})

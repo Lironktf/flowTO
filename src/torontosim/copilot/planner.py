@@ -192,6 +192,7 @@ def _answer_congestion(state) -> str:
             and isinstance(d.get("pressure"), (int, float))
             and (d.get("load") or 0) > 0
         ),
+        key=lambda r: r[0],  # sort by pressure only — road_name may be None (unorderable)
         reverse=True,
     )
     seen: set = set()

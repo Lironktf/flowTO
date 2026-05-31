@@ -333,9 +333,9 @@ export function addNewStreet(opts: {
   return { op: "add_edge", ...opts };
 }
 
-/** Demand surge/relief at a vertex (negative amount = relief). See client.ts. */
+/** Demand surge at a vertex (backend support pending — see api/client.ts). */
 export function demandSurge(nodeId: number, amount: number, mode: "absolute" | "relative"): Intervention {
-  return { op: "demand_change", node_id: nodeId, amount, mode };
+  return { op: "demand_surge", node_id: nodeId, amount, mode };
 }
 
 // ── Segment description (human-readable "Road — A → B" labels) ────────────────

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TIMELINE } from "../config";
 import { describeSegment } from "../api/graph";
+import { congestionSeries } from "../lib/congestion";
 import { describeSegmentAsync } from "../lib/mapboxCrossStreet";
 import { useAppStore } from "../state/appStore";
-import { hourlyEdgePressure, hourlyNetworkPressure } from "../state/tickStore";
+import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
 
 const SPAN = TIMELINE.endMin - TIMELINE.startMin;
@@ -64,7 +65,6 @@ export function BottomDock() {
   const selectRoad = useAppStore((s) => s.selectRoad);
   const graph = useAppStore((s) => s.graph);
   const pressureSeq = useAppStore((s) => s.pressureSeq);
-  const dayFill = useAppStore((s) => s.dayFill);
   const laneRef = useRef<HTMLDivElement>(null);
 
   // Playback: advance every 520/speed ms, snapped to the step.
@@ -118,23 +118,25 @@ export function BottomDock() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRoadId, graph, pressureSeq]);
 
-  // Congestion-over-time for the whole DAY: the selected road's per-hour pressure,
-  // else the network average, read from the 24-hour day buffer. This is a property
-  // of the day, NOT the playhead — so it depends only on which hours have filled
-  // (`dayFill`) and the current selection, and is recomputed *only* then. It must
-  // never depend on the scrubber/`pressureSeq`, or scrubbing would (wrongly) redraw
-  // a constant curve. Unready hours are skipped; the line connects what's filled.
   const series = useMemo(() => {
-    const hourly = selSeg ? hourlyEdgePressure(selSeg.idx) : hourlyNetworkPressure();
-    const pts: { min: number; v: number }[] = [];
-    for (let h = 0; h < 24; h++) {
-      const val = hourly[h];
-      if (Number.isNaN(val)) continue;
-      pts.push({ min: h * 60, v: Math.max(0, Math.min(1, val)) });
+    const arr = getArrays().pressure;
+    let amplitude: number;
+    if (selSeg) {
+      amplitude = Math.max(0.25, arr[selSeg.idx] ?? 0);
+    } else {
+      let sum = 0;
+      let c = 0;
+      for (let i = 0; i < arr.length; i++) {
+        if (arr[i] > 0) {
+          sum += arr[i];
+          c++;
+        }
+      }
+      amplitude = Math.max(0.2, c ? sum / c : 0.2);
     }
-    return pts;
+    return congestionSeries(amplitude, 96, TIMELINE.startMin, TIMELINE.endMin);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selSeg, dayFill]);
+  }, [selSeg, pressureSeq]);
 
   const polyline = series
     .map((p) => `${pct(p.min).toFixed(2)},${(100 - p.v * 100).toFixed(2)}`)

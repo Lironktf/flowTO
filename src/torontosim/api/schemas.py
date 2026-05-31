@@ -17,6 +17,7 @@ InterventionType = Literal[
     "change_capacity",
     "close_node",
     "add_edge",
+    "demand_surge",
 ]
 
 
@@ -32,6 +33,12 @@ class Intervention(BaseModel):
     speed_kmh: Optional[float] = None
     lanes: Optional[float] = None
     capacity: Optional[float] = None
+    # demand_surge fields — inject/scale OD trips at a node or point (lng/lat).
+    amount: Optional[float] = None  # trips to add (absolute) or scale factor (relative)
+    mode: Optional[str] = None  # "absolute" (default) | "relative"
+    lng: Optional[float] = None
+    lat: Optional[float] = None
+    directions: Optional[list[str]] = None  # optional compass bias: n/e/s/w
 
     def to_op(self) -> dict:
         return self.model_dump(exclude_none=True)

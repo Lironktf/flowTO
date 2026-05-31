@@ -63,11 +63,12 @@ export interface Intervention {
   speed_kmh?: number;
   lanes?: number;
   capacity?: number;
-  // demand_surge (frontend-defined; backend support pending)
+  // demand_surge — inject/scale OD trips at a node or point (backend: simulation/demand.py)
   amount?: number;
   mode?: "absolute" | "relative";
   lat?: number;
   lng?: number;
+  directions?: string[];
 }
 
 export interface ViewDirective {

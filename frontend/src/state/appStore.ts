@@ -447,17 +447,17 @@ function interventionsFromObjects(objects: SceneObject[]): Intervention[] {
     if (o.type === "closure") {
       for (const edgeId of o.edgeIds ?? []) out.push({ op: "close_edge", edge_id: edgeId });
     } else if (o.type === "surge" && o.surge) {
-      // Best-effort: backend demand-change support is pending (see client.ts).
+      // Demand surge (relief = negative) → OD injection at the placed point.
       const signed = o.surge.kind === "relief" ? -Math.abs(o.surge.amount) : Math.abs(o.surge.amount);
       out.push({
-        op: "demand_change",
+        op: "demand_surge",
         edge_id: o.edgeId,
         directions: (["n", "e", "s", "w"] as const).filter((d) => o.surge!.dirs[d]),
         amount: signed,
         mode: o.surge.mode,
         lng: o.coord[0],
         lat: o.coord[1],
-      } as unknown as Intervention);
+      });
     }
   }
   return out;

@@ -28,6 +28,7 @@ import {
   STANDARD_STYLE,
 } from "../lib/mapbox";
 import { pressureRamp } from "../lib/pressureRamp";
+import { nearestNode, streetsByDirection } from "../api/graph";
 import { RECOMPUTE_STEPS, useAppStore } from "../state/appStore";
 import { getArrays } from "../state/tickStore";
 import { Icon } from "./Icons";
@@ -45,6 +46,44 @@ const WIDTH_BY_CLASS: Record<string, number> = {
 const PIN_COLOR: Record<string, [number, number, number]> = {
   closure: [210, 58, 50], surge: [224, 112, 27],
 };
+const SURGE_COLOR: [number, number, number] = [224, 112, 27];
+const RELIEF_COLOR: [number, number, number] = [245, 184, 122];
+
+/**
+ * Edit-mode placement cursor: a target reticle drawn in the tool's colour so it
+ * reads as "drop a <tool> here" rather than the generic crosshair. Encoded as an
+ * SVG data-URI with its hotspot at the centre (16,16).
+ */
+function dropCursor(rgb: [number, number, number]): string {
+  const c = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>` +
+    `<circle cx='16' cy='16' r='9' fill='none' stroke='white' stroke-width='4'/>` +
+    `<circle cx='16' cy='16' r='9' fill='none' stroke='${c}' stroke-width='2'/>` +
+    `<circle cx='16' cy='16' r='2' fill='${c}'/>` +
+    `<g stroke='${c}' stroke-width='2' stroke-linecap='round'>` +
+    `<path d='M16 1.5v5'/><path d='M16 25.5v5'/><path d='M1.5 16h5'/><path d='M25.5 16h5'/></g>` +
+    `</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 16 16, crosshair`;
+}
+
+/** deck.gl TextLayer angle (degrees, CCW from east) for travel from a→b ([lng,lat]). */
+function travelAngle(a: [number, number], b: [number, number]): number {
+  return (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+}
+
+/** A few flow-arrow markers placed along a [lng,lat] polyline, angled with travel. */
+function arrowMarkers(path: [number, number][]): { position: [number, number]; angle: number }[] {
+  const n = path.length;
+  if (n < 2) return [];
+  const fracs = n <= 2 ? [0.5] : [0.35, 0.6, 0.85];
+  return fracs.map((f) => {
+    const i = Math.min(n - 2, Math.max(0, Math.floor(f * (n - 1))));
+    const a = path[i];
+    const b = path[i + 1];
+    return { position: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] as [number, number], angle: travelAngle(a, b) };
+  });
+}
 
 interface EdgePath { edge_id: string; idx: number; road_class: string; path: [number, number][]; }
 
@@ -247,6 +286,58 @@ export function MapCanvas() {
     }
 
     const visible = objects.filter((o) => o.visible);
+
+    // Demand flow: highlight the streets each surge affects and draw arrows showing
+    // which way (and along which streets) the demand flows — outward from its anchor
+    // intersection along the chosen compass directions.
+    if (graph) {
+      const demandStreets: { path: [number, number][]; relief: boolean }[] = [];
+      const demandArrows: { position: [number, number]; angle: number; relief: boolean }[] = [];
+      for (const o of visible) {
+        if (o.type !== "surge" || !o.surge) continue;
+        const anchorKey = o.anchorKey ?? nearestNode(graph, o.coord[0], o.coord[1])?.key;
+        if (!anchorKey) continue;
+        const byDir = streetsByDirection(graph, anchorKey);
+        const relief = o.surge.kind === "relief";
+        for (const d of ["n", "e", "s", "w"] as const) {
+          if (!o.surge.dirs[d]) continue;
+          const st = byDir[d];
+          if (!st) continue;
+          demandStreets.push({ path: st.path, relief });
+          for (const m of arrowMarkers(st.path)) demandArrows.push({ ...m, relief });
+        }
+      }
+      if (demandStreets.length) {
+        out.push(
+          new PathLayer({
+            id: "demand-streets",
+            parameters: { depthCompare: "always" },
+            slot: CONGESTION_SLOT,
+            data: demandStreets,
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: (d: { relief: boolean }) => (d.relief ? RELIEF_COLOR : SURGE_COLOR),
+            getWidth: 7,
+            widthUnits: "meters",
+            widthMinPixels: 4,
+            widthMaxPixels: 12,
+            capRounded: true,
+            jointRounded: true,
+          }),
+          new TextLayer({
+            id: "demand-flow-arrows",
+            data: demandArrows,
+            getPosition: (a: { position: [number, number] }) => a.position,
+            getText: () => "➤",
+            getAngle: (a: { angle: number }) => a.angle,
+            getColor: (a: { relief: boolean }) => (a.relief ? RELIEF_COLOR : SURGE_COLOR),
+            getSize: 18,
+            characterSet: ["➤"],
+            fontFamily: "IBM Plex Mono, monospace",
+          }),
+        );
+      }
+    }
+
     if (visible.length) {
       out.push(
         new ScatterplotLayer({
@@ -269,24 +360,6 @@ export function MapCanvas() {
           getPosition: (o: (typeof visible)[number]) => o.coord,
           getText: (o: (typeof visible)[number]) => String(o.n),
           getSize: 12, getColor: [255, 255, 255], fontFamily: "IBM Plex Mono, monospace",
-        }),
-        new TextLayer({
-          id: "demand-arrows",
-          data: visible.flatMap((o) =>
-            o.type === "surge" && o.surge
-              ? (["n", "e", "s", "w"] as const)
-                  .filter((d) => o.surge!.dirs[d])
-                  .map((d) => ({ coord: o.coord, d }))
-              : [],
-          ),
-          getPosition: (a: { coord: [number, number] }) => a.coord,
-          getText: (a: { d: string }) =>
-            (({ n: "▲", e: "▶", s: "▼", w: "◀" }) as Record<string, string>)[a.d] ?? "",
-          getColor: [224, 112, 27],
-          getSize: 13,
-          getPixelOffset: (a: { d: string }) =>
-            (({ n: [0, -20], e: [20, 0], s: [0, 20], w: [-20, 0] }) as Record<string, [number, number]>)[a.d] ?? [0, 0],
-          fontFamily: "IBM Plex Mono, monospace",
         }),
       );
     }
@@ -315,7 +388,7 @@ export function MapCanvas() {
           initialViewState={{ longitude: MAP_CENTER[0], latitude: MAP_CENTER[1], zoom: MAP_ZOOM, pitch: 52, bearing: -18 }}
           mapStyle={STANDARD_STYLE}
           reuseMaps
-          cursor={placing ? "crosshair" : "grab"}
+          cursor={placing ? dropCursor(PIN_COLOR[activeTool] ?? SURGE_COLOR) : "grab"}
           onLoad={(e) => {
             const m = e.target;
             const st = useAppStore.getState();

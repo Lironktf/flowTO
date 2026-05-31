@@ -183,6 +183,65 @@ export function nearestEdge(graph: RoadGraph, lng: number, lat: number): Segment
   return best;
 }
 
+// ── Compass / direction helpers (which streets a demand point affects) ────────
+
+export type Compass = "n" | "e" | "s" | "w";
+
+/** Initial compass bearing (degrees, 0=N, clockwise) of the ray a→b. */
+function bearingDeg(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const toRad = Math.PI / 180;
+  const φ1 = aLat * toRad;
+  const φ2 = bLat * toRad;
+  const Δλ = (bLng - aLng) * toRad;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+/** Bucket a compass bearing into the nearest cardinal direction. */
+export function compassOf(bearing: number): Compass {
+  const b = ((bearing % 360) + 360) % 360;
+  if (b >= 315 || b < 45) return "n";
+  if (b < 135) return "e";
+  if (b < 225) return "s";
+  return "w";
+}
+
+/** A street leaving a vertex, oriented outward from it. */
+export interface DirectedStreet {
+  dir: Compass;
+  edge_id: string;
+  road_name?: string;
+  /** Polyline as [lng, lat], ordered from the anchor vertex outward. */
+  path: [number, number][];
+}
+
+/**
+ * The streets radiating from a vertex, each oriented so its polyline starts at
+ * the vertex and heads outward, keyed by the cardinal direction it leaves in.
+ * When two streets leave in the same direction the longer one wins, so a demand
+ * point resolves to one representative street per N/E/S/W.
+ */
+export function streetsByDirection(graph: RoadGraph, key: NodeKey): Partial<Record<Compass, DirectedStreet>> {
+  const out: Partial<Record<Compass, DirectedStreet>> = {};
+  const seen = new Set<string>();
+  for (const seg of edgesAtNode(graph, key)) {
+    if (seen.has(seg.edge_id) || seg.geometry.length < 2) continue;
+    seen.add(seg.edge_id);
+    // Orient the geometry so it starts at the anchor vertex.
+    const geom = seg.fromKey === key ? seg.geometry : [...seg.geometry].reverse();
+    const [aLat, aLng] = geom[0];
+    const [bLat, bLng] = geom[1];
+    const dir = compassOf(bearingDeg(aLat, aLng, bLat, bLng));
+    const path = geom.map(([la, ln]) => [ln, la] as [number, number]);
+    const cur = out[dir];
+    if (!cur || path.length > cur.path.length) {
+      out[dir] = { dir, edge_id: seg.edge_id, road_name: seg.road_name, path };
+    }
+  }
+  return out;
+}
+
 /**
  * Resolve the corridor of edges connecting two vertices — the shortest path by
  * road length (Dijkstra over the undirected vertex graph). Closing these seals

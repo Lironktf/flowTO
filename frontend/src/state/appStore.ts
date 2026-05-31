@@ -26,6 +26,7 @@ import {
   corridorBetween,
   nearestEdge,
   nearestNode,
+  streetsByDirection,
   withReverseTwins,
   type RoadGraph,
 } from "../api/graph";
@@ -58,14 +59,15 @@ export interface SceneObject {
   name: string;
   visible: boolean;
   n: number;
-  coord: [number, number]; // pin position (surge: the vertex; closure: corridor midpoint)
+  coord: [number, number]; // pin position (surge: the anchor vertex; closure: corridor midpoint)
   roadName?: string;
   baselinePressure?: number;
   // closure
   vertices?: { key: string; lng: number; lat: number }[];
   edgeIds?: string[];
-  // demand change (surge / relief along an edge)
+  // demand change (surge / relief radiating from a vertex)
   edgeId?: string;
+  anchorKey?: string; // the intersection the demand radiates from (graph vertex key)
   surge?: SurgeParams;
 }
 
@@ -492,11 +494,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     const [lng, lat] = coord;
 
     if (activeTool === "surge") {
-      // Demand change snaps to the nearest street segment; demand flows ALONG that
-      // edge in a chosen direction (forward = from→to). Kind = surge | relief.
+      // Demand change anchors at the intersection nearest the click; demand then
+      // radiates out along the streets leaving that vertex in the chosen compass
+      // directions. The street the user clicked seeds the default direction.
       const near = nearestEdge(graph, lng, lat);
       if (!near) return;
-      const mid = near.geometry[Math.floor(near.geometry.length / 2)] ?? near.geometry[0];
+      const distTo = (k: string) => {
+        const n = graph.nodes.get(k);
+        return n ? (n.lng - lng) ** 2 + (n.lat - lat) ** 2 : Infinity;
+      };
+      const anchorKey = distTo(near.fromKey) <= distTo(near.toKey) ? near.fromKey : near.toKey;
+      const anchor = graph.nodes.get(anchorKey);
+      if (!anchor) return;
+      const streets = streetsByDirection(graph, anchorKey);
+      const clickedDir = (["n", "e", "s", "w"] as const).find((d) => streets[d]?.edge_id === near.edge_id);
+      const defaultDir = clickedDir ?? (["e", "n", "s", "w"] as const).find((d) => streets[d]) ?? "e";
       const seq = get().objects.length + 1;
       const obj: SceneObject = {
         id: `obj${Date.now()}`,
@@ -504,11 +516,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         name: `Demand${near.road_name ? " · " + near.road_name : ""} · surge`,
         visible: true,
         n: seq,
-        coord: [mid[1], mid[0]], // geometry is [lat, lng]
+        coord: [anchor.lng, anchor.lat],
         roadName: near.road_name,
         edgeId: near.edge_id,
+        anchorKey,
         baselinePressure: getArrays().pressure[near.idx],
-        surge: { amount: 500, mode: "absolute", kind: "surge", dirs: { n: false, e: true, s: false, w: false } },
+        surge: {
+          amount: 500,
+          mode: "absolute",
+          kind: "surge",
+          dirs: { n: defaultDir === "n", e: defaultDir === "e", s: defaultDir === "s", w: defaultDir === "w" },
+        },
       };
       set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select", dirty: true }));
       await get().applyEdits();

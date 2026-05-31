@@ -12,6 +12,7 @@ import json
 import os
 import threading
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from ..simulation.simulate_traffic import (
@@ -31,14 +32,29 @@ class AppState:
     edge_index: dict = field(default_factory=dict)  # edge_id -> index
     max_pairs: int = 2000  # OD size, remembered so retime() can regenerate demand
     _baseline: dict | None = None
+    # Cached AON/blast baseline + its lock — used by blast_baseline(). These were
+    # dropped in an AppState refactor while blast_baseline() still references them,
+    # so any blast/compare path raised AttributeError; re-declared here.
     _blast_baseline: dict | None = None
-    # Serialize baseline compute so concurrent callers wait for one run (the full
-    # baseline is ~minutes on the 81k graph) instead of each recomputing.
-    _baseline_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _baseline_lock: object = field(default_factory=threading.Lock)
+    # Baseline OD is built lazily (see ensure_od) so the server boots without
+    # loading the demand model. od_max_pairs is the gravity cap for that build.
+    od_max_pairs: int = 800
+    _od_lock: object = field(default_factory=threading.Lock)
+    # Param-driven recompute cache (api/recompute.py): LRU keyed on
+    # (model, time_context, interventions) -> {records, summary, ...}. A per-key
+    # lock collapses concurrent identical requests; _cache_lock guards the maps.
+    _recompute_cache: "OrderedDict" = field(default_factory=OrderedDict)
+    _recompute_locks: dict = field(default_factory=dict)
+    _cache_lock: object = field(default_factory=threading.Lock)
 
     @property
     def baseline_ready(self) -> bool:
-        """True once the (heavy) compare baseline is computed — gates the copilot UI."""
+        """True once the (heavy) compare baseline is computed — gates the copilot UI.
+
+        Re-added after the main-merge: app.py's /healthz references this, but the
+        AppState refactor on this branch had dropped it (the heavy baseline is now
+        lazy, so this is simply False until something computes it)."""
         return self._baseline is not None
 
     @classmethod
@@ -58,6 +74,29 @@ class AppState:
             max_pairs=max_pairs,
         )
 
+    def ensure_od(self) -> list:
+        """Build the baseline OD matrix on first legacy use, then cache it.
+
+        The main UX (baseline + ML day-stream) never calls this — ``api/recompute``
+        grounds its own OD per request — so startup can skip the demand-model load.
+        Only the legacy scenario run/preview/compare and ``/demo/run`` need a
+        shared baseline OD; the first such call pays a one-time model+predict+OD
+        build (double-checked under a lock so concurrent callers share the work).
+        """
+        if self.od_matrix:
+            return self.od_matrix
+        with self._od_lock:
+            if self.od_matrix:
+                return self.od_matrix
+            from ..model.generate_od_matrix import generate_od_matrix
+            from ..model.predict_node_demand import load_demand_model, predict_node_demand
+
+            tc = self.time_context or {"hour": 17, "day_of_week": 4, "month": 6, "weather": "clear"}
+            model = load_demand_model()
+            demand = predict_node_demand(self.graph, model, tc)
+            self.od_matrix = generate_od_matrix(self.graph, demand, tc, max_pairs=self.od_max_pairs)
+            return self.od_matrix
+
     def retime(self, time_context: dict) -> None:
         """Regenerate the baseline demand for a new time-of-day / date and drop the
         cached sims so the next ``baseline()``/run reflects it.
@@ -75,7 +114,7 @@ class AppState:
         tc = normalize_time_context(time_context)
         model = load_demand_model()
         demand = predict_node_demand(self.graph, model, tc)
-        od = generate_od_matrix(self.graph, demand, tc, max_pairs=self.max_pairs)
+        od = generate_od_matrix(self.graph, demand, tc, max_pairs=self.od_max_pairs)
         with self._baseline_lock:
             self.od_matrix = od
             self.time_context = tc
@@ -90,17 +129,16 @@ class AppState:
         callers wait rather than each kicking off a ~2-min full-graph sim.
         """
         if self._baseline is None:
-            with self._baseline_lock:
-                if self._baseline is None:
-                    self._baseline = simulate_traffic(
-                        self.graph,
-                        self.od_matrix,
-                        iterations=iterations,
-                        weather=self.weather,
-                        time_context=self.time_context,
-                        auto_calibrate=False,
-                        congestion_model=congestion_model,
-                    )
+            self.ensure_od()
+            self._baseline = simulate_traffic(
+                self.graph,
+                self.od_matrix,
+                iterations=iterations,
+                weather=self.weather,
+                time_context=self.time_context,
+                auto_calibrate=False,
+                congestion_model=congestion_model,
+            )
         return self._baseline
 
     def blast_baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
@@ -193,6 +231,7 @@ class ScenarioStore:
 
     def run(self, sid: str, req: dict) -> dict:
         sc = self.scenarios[sid]
+        self.state.ensure_od()  # legacy path: build the shared baseline OD on first use
         result = simulate_scenario(
             self.state.graph,
             self.state.od_matrix,
@@ -210,6 +249,7 @@ class ScenarioStore:
 
     def preview(self, sid: str, interventions: list, req: dict) -> dict:
         """Run a hypothetical intervention set WITHOUT committing it."""
+        self.state.ensure_od()  # legacy path: build the shared baseline OD on first use
         result = simulate_scenario(
             self.state.graph,
             self.state.od_matrix,

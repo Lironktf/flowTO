@@ -1,0 +1,9 @@
+{
+  "_doc": "APP-LOCAL activation gate for the residual closure-GNN edit path (api/recompute.py). This is the verdict the live dispatch reads. It is INTENTIONALLY ship=false: we have NOT validated that the residual GNN's closure predictions transfer to the APP's open-road sim baseline (the sim_open channels), and a newer stage2_enriched checkpoint is still training. While ship=false the closure edit path is byte-identical to the existing sim path. To activate: drop a validated checkpoint at TS_RESIDUAL_CKPT and flip closures.ship to true (see models/gnn/stage2_gate_verdict.json for the training-side gate metrics, which are NOT trusted by this app-local gate until app-baseline transfer is validated).",
+  "closures": {
+    "ship": false,
+    "verdict": "keep sim",
+    "scope": "closure",
+    "reason": "transfer to app open-road baseline not validated; stage2_enriched still training"
+  }
+}

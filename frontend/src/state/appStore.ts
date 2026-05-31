@@ -29,6 +29,7 @@ import {
   streetsByDirection,
   withReverseTwins,
   type RoadGraph,
+  type Segment,
 } from "../api/graph";
 import { DEFAULT_DAY_OF_YEAR, TIMELINE } from "../config";
 import { getArrays, resizeTickStore, writeRecords } from "./tickStore";
@@ -476,7 +477,55 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
       return;
     }
-    set({ planStaged: true });
+
+    // If the copilot proposed road closures, materialize them as the SAME
+    // closure scene object the manual Edit flow creates (placeAt) — so it shows
+    // identically (scene entry, inspector, red marker, sealed-edges) and applies
+    // through the same applyEdits → /scenarios + /run path.
+    const closeIds = (resp.interventions ?? [])
+      .filter((iv) => iv.op === "close_edge" && iv.edge_id)
+      .map((iv) => iv.edge_id as string);
+    if (closeIds.length) {
+      const graph = get().graph;
+      const segs = closeIds
+        .map((id) => graph?.byId.get(id))
+        .filter((s): s is Segment => !!s);
+      const roadName = segs[0]?.road_name;
+      let sLat = 0;
+      let sLng = 0;
+      let npts = 0;
+      for (const sg of segs) {
+        for (const [la, ln] of sg.geometry) {
+          sLat += la;
+          sLng += ln;
+          npts += 1;
+        }
+      }
+      const coord: [number, number] = npts ? [sLng / npts, sLat / npts] : [-79.4, 43.65];
+      const seq = get().objects.length + 1;
+      const obj: SceneObject = {
+        id: `obj${Date.now()}`,
+        type: "closure",
+        name: `Closure${roadName ? " · " + roadName : ""}`,
+        visible: true,
+        n: seq,
+        coord,
+        roadName,
+        edgeIds: closeIds,
+      };
+      set((s) => ({
+        objects: [...s.objects, obj],
+        selectedId: obj.id,
+        activeTool: "select",
+        dirty: true,
+      }));
+      await get().applyEdits();
+      return;
+    }
+
+    // Read-only answers (e.g. "where is congestion worst?") carry no
+    // interventions — just show the reply, don't stage a confirm banner.
+    if ((resp.interventions ?? []).length) set({ planStaged: true });
   },
 
   applyPlan: async () => {

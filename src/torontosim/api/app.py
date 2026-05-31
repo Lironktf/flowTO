@@ -201,7 +201,12 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
             from ..copilot.planner import plan_intervention
         except ImportError:
             raise HTTPException(501, "copilot not available (P09 not installed)") from None
-        return plan_intervention(payload.get("prompt", ""), state)
+        import os
+
+        # FLOWTO_COPILOT_LIVE=1 routes free-form prompts to the live model
+        # (Ollama at FLOWTO_OLLAMA_URL); otherwise only the rehearsed intents run.
+        live = os.environ.get("FLOWTO_COPILOT_LIVE", "").lower() not in ("", "0", "false", "no")
+        return plan_intervention(payload.get("prompt", ""), state, use_live=live)
 
     @app.post("/copilot/explain")
     def copilot_explain(payload: dict):

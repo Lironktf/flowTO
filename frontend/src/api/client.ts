@@ -34,6 +34,9 @@ export interface CopilotResponse {
   citations: { ref: string; note: string }[];
   requires_user_confirmation: boolean;
   blocked: boolean;
+  // The backend ToolCall's interventions (e.g. close_edge ops). The frontend
+  // materializes these into the same scene objects the manual Edit flow uses.
+  interventions?: Intervention[];
   retrieved_policy?: { doc_id: string; title: string; source: string }[];
 }
 

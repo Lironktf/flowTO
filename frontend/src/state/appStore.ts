@@ -1340,17 +1340,20 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
     set((s) => {
       const objects = [...s.objects, obj];
-      // Surface the restricted-road guardrail immediately, before the recompute.
+      // Place the closure and surface the restricted-road guardrail immediately,
+      // but DON'T recompute yet — the corridor seals on the map and the inspector
+      // shows the "Apply & recompute" button. Reassignment runs only on that click.
       return {
         objects,
         selectedId: obj.id,
         activeTool: "select",
         pendingVertices: [],
         dirty: true,
+        simStale: true,
         warnings: composeWarnings(objects, s.graph),
+        status: { state: "nominal", label: "Closure placed · click Apply & recompute" },
       };
     });
-    await get().applyEdits();
   },
 
   selectObject: (id) => set({ selectedId: id, activeTool: "select" }),

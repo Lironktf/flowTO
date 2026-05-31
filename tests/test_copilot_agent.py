@@ -21,6 +21,28 @@ def _script(*steps: dict):
     return call
 
 
+def test_agent_dedups_repeated_simulate(monkeypatch):
+    # An identical simulate re-run is served from cache (no 2nd sim) and flagged.
+    import torontosim.copilot.agent as agent_mod
+
+    calls = {"n": 0}
+
+    def counting(_state, _ops):
+        calls["n"] += 1
+        return {"summary_delta": {}, "most_impacted_edges": []}
+
+    monkeypatch.setattr(agent_mod, "_simulate", counting)
+    state = _small_state()
+    model = _script(
+        {"tool": "simulate", "interventions": [{"op": "close_edge", "edge_id": "e0"}]},
+        {"tool": "simulate", "interventions": [{"op": "close_edge", "edge_id": "e0"}]},
+        {"tool": "answer", "answer": "done"},
+    )
+    res = run_agent("test", state, model_call=model, max_steps=4)
+    assert calls["n"] == 1  # the identical second simulate was served from cache
+    assert any("repeat" in (s.get("thought") or "") for s in res.steps)
+
+
 def test_agent_investigates_then_proposes():
     state = _small_state()
     model = _script(

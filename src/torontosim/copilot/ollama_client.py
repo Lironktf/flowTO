@@ -58,7 +58,9 @@ def _body(system: str, prompt: str, schema: dict | None, *, stream: bool) -> byt
     return json.dumps(body).encode()
 
 
-def generate(system: str, prompt: str, schema: dict | None = None, *, timeout: float = 180.0) -> str:
+def generate(
+    system: str, prompt: str, schema: dict | None = None, *, timeout: float = 180.0
+) -> str:
     """One-shot generation → response text. Schema-constrains decoding if given."""
     req = urllib.request.Request(
         host() + "/api/generate",
@@ -69,7 +71,9 @@ def generate(system: str, prompt: str, schema: dict | None = None, *, timeout: f
         return json.loads(r.read())["response"]
 
 
-def stream(system: str, prompt: str, schema: dict | None = None, *, timeout: float = 180.0) -> Iterator[dict]:
+def stream(
+    system: str, prompt: str, schema: dict | None = None, *, timeout: float = 180.0
+) -> Iterator[dict]:
     """Yield ``{"token","done","total_ms","first"}`` events as tokens arrive.
 
     ``first`` is True on the first content token (for the latency HUD). Final

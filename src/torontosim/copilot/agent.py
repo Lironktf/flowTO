@@ -77,9 +77,15 @@ def _simulate(state, interventions: list[dict]) -> dict:
     from ..simulation.simulate_traffic import compare_simulations, simulate_scenario
 
     result = simulate_scenario(
-        state.graph, state.od_matrix, interventions,
-        iterations=4, weather=state.weather, time_context=state.time_context,
-        engine="kpath", congestion_model="bpr", recompute="blast",
+        state.graph,
+        state.od_matrix,
+        interventions,
+        iterations=4,
+        weather=state.weather,
+        time_context=state.time_context,
+        engine="kpath",
+        congestion_model="bpr",
+        recompute="blast",
     )
     # Compare against the same-method (AON/blast) baseline when available, so the
     # agent's scratch deltas are correct AND fast (~1-2s vs ~60s full).
@@ -107,11 +113,15 @@ def _default_model_call(system: str, prompt: str, schema: dict) -> str:
 
 
 def _transcript_block(steps: list[dict], remaining: int) -> str:
-    head = f"\nSTEPS REMAINING: {remaining} — finish with 'propose' or 'answer' before they run out."
+    head = (
+        f"\nSTEPS REMAINING: {remaining} — finish with 'propose' or 'answer' before they run out."
+    )
     if not steps:
         return head
-    lines = [f"  step {i + 1}: {s['tool']} -> {json.dumps(s['observation'])[:300]}"
-             for i, s in enumerate(steps)]
+    lines = [
+        f"  step {i + 1}: {s['tool']} -> {json.dumps(s['observation'])[:300]}"
+        for i, s in enumerate(steps)
+    ]
     return head + "\nOBSERVATIONS SO FAR (do not repeat these):\n" + "\n".join(lines)
 
 
@@ -132,12 +142,16 @@ def _finalize_propose(goal: str, step: AgentStep, state, steps: list[dict]) -> A
         return AgentResult(
             answer="That plan breaches a hard constraint, so I won't apply it.",
             citations=[Citation(ref=v.ref, note=v.note) for v in violations],
-            steps=steps, blocked=True, requires_user_confirmation=False,
+            steps=steps,
+            blocked=True,
+            requires_user_confirmation=False,
         )
     cites = [Citation(ref=w.ref, note=w.note) for w in advisories(goal, ops, state)]
     return AgentResult(
         answer=step.rationale or step.answer or "Proposed a plan — confirm to apply.",
-        interventions=ivs, citations=cites, steps=steps,
+        interventions=ivs,
+        citations=cites,
+        steps=steps,
         requires_user_confirmation=bool(ivs),
     )
 
@@ -163,7 +177,9 @@ def _terminal_schema() -> dict:
     return _require_thought(schema)
 
 
-def run_agent(goal: str, state, *, model_call: ModelCall | None = None, max_steps: int = 4) -> AgentResult:
+def run_agent(
+    goal: str, state, *, model_call: ModelCall | None = None, max_steps: int = 4
+) -> AgentResult:
     """Drive a bounded, read-only tool chain to answer ``goal``.
 
     The last step is forced terminal (schema restricted to propose/answer) so the
@@ -191,7 +207,9 @@ def run_agent(goal: str, state, *, model_call: ModelCall | None = None, max_step
             steps.append({"tool": "answer", "thought": step.thought, "observation": step.answer})
             return AgentResult(answer=step.answer or "Done.", steps=steps)
         if step.tool == "propose":
-            steps.append({"tool": "propose", "thought": step.thought, "observation": "proposed a plan"})
+            steps.append(
+                {"tool": "propose", "thought": step.thought, "observation": "proposed a plan"}
+            )
             return _finalize_propose(goal, step, state, steps)
         if step.tool == "retrieve_policy":
             obs = rag.retrieve(step.query or goal, k=3)

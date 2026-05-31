@@ -78,7 +78,10 @@ def _edge_meta(state) -> dict:
     for _u, _v, d in state.graph.edges(data=True):
         eid = d.get("edge_id") or d.get("id")
         if eid is not None:
-            out[eid] = {"road_name": d.get("road_name") or "", "road_class": d.get("road_class") or ""}
+            out[eid] = {
+                "road_name": d.get("road_name") or "",
+                "road_class": d.get("road_class") or "",
+            }
     return out
 
 

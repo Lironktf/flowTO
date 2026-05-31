@@ -105,16 +105,12 @@ class EmbeddingRetriever:
         self.docs = docs
         self._np = np
         self._model = SentenceTransformer(model_name)
-        mat = self._model.encode(
-            [f"{d.title}\n{d.text}" for d in docs], normalize_embeddings=True
-        )
+        mat = self._model.encode([f"{d.title}\n{d.text}" for d in docs], normalize_embeddings=True)
         self._mat = np.asarray(mat, dtype="float32")
 
     def query(self, text: str, k: int = 4) -> list[tuple[Doc, float]]:
         np = self._np
-        q = np.asarray(
-            self._model.encode([text], normalize_embeddings=True), dtype="float32"
-        )[0]
+        q = np.asarray(self._model.encode([text], normalize_embeddings=True), dtype="float32")[0]
         sims = self._mat @ q  # cosine (rows already L2-normalized)
         order = np.argsort(-sims)[:k]
         return [(self.docs[i], float(sims[i])) for i in order]

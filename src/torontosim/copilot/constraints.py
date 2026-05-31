@@ -21,7 +21,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 _CLOSE_OPS = ("close_edge", "remove_edge", "close_node")
-_FULL_CLOSURE_WORDS = ("both ways", "both directions", "fully close", "full closure", "close all", "shut down")
+_FULL_CLOSURE_WORDS = (
+    "both ways",
+    "both directions",
+    "fully close",
+    "full closure",
+    "close all",
+    "shut down",
+)
 
 
 @dataclass
@@ -39,18 +46,21 @@ PROTECTED_CORRIDORS = [
         "match": ("lake shore", "lakeshore"),
         "needs_full_closure": True,
         "refs": [
-            ("Toronto Municipal Code Ch. 880",
-             "designated fire route may not be fully closed (emergency access to Stadium South)"),
-            ("TTC service bylaw",
-             "streetcar-replacement bus lane (509 / 511) must be retained"),
+            (
+                "Toronto Municipal Code Ch. 880",
+                "designated fire route may not be fully closed (emergency access to Stadium South)",
+            ),
+            ("TTC service bylaw", "streetcar-replacement bus lane (509 / 511) must be retained"),
         ],
     },
     {
         "match": ("king street", "king st"),
         "needs_full_closure": False,
         "refs": [
-            ("King St Transit Priority Corridor",
-             "streetcar priority on 504 King must be preserved; no through-traffic restriction removal"),
+            (
+                "King St Transit Priority Corridor",
+                "streetcar priority on 504 King must be preserved; no through-traffic restriction removal",
+            ),
         ],
     },
 ]
@@ -118,9 +128,7 @@ def check_request(
     return violations
 
 
-def advisories(
-    text: str, interventions: list[dict] | None = None, state=None
-) -> list[Violation]:
+def advisories(text: str, interventions: list[dict] | None = None, state=None) -> list[Violation]:
     """Soft, data-derived warnings (not refusals) — e.g. closing a major arterial."""
     interventions = interventions or []
     attrs = _edge_attrs(state)

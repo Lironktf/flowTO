@@ -187,6 +187,8 @@ class ScenarioStore:
         # Compare against a baseline computed with the SAME assignment method:
         # a blast scenario (AON re-route) vs the iterative full baseline would
         # diff two different methods and report nonsense global deltas.
-        is_blast = scenario_result.get("recompute") == "blast" or scenario_result.get("engine") == "blast"
+        is_blast = (
+            scenario_result.get("recompute") == "blast" or scenario_result.get("engine") == "blast"
+        )
         base = self.state.blast_baseline() if is_blast else self.state.baseline()
         return compare_simulations(base, scenario_result)

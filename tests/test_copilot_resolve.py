@@ -23,15 +23,31 @@ def _state():
         ("king1", 1, 2, "King Street West"),
     ]
     for eid, u, v, name in edges:
-        g.add_edge(u, v, key=0, **schema.make_edge(
-            edge_id=eid, from_node=u, to_node=v, road_name=name, road_class="primary",
-            length_m=500.0, speed_kmh=50.0, lanes=2.0, capacity=1500.0, base_time_min=0.6,
-            one_way=False, geometry=[[0, 0], [0, 0]]))
+        g.add_edge(
+            u,
+            v,
+            key=0,
+            **schema.make_edge(
+                edge_id=eid,
+                from_node=u,
+                to_node=v,
+                road_name=name,
+                road_class="primary",
+                length_m=500.0,
+                speed_kmh=50.0,
+                lanes=2.0,
+                capacity=1500.0,
+                base_time_min=0.6,
+                one_way=False,
+                geometry=[[0, 0], [0, 0]],
+            ),
+        )
     od = [{"origin": 0, "destination": 2, "trips": 600.0}]
     return AppState.from_graph(g, od, weather="clear", time_context={"hour": 17})
 
 
 # ---- resolve.py ------------------------------------------------------------ #
+
 
 def test_road_edges_by_name_fuzzy_matches_whole_road():
     g = _state().graph
@@ -56,13 +72,15 @@ def test_resolve_node_by_name_handles_ampersand_variants():
 
 # ---- intent router --------------------------------------------------------- #
 
+
 def _model(payload: dict):
     return lambda _s, _p, _sc: json.dumps(payload)
 
 
 def test_router_close_road_resolves_all_segments():
-    call = planner._try_command("close lake shore", _state(),
-                                _model({"intent": "close_road", "road_name": "Lake Shore"}))
+    call = planner._try_command(
+        "close lake shore", _state(), _model({"intent": "close_road", "road_name": "Lake Shore"})
+    )
     assert call.tool == "preview_intervention"
     assert call.requires_user_confirmation is True
     assert {iv.edge_id for iv in call.interventions} == {"ls1", "ls2"}
@@ -70,8 +88,9 @@ def test_router_close_road_resolves_all_segments():
 
 
 def test_router_query_congestion_is_read_only_answer():
-    call = planner._try_command("where is congestion worst", _state(),
-                                _model({"intent": "query_congestion"}))
+    call = planner._try_command(
+        "where is congestion worst", _state(), _model({"intent": "query_congestion"})
+    )
     assert call.tool == "answer"
     assert call.requires_user_confirmation is False
 
@@ -82,7 +101,8 @@ def test_router_other_falls_through():
 
 
 def test_router_unresolvable_road_answers_not_found():
-    call = planner._try_command("close the moon", _state(),
-                                _model({"intent": "close_road", "road_name": "Moon Base Alpha"}))
+    call = planner._try_command(
+        "close the moon", _state(), _model({"intent": "close_road", "road_name": "Moon Base Alpha"})
+    )
     assert call.tool == "answer"
     assert "couldn't resolve" in call.rationale

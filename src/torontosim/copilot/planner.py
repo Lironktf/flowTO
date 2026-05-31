@@ -98,7 +98,7 @@ def _generic_preview() -> ToolCall:
         tool="answer",
         rationale=(
             "I'm the planning copilot — I turn plain-English requests into traffic interventions. "
-            "Try: \"ease congestion near BMO Field\", \"reduce capacity on Lake Shore eastbound\", "
+            'Try: "ease congestion near BMO Field", "reduce capacity on Lake Shore eastbound", '
             "or ask why a corridor is congested."
         ),
         requires_user_confirmation=False,
@@ -127,7 +127,9 @@ def _optimize_call(state, prompt: str) -> ToolCall:
             f"Optimizer scored candidate actions by simulating each; best sim-verified plan is "
             f"{len(plan)} action(s), average network pressure {delta}. Confirm to apply and run."
         ),
-        citations=[Citation(ref="Optimizer (P10)", note="each candidate scored by running the sim")],
+        citations=[
+            Citation(ref="Optimizer (P10)", note="each candidate scored by running the sim")
+        ],
         requires_user_confirmation=True,
     )
 
@@ -136,13 +138,30 @@ def _optimize_call(state, prompt: str) -> ToolCall:
 # The model classifies intent and extracts only NAMES; resolve.py does the exact
 # graph work (name → node/edges), so no edge_id is ever invented. Whole-road and
 # A→B segment closures + a read-only congestion query.
-_COMMAND_HINTS = ("close", "reopen", "shut", "block", "congest", "worst", "bottleneck", "busiest", "between")
+_COMMAND_HINTS = (
+    "close",
+    "reopen",
+    "shut",
+    "block",
+    "congest",
+    "worst",
+    "bottleneck",
+    "busiest",
+    "between",
+)
 _INTENT_SCHEMA = {
     "type": "object",
     "properties": {
         "intent": {
             "type": "string",
-            "enum": ["close_road", "reopen_road", "close_segment", "reopen_segment", "query_congestion", "other"],
+            "enum": [
+                "close_road",
+                "reopen_road",
+                "close_segment",
+                "reopen_segment",
+                "query_congestion",
+                "other",
+            ],
         },
         "road_name": {"type": "string"},
         "from_intersection": {"type": "string"},
@@ -209,7 +228,9 @@ def _try_command(prompt: str, state, model_call) -> ToolCall | None:
     intent = str(cmd.get("intent", "other")).lower()
 
     if intent == "query_congestion":
-        return ToolCall(tool="answer", rationale=_answer_congestion(state), requires_user_confirmation=False)
+        return ToolCall(
+            tool="answer", rationale=_answer_congestion(state), requires_user_confirmation=False
+        )
 
     if intent in ("close_road", "reopen_road"):
         res = road_edges_by_name(graph, cmd.get("road_name"))
@@ -257,7 +278,9 @@ def plan_intervention(prompt: str, state, *, use_live: bool | None = None) -> di
     elif any(kw in text for kw in ("ease", "mitigat", "gridlock", "post-match", "egress")):
         call = _hero_call(state)
     # 3) Optimizer intent — let cuOpt/heuristic search propose the plan.
-    elif any(kw in text for kw in ("optimize", "optimise", "optimal", "best plan", "recommend a plan")):
+    elif any(
+        kw in text for kw in ("optimize", "optimise", "optimal", "best plan", "recommend a plan")
+    ):
         try:
             call = _optimize_call(state, prompt)
         except (ImportError, OSError, ValueError):

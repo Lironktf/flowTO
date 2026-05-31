@@ -18,10 +18,13 @@ def _client():
 def test_confirm_applies_runs_and_explains():
     c = _client()
     before = c.get("/scenarios").json()["scenarios"]
-    r = c.post("/copilot/confirm", json={
-        "name": "copilot close e0",
-        "interventions": [{"op": "close_edge", "edge_id": "e0"}],
-    })
+    r = c.post(
+        "/copilot/confirm",
+        json={
+            "name": "copilot close e0",
+            "interventions": [{"op": "close_edge", "edge_id": "e0"}],
+        },
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["scenario_id"]
@@ -39,9 +42,12 @@ def test_confirm_rejects_empty_interventions():
 
 
 def test_confirm_rejects_unknown_edge():
-    r = _client().post("/copilot/confirm", json={
-        "interventions": [{"op": "close_edge", "edge_id": "ghost"}],
-    })
+    r = _client().post(
+        "/copilot/confirm",
+        json={
+            "interventions": [{"op": "close_edge", "edge_id": "ghost"}],
+        },
+    )
     assert r.status_code == 422
 
 

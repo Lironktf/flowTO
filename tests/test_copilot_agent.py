@@ -25,10 +25,15 @@ def test_agent_investigates_then_proposes():
     state = _small_state()
     model = _script(
         {"tool": "retrieve_policy", "query": "event traffic management"},
-        {"tool": "simulate", "interventions": [{"op": "change_capacity", "edge_id": "e0", "multiplier": 0.5}]},
-        {"tool": "propose",
-         "interventions": [{"op": "change_capacity", "edge_id": "e0", "multiplier": 0.5}],
-         "rationale": "Metering e0 eases the spine."},
+        {
+            "tool": "simulate",
+            "interventions": [{"op": "change_capacity", "edge_id": "e0", "multiplier": 0.5}],
+        },
+        {
+            "tool": "propose",
+            "interventions": [{"op": "change_capacity", "edge_id": "e0", "multiplier": 0.5}],
+            "rationale": "Metering e0 eases the spine.",
+        },
     )
     res = run_agent("ease congestion and check it helps", state, model_call=model)
     assert res.requires_user_confirmation is True
@@ -41,8 +46,11 @@ def test_agent_investigates_then_proposes():
 def test_agent_refuses_blocked_proposal():
     state = _small_state()
     model = _script(
-        {"tool": "propose", "interventions": [{"op": "close_edge", "edge_id": "e0"}],
-         "rationale": "close it"},
+        {
+            "tool": "propose",
+            "interventions": [{"op": "close_edge", "edge_id": "e0"}],
+            "rationale": "close it",
+        },
     )
     res = run_agent("Just close Lake Shore both ways.", state, model_call=model)
     assert res.blocked is True
@@ -59,6 +67,7 @@ def test_agent_answer_terminates_without_plan():
 
 def test_agent_step_cap_terminates():
     state = _small_state()
+
     # Always simulate, never terminate → must stop at the cap.
     def model(_s, _p, _sch):
         return AgentStep(tool="simulate", interventions=[]).model_dump_json()

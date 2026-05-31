@@ -22,17 +22,31 @@ def _state_with_lakeshore():
         ("local", 3, 0, "Saulter Street South", "residential", False),
     ]
     for eid, u, v, name, cls, oneway in edges:
-        g.add_edge(u, v, key=0, **schema.make_edge(
-            edge_id=eid, from_node=u, to_node=v, road_name=name, road_class=cls,
-            length_m=500.0, speed_kmh=50.0, lanes=2.0, capacity=1200.0,
-            base_time_min=0.6, one_way=oneway,
-            geometry=[[coords[u][1], coords[u][0]], [coords[v][1], coords[v][0]]],
-        ))
+        g.add_edge(
+            u,
+            v,
+            key=0,
+            **schema.make_edge(
+                edge_id=eid,
+                from_node=u,
+                to_node=v,
+                road_name=name,
+                road_class=cls,
+                length_m=500.0,
+                speed_kmh=50.0,
+                lanes=2.0,
+                capacity=1200.0,
+                base_time_min=0.6,
+                one_way=oneway,
+                geometry=[[coords[u][1], coords[u][0]], [coords[v][1], coords[v][0]]],
+            ),
+        )
     od = [{"origin": 0, "destination": 3, "trips": 800.0}]
     return AppState.from_graph(g, od, weather="clear", time_context={"hour": 17})
 
 
 # ---- text-only path (backward compatible with the rehearsed prompt) -------- #
+
 
 def test_text_full_closure_lakeshore_blocks_with_citations():
     v = constraints.check_request("Just close Lake Shore both ways.")
@@ -48,6 +62,7 @@ def test_text_partial_lakeshore_not_blocked():
 
 # ---- data-backed path (interventions resolved against the real graph) ------ #
 
+
 def test_intervention_closing_both_lakeshore_dirs_blocks():
     state = _state_with_lakeshore()
     ivs = [{"op": "close_edge", "edge_id": "ls_eb"}, {"op": "close_edge", "edge_id": "ls_wb"}]
@@ -57,17 +72,22 @@ def test_intervention_closing_both_lakeshore_dirs_blocks():
 
 def test_king_st_closure_blocks_transit_priority():
     state = _state_with_lakeshore()
-    v = constraints.check_request("remove this segment", [{"op": "remove_edge", "edge_id": "king"}], state)
+    v = constraints.check_request(
+        "remove this segment", [{"op": "remove_edge", "edge_id": "king"}], state
+    )
     assert any("King" in x.ref for x in v)
 
 
 def test_residential_closure_is_allowed():
     state = _state_with_lakeshore()
-    v = constraints.check_request("close this street", [{"op": "close_edge", "edge_id": "local"}], state)
+    v = constraints.check_request(
+        "close this street", [{"op": "close_edge", "edge_id": "local"}], state
+    )
     assert v == []
 
 
 # ---- advisories (soft warnings, not refusals) ------------------------------ #
+
 
 def test_major_arterial_closure_is_an_advisory_not_a_block():
     state = _state_with_lakeshore()

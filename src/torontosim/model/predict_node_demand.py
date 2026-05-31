@@ -87,6 +87,29 @@ GNN_DATASET_PATH = os.path.join(_REPO_ROOT, "data", "gnn", "gnn_dataset.pt")
 GNN_GRAPH_PATH = os.path.join(_REPO_ROOT, "data", "graph", "toronto_drive_graph.json")
 
 
+def _pin_inference_device_cpu(payload) -> None:
+    """Pin an xgboost model to CPU for inference (in place, best-effort).
+
+    The model may have been trained on the GX10 with ``device="cuda"``. We feed
+    it CPU numpy arrays at predict time, so leaving it on cuda forces a slow
+    per-call host->device fallback copy (and a warning). Inference is local and
+    tiny here, so CPU is both faster and more deterministic. No-op for non-xgboost
+    models / when the param isn't present.
+    """
+    model = payload.get("model") if isinstance(payload, dict) else payload
+    if model is None or not hasattr(model, "get_params") or not hasattr(model, "set_params"):
+        return
+    try:
+        if str(model.get_params().get("device", "")).startswith("cuda"):
+            model.set_params(device="cpu")
+            try:
+                model.get_booster().set_param({"device": "cpu"})
+            except Exception:  # noqa: BLE001 — booster not materialized yet
+                pass
+    except Exception:  # noqa: BLE001 — non-xgboost estimator, etc.
+        pass
+
+
 def load_demand_model(model_path: str = MODEL_PATH, kind: str = "auto"):
     """Load a demand model payload.
 
@@ -113,6 +136,7 @@ def load_demand_model(model_path: str = MODEL_PATH, kind: str = "auto"):
 
         try:
             payload = joblib.load(model_path)
+            _pin_inference_device_cpu(payload)
             from .contract import check_compatible
 
             problems = check_compatible(payload, expected_feature_order=FEATURE_ORDER)

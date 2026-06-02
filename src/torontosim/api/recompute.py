@@ -111,7 +111,7 @@ def _run(state, model_kind: str, tc: dict, interventions: List[dict], iterations
         weather="clear",
         time_context=tc,
         engine="equilibrium",
-        backend="scipy",
+        backend="gpu",
         congestion_model="bpr",
         recompute="full",
         rgap_target=1e-2,

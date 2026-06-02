@@ -62,7 +62,7 @@ We also target the three bounties:
 
 ## Demo video
 
-> 🎥 **3–5 min demo video:** _TODO — add the unlisted YouTube/Vimeo link here before submitting._
+> 🎥 **3–5 min demo video:** **https://youtu.be/Yh3Qg2grTw0**
 
 If the live box hiccups, a pre-recorded screen capture stands in (FlowTO is
 on-device only, so there is **no public deployed URL** — the video / capture is

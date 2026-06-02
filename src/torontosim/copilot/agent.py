@@ -74,7 +74,11 @@ def _valid_edges(state) -> set:
 
 def _simulate(state, interventions: list[dict]) -> dict:
     """Run a hypothetical intervention set vs baseline — READ-ONLY (no store)."""
-    from ..simulation.simulate_traffic import compare_simulations, simulate_scenario
+    from ..simulation.simulate_traffic import (
+        compare_simulations,
+        resolve_blast_backend,
+        simulate_scenario,
+    )
 
     result = simulate_scenario(
         state.graph,
@@ -86,6 +90,7 @@ def _simulate(state, interventions: list[dict]) -> dict:
         engine="kpath",
         congestion_model="bpr",
         recompute="blast",
+        backend=resolve_blast_backend(),
     )
     # Compare against the same-method (AON/blast) baseline when available, so the
     # agent's scratch deltas are correct AND fast (~1-2s vs ~60s full).

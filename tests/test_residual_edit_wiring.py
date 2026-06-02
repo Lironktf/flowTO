@@ -155,6 +155,27 @@ def test_scope_rejects_reopen_surge_and_mixed(monkeypatch, tmp_path):
         )
         is True
     )
+    # close_node (blocked intersection) is in scope — expanded to incident edges at
+    # inference. Mixed with a non-closure op it is still rejected (sim handles it).
+    assert residual_edit.should_use_residual([{"op": "close_node", "node_id": 0}]) is True
+    assert (
+        residual_edit.should_use_residual(
+            [{"op": "close_node", "node_id": 0}, {"op": "demand_change", "amount": 1.0}]
+        )
+        is False
+    )
+
+
+def test_closed_edge_ids_expands_close_node():
+    """close_node → every edge incident to the node; needs the graph (else skipped)."""
+    state = _small_state()
+    # Node 0 has out-edges e0 (0->1) and e1 (0->2), no in-edges.
+    closed = set(residual_edit._closed_edge_ids([{"op": "close_node", "node_id": 0}], graph=state.graph))
+    assert closed == {"e0", "e1"}
+    # Without a graph, close_node cannot be expanded → skipped (sim path handles it).
+    assert residual_edit._closed_edge_ids([{"op": "close_node", "node_id": 0}]) == []
+    # Unknown node is a no-op rather than an error.
+    assert residual_edit._closed_edge_ids([{"op": "close_node", "node_id": 999}], graph=state.graph) == []
 
 
 # ── (c) gate ship==true + fake model → residual path → Record5 ─────────────── #
@@ -211,6 +232,32 @@ def test_residual_path_produces_record5(monkeypatch):
     assert e1[4] == 0
     assert e1[3] == pytest.approx(0.25 + 0.10)  # new pressure
     assert e1[1] == pytest.approx(300.0 + 0.10 * cap["e1"])  # new load
+
+
+def test_residual_path_close_node_closes_all_incident_edges(monkeypatch):
+    """A blocked intersection (close_node) forces every incident edge to closed."""
+    state = _small_state()
+    _inject_fake_bundle(monkeypatch, state, dpress_value=0.10)
+    baseline = [
+        (state.edge_index["e0"], 600.0, 50.0, 0.5, 0),
+        (state.edge_index["e1"], 300.0, 50.0, 0.25, 0),
+        (state.edge_index["e2"], 90.0, 50.0, 0.075, 0),
+        (state.edge_index["e3"], 120.0, 50.0, 0.1, 0),
+    ]
+    recs = residual_edit.predict_closure_records(
+        state,
+        baseline,
+        interventions=[{"op": "close_node", "node_id": 0}],  # closes e0 + e1
+    )
+    by_idx = {r[0]: r for r in recs}
+    # Both edges incident to node 0 are zeroed + flagged closed.
+    for eid in ("e0", "e1"):
+        rec = by_idx[state.edge_index[eid]]
+        assert rec[1] == 0.0 and rec[2] == 0.0 and rec[3] == 0.0 and rec[4] == 1
+    # Edges not touching node 0 stay open with Δpressure applied.
+    e3 = by_idx[state.edge_index["e3"]]
+    assert e3[4] == 0
+    assert e3[3] == pytest.approx(0.1 + 0.10)
 
 
 def test_residual_path_via_dispatch(monkeypatch):

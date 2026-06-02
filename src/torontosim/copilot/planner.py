@@ -152,7 +152,7 @@ def _optimize_call(state, prompt: str) -> ToolCall:
 def _answer_congestion(state) -> str:
     """Read the cached baseline and describe the most congested roads (read-only)."""
     try:
-        graph = state.baseline()["graph"]
+        graph = state.congestion_graph()
     except Exception as exc:  # noqa: BLE001
         return f"I couldn't read the current congestion state ({type(exc).__name__})."
     rows = sorted(
@@ -186,7 +186,7 @@ def _worst_road_view(state) -> ViewDirective | None:
     """A camera fit on the single most-congested named road, so a congestion query
     flies the map there (read-only). None if there's no readable baseline."""
     try:
-        graph = state.baseline()["graph"]
+        graph = state.congestion_graph()
     except Exception:  # noqa: BLE001 — no baseline yet → just skip the camera move
         return None
     best_name, best_p = None, -1.0
@@ -233,7 +233,7 @@ def _segments_for_road(graph, road_name) -> dict | None:
 def _read_graph(state):
     """Prefer the cached baseline (has live pressure/load); else the static graph."""
     try:
-        return state.baseline()["graph"]
+        return state.congestion_graph()
     except Exception:  # noqa: BLE001
         return getattr(state, "graph", None)
 

@@ -22,12 +22,26 @@ add / remove / re-capacity an edge), then run `simulate_traffic` again on the
 from __future__ import annotations
 
 import math
+import os
 from typing import Dict, List, Optional
 
 from .assign_paths import assign_demand_to_paths
 from .congestion import reset_loads, update_edge_congestion
 
 INF = float("inf")
+
+
+def resolve_blast_backend() -> str:
+    """Backend for blast-path sims (path cache + blast reroute), used by the
+    copilot scenario loop and the ``blast_baseline`` compare reference.
+
+    GPU when ``TS_BACKEND=gpu`` (cuGraph, Spark only); otherwise **scipy** — the
+    vectorized ``csgraph.dijkstra`` over all origins, which needs no special
+    hardware and is strictly faster than the plain-CPU NetworkX heap. Plain
+    ``cpu`` is never chosen here on purpose: there's no host where it beats scipy
+    for this path. Both fall back to CPU internally if their dep is missing.
+    """
+    return "gpu" if os.environ.get("TS_BACKEND") == "gpu" else "scipy"
 
 # Auto-calibration target: scale total trips so the median loaded edge sits near
 # this pressure. Keeps output plausible regardless of raw demand magnitudes.

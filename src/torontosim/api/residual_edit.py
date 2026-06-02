@@ -179,14 +179,31 @@ def get_bundle(graph) -> dict:
 # ── inference: closure → per-edge Δpressure → Record5 ──────────────────────── #
 
 
-def _closed_edge_ids(interventions) -> list:
-    """Edge ids closed by closure ops (``close_edge`` / ``remove_edge``)."""
+def _closed_edge_ids(interventions, graph=None) -> list:
+    """Edge ids closed by closure ops.
+
+    ``close_edge`` / ``remove_edge`` name a graph edge directly. ``close_node`` (a
+    blocked intersection) names a node — it is expanded here into EVERY edge
+    incident to that node, which needs the live ``graph``. Without a graph,
+    ``close_node`` ops are skipped (the sim path handles them instead).
+    """
     out = []
     for iv in interventions or []:
-        if iv.get("op") in ("close_edge", "remove_edge"):
+        op = iv.get("op")
+        if op in ("close_edge", "remove_edge"):
             eid = iv.get("edge_id")
             if eid is not None:
                 out.append(eid)
+        elif op == "close_node" and graph is not None:
+            node_id = iv.get("node_id")
+            if node_id is None:
+                continue
+            from ..graph.mutations import incident_edge_ids
+
+            try:
+                out.extend(incident_edge_ids(graph, node_id))
+            except KeyError:
+                pass  # unknown node → nothing to close (sim would raise; we no-op)
     return out
 
 
@@ -227,7 +244,7 @@ def predict_closure_records(
         if eid is not None:
             sim_open_by_eid[eid] = load
 
-    closed = set(_closed_edge_ids(interventions))
+    closed = set(_closed_edge_ids(interventions, graph=state.graph))
     # Pick the closed edge for the channel builder. The trainer keys one closure per
     # scenario; for multi-edge closures we feed the mask for all closed edges (the
     # channel builder only marks the single ``closed`` arg, so we set the mask after).
@@ -319,9 +336,12 @@ def reset_cache() -> None:
 
 # ── dispatch decision (used by api/recompute.py) ───────────────────────────── #
 
-# Closure ops the residual path is scoped to. Everything else — reopen_edge,
-# demand_change, change_capacity, add_edge, close_node, ... — STAYS on the sim.
-CLOSURE_OPS = {"close_edge", "remove_edge"}
+# Closure ops the residual path is scoped to. ``close_node`` (a blocked
+# intersection) is expanded into its incident-edge closures at inference time (see
+# _closed_edge_ids), so the per-edge model handles it as a multi-edge closure.
+# Everything else — reopen_edge, demand_change, change_capacity, add_edge — STAYS
+# on the sim.
+CLOSURE_OPS = {"close_edge", "remove_edge", "close_node"}
 
 
 def is_closure_scope(interventions) -> bool:

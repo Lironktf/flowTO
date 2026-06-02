@@ -17,9 +17,26 @@ from dataclasses import dataclass, field
 
 from ..simulation.simulate_traffic import (
     compare_simulations,
+    resolve_blast_backend,
     simulate_scenario,
     simulate_traffic,
 )
+
+
+def _run_backend(requested: str | None, recompute: str) -> str:
+    """Pick the assignment backend for a scenario run/preview.
+
+    An explicit ``backend`` in the request always wins. Otherwise a ``blast``
+    recompute goes to the fast path (``resolve_blast_backend`` → scipy, or gpu
+    when TS_BACKEND=gpu): its reroute is vectorized, GIL-releasing C. The old
+    default of plain ``cpu`` ran the NetworkX heap, where a multi-segment closure
+    takes ~30s and — under the startup baseline-warm thread's GIL pressure —
+    stalls past the client's patience, which is what froze the recompute modal at
+    80%. A ``full`` recompute stays on ``cpu`` (scipy isn't valid for the
+    iterative assignment; it would silently fall back anyway)."""
+    if requested:
+        return requested
+    return resolve_blast_backend() if recompute == "blast" else "cpu"
 
 
 @dataclass
@@ -50,12 +67,15 @@ class AppState:
 
     @property
     def baseline_ready(self) -> bool:
-        """True once the (heavy) compare baseline is computed — gates the copilot UI.
+        """True once a compare baseline is primed — gates the copilot UI.
 
-        Re-added after the main-merge: app.py's /healthz references this, but the
-        AppState refactor on this branch had dropped it (the heavy baseline is now
-        lazy, so this is simply False until something computes it)."""
-        return self._baseline is not None
+        Readiness = EITHER baseline is primed. The copilot's scratch sims and
+        /confirm deltas use the FAST blast/AON reference (``blast_baseline``,
+        scipy ~2s), NOT the heavy iterative ``baseline`` (~2 min on every backend).
+        Startup warms blast first, so this flips in seconds and the copilot UI
+        unblocks, while the iterative baseline keeps warming in the background for
+        the congestion / full-compare views."""
+        return self._baseline is not None or self._blast_baseline is not None
 
     @classmethod
     def from_graph(cls, graph, od_matrix, *, weather="clear", time_context=None, max_pairs=2000):
@@ -134,15 +154,18 @@ class AppState:
         """
         if self._baseline is None:
             self.ensure_od()
-            self._baseline = simulate_traffic(
-                self.graph,
-                self.od_matrix,
-                iterations=iterations,
-                weather=self.weather,
-                time_context=self.time_context,
-                auto_calibrate=False,
-                congestion_model=congestion_model,
-            )
+            with self._baseline_lock:
+                if self._baseline is None:
+                    self._baseline = simulate_traffic(
+                        self.graph,
+                        self.od_matrix,
+                        iterations=iterations,
+                        weather=self.weather,
+                        time_context=self.time_context,
+                        auto_calibrate=False,
+                        congestion_model=congestion_model,
+                        backend=os.environ.get("TS_BACKEND", "cpu"),
+                    )
         return self._baseline
 
     def blast_baseline(self, *, iterations: int = 4, congestion_model: str = "bpr") -> dict:
@@ -164,8 +187,26 @@ class AppState:
                         time_context=self.time_context,
                         congestion_model=congestion_model,
                         recompute="blast",
+                        # Same backend the copilot's scenario sims use (gpu when
+                        # TS_BACKEND=gpu, else scipy) so blast-vs-baseline deltas
+                        # stay apples-to-apples and never run the slow CPU heap.
+                        backend=resolve_blast_backend(),
                     )
         return self._blast_baseline
+
+    def congestion_graph(self):
+        """A loaded graph (per-edge load/pressure/road_name) for the copilot's
+        read-only congestion / inspect / explain answers — WITHOUT ever blocking
+        on the multi-minute iterative ``baseline()``.
+
+        Prefers the iterative baseline IF it's already cached (richer equilibrium
+        pressures); otherwise uses the fast blast/AON baseline (warmed at startup,
+        ~2s cold). The iterative full-graph sim takes many minutes on this graph
+        (12k OD pairs x 4 iterations), so a copilot read must never wait on it —
+        that hang is exactly what made every analytical ask appear unresponsive."""
+        if self._baseline is not None:
+            return self._baseline["graph"]
+        return self.blast_baseline()["graph"]
 
 
 def edge_records(state: AppState, graph) -> list:
@@ -236,6 +277,7 @@ class ScenarioStore:
     def run(self, sid: str, req: dict) -> dict:
         sc = self.scenarios[sid]
         self.state.ensure_od()  # legacy path: build the shared baseline OD on first use
+        recompute = req.get("recompute", "full")
         result = simulate_scenario(
             self.state.graph,
             self.state.od_matrix,
@@ -245,8 +287,8 @@ class ScenarioStore:
             time_context=sc.get("time_context", self.state.time_context),
             engine=req.get("engine", "kpath"),
             congestion_model=req.get("congestion_model", "bpr"),
-            backend=req.get("backend", "cpu"),
-            recompute=req.get("recompute", "full"),
+            backend=_run_backend(req.get("backend"), recompute),
+            recompute=recompute,
         )
         sc["_last_result"] = result
         return result
@@ -254,6 +296,7 @@ class ScenarioStore:
     def preview(self, sid: str, interventions: list, req: dict) -> dict:
         """Run a hypothetical intervention set WITHOUT committing it."""
         self.state.ensure_od()  # legacy path: build the shared baseline OD on first use
+        recompute = req.get("recompute", "full")
         result = simulate_scenario(
             self.state.graph,
             self.state.od_matrix,
@@ -263,7 +306,8 @@ class ScenarioStore:
             time_context=self.state.time_context,
             engine=req.get("engine", "kpath"),
             congestion_model=req.get("congestion_model", "bpr"),
-            recompute=req.get("recompute", "full"),
+            backend=_run_backend(req.get("backend"), recompute),
+            recompute=recompute,
         )
         return result
 

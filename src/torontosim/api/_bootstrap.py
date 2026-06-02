@@ -73,7 +73,7 @@ def load_default_state(
     graph_path: str | None = None,
     *,
     time_context: dict | None = None,
-    max_pairs: int = 12000,
+    max_pairs: int | None = None,
     graph_source: str | None = None,
 ) -> AppState:  # pragma: no cover - runtime/server path
     """Fast boot: load the graph only.
@@ -85,6 +85,12 @@ def load_default_state(
     own OD per request. So the server starts serving ``/edges`` and ``/day/stream``
     immediately instead of blocking startup on a model load + 27k-node prediction.
     """
+    # Citywide OD coverage scales with max_pairs; it's also the dominant cost of
+    # the startup warm-up. Tunable via TS_MAX_PAIRS so the knee can be picked per
+    # graph/host without a code change (default 12000 = full citywide spread).
+    if max_pairs is None:
+        max_pairs = int(os.environ.get("TS_MAX_PAIRS", "12000"))
+
     tc = time_context or {"hour": 17, "day_of_week": 4, "month": 6, "weather": "clear"}
     graph = load_graph(graph_source, graph_path=graph_path)
     state = AppState.from_graph(graph, [], weather=tc.get("weather", "clear"), time_context=tc)

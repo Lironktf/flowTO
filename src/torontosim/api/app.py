@@ -75,10 +75,14 @@ def create_app(state: AppState, *, snapshot_dir: str | None = None) -> FastAPI:
                 )
             except Exception:  # noqa: BLE001 — warmup is best-effort
                 pass
-            # Pre-warm the copilot's compare baselines so congestion queries,
-            # /confirm comparisons and the agent's scratch sims don't cold-compute
-            # a full ~80k-edge baseline on first use (paid once here, in the bg).
-            for warmer in (state.baseline, state.blast_baseline):
+            # Pre-warm the copilot's compare baselines. Warm the FAST blast/AON
+            # reference FIRST (scipy ~2s): it's what the agent's scratch sims and
+            # /confirm deltas actually use, and it flips baseline_ready so the
+            # copilot UI unblocks in seconds. THEN warm the heavy iterative
+            # baseline() for the congestion / full-compare views — it's ~2 min on
+            # every backend (GPU's per-origin SSSP is even slower), so it must
+            # never gate the UI; it just keeps warming here in the background.
+            for warmer in (state.blast_baseline, state.baseline):
                 try:
                     warmer()
                 except Exception:  # noqa: BLE001 — warmup is best-effort

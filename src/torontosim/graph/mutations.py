@@ -160,24 +160,34 @@ def remove_edge(graph: nx.MultiDiGraph, edge_id: str) -> None:
     _refresh_degrees(graph, (u, v))
 
 
+def incident_edge_ids(graph: nx.MultiDiGraph, node_id) -> List[str]:
+    """All edge_ids attached to a node (incoming + outgoing), WITHOUT mutating.
+
+    The set of edges a ``close_node`` (blocked intersection) would close. Shared by
+    ``close_node`` and the residual closure-GNN path, which expands an intersection
+    block into these per-edge closures to build its intervention mask.
+    """
+    if node_id not in graph:
+        raise KeyError(f"node {node_id!r} not in graph")
+
+    ids: List[str] = []
+    for u, v, k, data in graph.in_edges(node_id, keys=True, data=True):
+        ids.append(data.get("edge_id") or make_edge_id(u, v, k))
+    for u, v, k, data in graph.out_edges(node_id, keys=True, data=True):
+        ids.append(data.get("edge_id") or make_edge_id(u, v, k))
+    return ids
+
+
 def close_node(graph: nx.MultiDiGraph, node_id) -> List[str]:
     """Close every edge attached to a node (all incoming and outgoing).
 
     Returns the list of edge_ids that were closed. Useful for simulating a
     fully blocked intersection.
     """
-    if node_id not in graph:
-        raise KeyError(f"node {node_id!r} not in graph")
-
+    # Collect first (incident_edge_ids snapshots into a list), because closing
+    # mutates edge data while we would otherwise iterate.
     closed: List[str] = []
-    # Collect first, because closing mutates edge data while we iterate.
-    attached = []
-    for u, v, k, data in graph.in_edges(node_id, keys=True, data=True):
-        attached.append(data.get("edge_id") or make_edge_id(u, v, k))
-    for u, v, k, data in graph.out_edges(node_id, keys=True, data=True):
-        attached.append(data.get("edge_id") or make_edge_id(u, v, k))
-
-    for eid in attached:
+    for eid in incident_edge_ids(graph, node_id):
         close_edge(graph, eid)
         closed.append(eid)
     return closed

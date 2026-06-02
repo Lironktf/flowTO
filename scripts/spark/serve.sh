@@ -16,6 +16,13 @@ source "$HERE/env.sh"
 
 SESSION="${TS_TMUX_SESSION:-torontosim}"
 GRAPH_SRC="${TS_GRAPH_SOURCE:-osmnx}"
+# Ports for the API + Vite dev server. Override (with a unique tmux SESSION) to
+# run a throwaway instance alongside the shared one without clobbering :8000/:5173.
+API_PORT="${TS_API_PORT:-8000}"
+WEB_PORT="${TS_WEB_PORT:-5173}"
+# Assignment backend for the heavy startup warm-up (cpu | gpu/cuGraph). On the
+# GB10 set TS_BACKEND=gpu so the 12k-pair citywide baseline warms via cuGraph.
+BACKEND="${TS_BACKEND:-cpu}"
 
 # Push the current tree first (so the Spark serves this exact code) unless asked
 # not to. NOTE: this serves whatever branch you have checked out locally — for
@@ -31,10 +38,10 @@ set -e
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION" -n api
 tmux send-keys -t "$SESSION:api" \
-  "cd $REMOTE_DIR && { [ -f $REMOTE_VENV/bin/activate ] && source $REMOTE_VENV/bin/activate || true; } && pip install -e '.[data,api,transit]' >/dev/null 2>&1 || true; TS_GRAPH_SOURCE=$GRAPH_SRC HOST=127.0.0.1 PORT=8000 scripts/run_api.sh" C-m
+  "cd $REMOTE_DIR && { [ -f $REMOTE_VENV/bin/activate ] && source $REMOTE_VENV/bin/activate || true; } && pip install -e '.[data,api,transit]' >/dev/null 2>&1 || true; TS_GRAPH_SOURCE=$GRAPH_SRC TS_BACKEND=$BACKEND HOST=127.0.0.1 PORT=$API_PORT scripts/run_api.sh" C-m
 tmux new-window -t "$SESSION" -n web
 tmux send-keys -t "$SESSION:web" \
-  "cd $REMOTE_DIR/frontend && npm install && npm run dev" C-m
+  "cd $REMOTE_DIR/frontend && npm install && VITE_PROXY_TARGET=http://localhost:$API_PORT npm run dev -- --port $WEB_PORT --strictPort" C-m
 echo "[spark] tmux session '$SESSION' started (windows: api, web)."
 EOF
 
@@ -43,10 +50,10 @@ cat <<EOF
 [serve] API + Vite are starting on the Spark (graph_source=$GRAPH_SRC).
 [serve] Forward both ports to your localhost, then open the UI:
 
-    ssh -N -L 5173:localhost:5173 -L 8000:localhost:8000 $SPARK_HOST
+    ssh -N -L $WEB_PORT:localhost:$WEB_PORT -L $API_PORT:localhost:$API_PORT $SPARK_HOST
 
-    UI   -> http://localhost:5173
-    Docs -> http://localhost:8000/docs
+    UI   -> http://localhost:$WEB_PORT
+    Docs -> http://localhost:$API_PORT/docs
 
 [serve] Tail the logs:   ssh $SPARK_HOST -t 'tmux attach -t $SESSION'   (Ctrl-b d to detach)
 [serve] Stop everything: ssh $SPARK_HOST 'tmux kill-session -t $SESSION'

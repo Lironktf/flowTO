@@ -84,6 +84,14 @@ export const RECOMPUTE_STEPS = [
   "Render",
 ];
 
+// Hard ceiling on a recompute round-trip (run + repaint). The progress bar caps
+// at ~80% and only finishes when the awaited promise settles, so if the backend
+// stalls (a multi-segment blast under GIL pressure has been seen to hang for
+// minutes) the modal would otherwise spin forever. We abort past this and surface
+// a retry-able error instead. A healthy blast recompute is ~2s, so 8s is a tight
+// "it's stuck" cutoff for now — bump it once the backend run path is sped up.
+export const RECOMPUTE_TIMEOUT_MS = 8_000;
+
 export interface SurgeParams {
   amount: number;
   mode: "absolute" | "relative";
@@ -311,7 +319,7 @@ interface AppState {
   deleteObject: (id: string) => void;
   toggleObjectVis: (id: string) => void;
   setSurgeParams: (id: string, patch: Partial<SurgeParams>) => void;
-  applyEdits: () => Promise<void>;
+  applyEdits: () => Promise<boolean>; // resolves false if the recompute timed out / failed
   clearPending: () => void;
   // search → close: seal an entire named street, or arm the corridor tool over it
   closeStreet: (roadName: string) => Promise<void>;
@@ -429,8 +437,8 @@ function paintRecords(set: SetFn, records: [number, number, number, number, numb
 }
 
 /** Repaint the twin from a scenario's last run (fetch records → paint). */
-async function paintScenario(set: SetFn, sid: string) {
-  const rec = await api.scenarioRecords(sid);
+async function paintScenario(set: SetFn, sid: string, signal?: AbortSignal) {
+  const rec = await api.scenarioRecords(sid, signal);
   paintRecords(set, rec.records);
 }
 
@@ -1190,7 +1198,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (closeIds.length === interventions.length) {
         const obj = closureObjectFromEdges(get().graph, closeIds, get().objects.length + 1);
         set((s) => ({ objects: [...s.objects, obj], selectedId: obj.id, activeTool: "select", dirty: true }));
-        await get().applyEdits(); // creates scenario → run(blast) → paints map + marker
+        const ok = await get().applyEdits(); // creates scenario → run(blast) → paints map + marker
+        if (!ok) {
+          // The recompute timed out/failed (applyEdits already surfaced the retry
+          // status + kept the placement). Don't fall through to compare/markApplied:
+          // /compare would re-run the scenario as a full solve and hang the same way,
+          // and we must not claim the plan was applied when it wasn't.
+          set((s) => ({
+            copilotLog: [
+              ...s.copilotLog,
+              { role: "bot", text: "That recompute timed out. The closure is still placed — click “Apply & recompute” to retry." },
+            ],
+          }));
+          return;
+        }
         const sid = get().scenarioId;
         let result: CopilotMessage["result"];
         if (sid) {
@@ -1401,6 +1422,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   applyEdits: async () => {
+    // Bound the recompute round-trip: abort the run/repaint fetches past
+    // RECOMPUTE_TIMEOUT_MS so a stalled backend can't leave the modal spinning
+    // forever (the progress bar caps at ~80% until this promise settles).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), RECOMPUTE_TIMEOUT_MS);
+    let failed: "timeout" | "error" | null = null;
     await recomputeAround(set, "Reassigning affected subgraph…", async () => {
       try {
         const interventions = interventionsFromObjects(get().objects);
@@ -1412,18 +1439,35 @@ export const useAppStore = create<AppState>((set, get) => ({
         } else {
           await api.patchScenario(sid, { interventions });
         }
-        await api.run(sid, { recompute: "blast", congestion_model: "bpr" });
-        await paintScenario(set, sid);
+        await api.run(sid, { recompute: "blast", congestion_model: "bpr" }, controller.signal);
+        await paintScenario(set, sid, controller.signal);
         set((s) => ({ telemetry: { ...s.telemetry, subEdges: 1284 } }));
       } catch {
-        /* keep the placement even if the recompute call fails */
+        // Keep the placement either way; remember whether we aborted vs errored so
+        // the status line can tell the user it timed out and to retry.
+        failed = controller.signal.aborted ? "timeout" : "error";
+      } finally {
+        clearTimeout(timer);
       }
     });
-    set({ status: { state: "nominal", label: "Edited · recomputed" } });
+    if (failed === "timeout") {
+      set({
+        status: { state: "blocked", label: "Recompute timed out — click Apply & recompute to retry" },
+        simStale: true,
+      });
+    } else if (failed === "error") {
+      set({
+        status: { state: "blocked", label: "Recompute failed — click Apply & recompute to retry" },
+        simStale: true,
+      });
+    } else {
+      set({ status: { state: "nominal", label: "Edited · recomputed" } });
+    }
     // Also (re)fill the 24-hour day-stream for the new edits so the timeline plays
     // back the edited day; falls back to the predicted baseline when no edits remain.
-    if (hasEdits(get())) get().prewarm();
-    else void get().loadBaselineDay();
+    if (!failed && hasEdits(get())) get().prewarm();
+    else if (!failed) void get().loadBaselineDay();
+    return !failed;
   },
 
   selectRoad: (edgeId) => set({ selectedRoadId: edgeId }),

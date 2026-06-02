@@ -174,8 +174,8 @@ export interface CompareResult {
   [k: string]: unknown;
 }
 
-async function jget<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`);
+async function jget<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, { signal });
   if (!r.ok) throw new Error(`GET ${path} → ${r.status}`);
   return r.json() as Promise<T>;
 }
@@ -255,9 +255,10 @@ export const api = {
   // Edit-mode scenario flow (real engine, blast-radius recompute).
   createScenario: (payload: unknown) => jpost<{ id: string }>("/scenarios", payload),
   patchScenario: (id: string, payload: unknown) => jpatch<unknown>(`/scenarios/${id}`, payload),
-  run: (id: string, req: unknown) => jpost<unknown>(`/scenarios/${id}/run`, req),
-  scenarioRecords: (id: string) =>
-    jget<{ records: Record5[]; summary: Record<string, number> }>(`/scenarios/${id}/records`),
+  run: (id: string, req: unknown, signal?: AbortSignal) =>
+    jpost<unknown>(`/scenarios/${id}/run`, req, signal),
+  scenarioRecords: (id: string, signal?: AbortSignal) =>
+    jget<{ records: Record5[]; summary: Record<string, number> }>(`/scenarios/${id}/records`, signal),
   transitRoutes: (agencies = "ttc") =>
     jget<{ routes: { route_id: string; mode: string; path: [number, number][] }[] }>(
       `/transit/routes?agencies=${agencies}`,
